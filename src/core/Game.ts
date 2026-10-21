@@ -101,6 +101,9 @@ export class Game {
   private runTime = 0;
   private time = 0;
   private failTimer = 0;
+  /** Smoothed / decaying-peak CPU time of one simulation update (ms). */
+  updateMs = 0;
+  updateMsMax = 0;
   /** Sentry mode: you pilot the empty suit while your body stands where you left it. */
   remote = false;
   private body: AvatarState = {
@@ -545,6 +548,8 @@ export class Game {
     this.hud.showDeath(null);
     if (this.started) this.hud.setVisible(this.settings.data.hud);
     this.teleport(SPAWN.x, SPAWN.y, SPAWN.z, SPAWN.yaw);
+    // Fresh armour flies in and latches on, piece by piece.
+    this.avatar.playSuitUp();
     this.bus.emit("alert", { text: "Returned to Avengers Tower landing pad", level: "info" });
   }
 
@@ -657,7 +662,14 @@ export class Game {
 
   private frame(): void {
     const dt = Math.min(0.05, this.engine.getDeltaTime() / 1000);
-    if (!this.paused) this.update(dt);
+    if (!this.paused) {
+      // Track the simulation's own CPU cost per frame (excludes GPU work).
+      const t0 = performance.now();
+      this.update(dt);
+      const ms = performance.now() - t0;
+      this.updateMs += (ms - this.updateMs) * 0.05;
+      this.updateMsMax = Math.max(this.updateMsMax * 0.995, ms);
+    }
     else if (!this.started) {
       // Attract mode behind the loading screen: slow orbit.
       this.player.viewYaw += dt * 0.08;
@@ -666,7 +678,20 @@ export class Game {
     this.scene.render();
   }
 
+  /** Per-section CPU timings (ms, smoothed / decaying peak) for profiling. */
+  readonly prof: Record<string, { avg: number; max: number }> = {};
+  private markT = 0;
+  private mark(name: string): void {
+    const now = performance.now();
+    const ms = now - this.markT;
+    this.markT = now;
+    const e = (this.prof[name] ??= { avg: 0, max: 0 });
+    e.avg += (ms - e.avg) * 0.05;
+    e.max = Math.max(e.max * 0.995, ms);
+  }
+
   private update(dt: number): void {
+    this.markT = performance.now();
     this.time += dt;
     this.runTime += dt;
     const input = this.input.poll();
@@ -711,6 +736,7 @@ export class Game {
     this.cam.update(dt, p, this.world);
     const camPos = this.cam.position;
 
+    this.mark("player");
     // Combat.
     this.combat.aimAssist = this.input.mouseMode ? 0.06 : 0.16;
     this.combat.update(dt, input, p, camPos);
@@ -731,6 +757,7 @@ export class Game {
       }
     }
 
+    this.mark("combat");
     // World.
     this.env.update(this.time);
     this.env.setAltitude(camPos.y);
@@ -761,6 +788,7 @@ export class Game {
     this.hud.setObjective(title, title ? `${detail} · ${Math.round(d)} m` : "");
     if (this.shadowGen) this.env.sun.position.set(p.pos.x + 60, p.pos.y + 25, p.pos.z + 20);
 
+    this.mark("world");
     // HUD.
     this.hud.update(dt, p);
     this.updateTargetsHud(camPos);
@@ -778,6 +806,7 @@ export class Game {
     this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
     this.audio.update(p);
     this.autoQuality(dt);
+    this.mark("hud");
   }
 
   /** The toughest engaged heavy unit nearby gets a boss bar. */
@@ -945,6 +974,9 @@ export class Game {
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
       colliderChunks: this.world.chunksLoaded,
+      updateMs: this.updateMs,
+      updateMsMax: this.updateMsMax,
+      heapMB: ((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576,
       specChunks: this.chunks.specCount,
       rescue: this.events.rescue,
       saved: this.events.saved,

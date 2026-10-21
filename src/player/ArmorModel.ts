@@ -50,6 +50,10 @@ export interface AvatarState {
   /** Hit flinch 0..1 and side. */
   readonly flinch?: number;
   readonly flinchSide?: number;
+  /** Flares just popped. */
+  readonly flareTimer?: number;
+  /** Unconscious (no oxygen). */
+  readonly blackout?: boolean;
   /** Dead: slump to the ground. */
   readonly dead?: boolean;
   readonly deadTime?: number;
@@ -609,7 +613,21 @@ export class ArmorModel {
     const planar = Math.hypot(p.vel.x, p.vel.z);
     let pose: Pose;
     let pivotY = 1.0;
-    if (p.mode === "ground" && p.falling) {
+    if (p.mode === "ground" && p.falling && p.blackout) {
+      // Unconscious: limp, arms trailing up, head lolling.
+      pose = {
+        spine: [0.1, Math.sin(t * 1.3) * 0.1],
+        neck: [0.5, Math.sin(t * 0.9) * 0.3],
+        shL: [-2.6, -0.4],
+        shR: [-2.5, 0.4],
+        elL: [-0.3, 0],
+        elR: [-0.4, 0],
+        hipL: [-0.4, -0.1],
+        hipR: [-0.2, 0.1],
+        knL: [0.5, 0],
+        knR: [0.9, 0],
+      };
+    } else if (p.mode === "ground" && p.falling) {
       // Skydive: arched back, arms and legs spread (civilians flail).
       const flail = p.suited ? 0 : Math.sin(t * 9) * 0.35;
       pose = {
@@ -623,6 +641,21 @@ export class ArmorModel {
         hipR: [-0.15 + flail * 0.5, 0.28],
         knL: [0.85, 0],
         knR: [0.85, 0],
+      };
+    } else if (p.mode === "ground" && p.agl > 0.35 && p.vel.y !== 0) {
+      // Jump / short drop: knees tucked, arms up for balance.
+      const up = p.vel.y > 0;
+      pose = {
+        spine: [up ? 0.15 : 0.05, 0],
+        neck: [-0.1, 0],
+        hipL: [-0.7, -0.08],
+        hipR: [-0.45, 0.08],
+        knL: [1.2, 0],
+        knR: [0.8, 0],
+        shL: [-0.6, -0.5],
+        shR: [-0.5, 0.5],
+        elL: [-0.6, 0],
+        elR: [-0.6, 0],
       };
     } else if (p.mode === "ground") {
       const a = clamp(planar / 8, 0, 1);
@@ -680,6 +713,21 @@ export class ArmorModel {
         elR: [-0.3, 0],
       };
       pivotY = 1.0 + Math.sin(t * 2.1) * 0.05;
+      // Climbing: legs straight, arms pushing down. Sinking: knees bend.
+      const vy = clamp(p.vel.y / 10, -1, 1);
+      if (vy > 0.15) {
+        pose.shL = [0.25 * vy, -0.25];
+        pose.shR = [0.25 * vy, 0.25];
+        pose.elL = [-0.05, 0];
+        pose.elR = [-0.05, 0];
+        pose.knL = [0.04, 0];
+        pose.knR = [0.04, 0];
+      } else if (vy < -0.15) {
+        pose.knL = [0.18 - vy * 0.5, 0];
+        pose.knR = [0.12 - vy * 0.4, 0];
+        pose.hipL = [(pose.hipL?.[0] ?? 0) + vy * 0.3, pose.hipL?.[1] ?? 0];
+        pose.hipR = [(pose.hipR?.[0] ?? 0) + vy * 0.25, pose.hipR?.[1] ?? 0];
+      }
     } else {
       const ab = p.afterburner ? 1 : 0;
       pose = {
@@ -759,6 +807,15 @@ export class ArmorModel {
     if (rc > 0 && pose.shR) {
       pose.shR = [pose.shR[0] + rc * 0.25, pose.shR[1]];
       pose.elR = [(pose.elR?.[0] ?? 0) - rc * 0.45, 0];
+    }
+    // Flares: arms flung out wide.
+    const fl0 = p.flareTimer ?? 0;
+    if (fl0 > 0 && p.suited) {
+      const k = Math.min(1, fl0 / 0.25);
+      pose.shL = [0.2, -1.4 * k];
+      pose.shR = [0.2, 1.4 * k];
+      pose.elL = [-0.1, 0];
+      pose.elR = [-0.1, 0];
     }
     // Hit flinch: torso jolts away from the impact.
     const fl = p.flinch ?? 0;

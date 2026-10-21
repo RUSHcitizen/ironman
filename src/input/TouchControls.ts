@@ -161,11 +161,17 @@ export class TouchControls {
     this.el.dataset.mode = mode;
   }
 
+  private charging = false;
   setCharging(on: boolean): void {
+    if (on === this.charging) return;
+    this.charging = on;
     this.buttons.beam.classList.toggle("charging", on);
   }
 
+  private rocketsShown = -1;
   setRockets(n: number): void {
+    if (n === this.rocketsShown) return;
+    this.rocketsShown = n;
     this.buttons.msl.querySelector("small")!.textContent = `MSL ${n}`;
   }
 

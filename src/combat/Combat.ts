@@ -155,6 +155,7 @@ export class Combat {
       return;
     }
     this.flareCooldown = FLARE_COOLDOWN;
+    p.flareTimer = 0.5;
     const broken = this.projectiles.flares(p.center, p.vel, p);
     this.bus?.emit("flares", { count: broken });
     this.bus?.emit("alert", { text: broken > 0 ? `Flares! ${broken} missile lock${broken > 1 ? "s" : ""} broken` : "Flares deployed", level: broken > 0 ? "success" : "info", ttl: 2 });

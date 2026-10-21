@@ -124,6 +124,9 @@ export class PlayerController {
   rocketTimer = 0;
   /** Unibeam pose (chest thrust forward, arms back). */
   beamTimer = 0;
+  private lastYaw = 0;
+  /** Flares just popped (arms flung wide) - animation only. */
+  flareTimer = 0;
   /** Repulsor recoil (1 on a shot, decays) - animation only. */
   recoil = 0;
   /** Hit flinch (1 when hit, decays) and the side it came from (-1 left / +1 right). */
@@ -387,6 +390,7 @@ export class PlayerController {
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
     if (this.beamTimer > 0) this.beamTimer -= dt;
     this.recoil = Math.max(0, this.recoil - dt * 7);
+    if (this.flareTimer > 0) this.flareTimer -= dt;
     this.flinch = Math.max(0, this.flinch - dt * 3.5);
   }
 
@@ -445,6 +449,12 @@ export class PlayerController {
     } else if (this.aimTimer > 0 && this.suited) this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 14, dt);
     else if (planar > 0.4) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
     this.walkPhase += (steppingOut ? -planar : planar) * dt * (this.suited ? 1.25 : 1.9);
+    // Turning on the spot: shuffle the feet.
+    if (this.grounded && planar < 0.4) {
+      const turn = Math.abs(wrapAngle(this.bodyYaw - this.lastYaw));
+      this.walkPhase += Math.min(0.3, turn * 1.6);
+    }
+    this.lastYaw = this.bodyYaw;
     // Belly-to-earth while falling fast.
     this.bodyPitch += ((falling ? 1.2 : 0) - this.bodyPitch) * damp(falling ? 2.5 : 10, dt);
     this.bodyRoll += (0 - this.bodyRoll) * damp(10, dt);

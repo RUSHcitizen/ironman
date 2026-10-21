@@ -633,3 +633,8 @@ html.touch .h-area b { font-size: 16px !important; letter-spacing: 0.3em; }
 html.touch .h-area small { font-size: 8px; }
 html.touch .h-diag { transform: scale(0.85); transform-origin: top left; }
 html.touch .h-area { top: calc(122px + var(--st)); }
+
+/* Rocket pips pop as they reload. */
+.v-pips i { transition: opacity 0.25s, background-color 0.25s, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
+.v-pips i.on { transform: scaleY(1); }
+.v-pips i:not(.on) { transform: scaleY(0.6); }

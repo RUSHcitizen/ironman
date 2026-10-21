@@ -509,3 +509,31 @@ test("Chromebook (emulated UA): starts on Low; flying across the 299 km² map ke
   expect(errors).toEqual([]);
   await ctx.close();
 });
+
+test("performance budget on a slow device (iPhone X layout, Low, 4x CPU throttle, mid-fight flight)", async ({ browser, browserName }) => {
+  test.skip(browserName !== "chromium", "CPU throttling needs Chromium's DevTools protocol");
+  test.setTimeout(180_000);
+  const ctx = await browser.newContext({ viewport: { width: 812, height: 375 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
+  await page.goto("/");
+  await page.locator("#l-start:not([disabled])").waitFor({ timeout: 120_000 });
+  await page.locator("#l-start").tap();
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await page.evaluate(() => {
+    const g = (window as unknown as { __GAME: { teleport(...a: unknown[]): void; spawnEnemy(k: string, f: number, u: number, r: number): void } }).__GAME;
+    g.teleport(2.5, 60, -300, 0, "flight", 90);
+    for (const k of ["drone", "drone", "jet", "gunship", "sentinel", "swarmer", "swarmer", "swarmer"]) g.spawnEnemy(k, 80 + Math.random() * 60, 10, (Math.random() - 0.5) * 60);
+  });
+  await page.keyboard.down("KeyW");
+  await page.waitForTimeout(15_000);
+  await page.keyboard.up("KeyW");
+  const s = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { updateMs: number; updateMsMax: number; heapMB: number } } }).__GAME.debugState());
+  console.log(`perf @4x: update ${s.updateMs.toFixed(2)} ms avg, ${s.updateMsMax.toFixed(1)} ms peak, heap ${s.heapMB.toFixed(0)} MB`);
+  // Simulation (CPU) cost per frame must leave room for rendering at 30-60 fps.
+  expect(s.updateMs).toBeLessThan(16);
+  expect(s.updateMsMax).toBeLessThan(80);
+  expect(s.heapMB).toBeLessThan(250);
+  await ctx.close();
+});

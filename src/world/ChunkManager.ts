@@ -95,6 +95,8 @@ export class ChunkManager {
    * the view distance and unload chunks well outside it.
    */
   stream(x: number, z: number, viewDistance: number, budget = 1): void {
+    // Finish the chunk in progress first, a few milliseconds per frame.
+    if (!this.advanceBuild(3)) return;
     // Rescan only after moving a bit, or while loads are still pending.
     if (!this.pending && Math.hypot(x - this.scanX, z - this.scanZ) < 24) return;
     this.scanX = x;
@@ -111,7 +113,12 @@ export class ChunkManager {
     }
     this.pending = missing.length > budget;
     missing = missing.sort((a, b) => a[0] - b[0]).slice(0, budget);
-    for (const [, cx, cz] of missing) this.load(cx, cz);
+    const next = missing[0];
+    if (next) {
+      this.building = { cx: next[1], cz: next[2], it: this.builder(next[1], next[2]) };
+      this.pending = true;
+      this.advanceBuild(3);
+    }
   }
 
   /** District chunks within `radius` (plus a margin) of a point. */
@@ -138,9 +145,39 @@ export class ChunkManager {
     return areaName(cx, cz);
   }
 
+  /** Build a chunk right away (loading screen, teleports). */
   load(cx: number, cz: number): void {
+    if (this.chunks.has(ChunkManager.key(cx, cz))) return;
+    if (this.building && this.building.cx === cx && this.building.cz === cz) this.building = null;
+    const it = this.builder(cx, cz);
+    while (!it.next().done) {
+      /* run to completion */
+    }
+  }
+
+  /** Chunk currently being built a little each frame (avoids frame spikes). */
+  private building: { cx: number; cz: number; it: Generator<void, void> } | null = null;
+
+  /** Advance the in-progress chunk build for at most `ms` milliseconds. Returns true when idle. */
+  private advanceBuild(ms: number): boolean {
+    const b = this.building;
+    if (!b) return true;
+    const end = performance.now() + ms;
+    do {
+      if (b.it.next().done) {
+        this.building = null;
+        return true;
+      }
+    } while (performance.now() < end);
+    return false;
+  }
+
+  /**
+   * Chunk construction as resumable steps: one step per block and per mesh,
+   * so streaming can spread a chunk over several frames.
+   */
+  private *builder(cx: number, cz: number): Generator<void, void> {
     const key = ChunkManager.key(cx, cz);
-    if (this.chunks.has(key)) return;
     const spec = this.spec(cx, cz);
     const masonry = new GeometryBatch(FACADE_TILE.masonryU, FACADE_TILE.masonryV);
     const glass = new GeometryBatch(FACADE_TILE.glassU, FACADE_TILE.glassV);
@@ -177,6 +214,7 @@ export class ChunkManager {
       }
       props.push(...block.props);
       if (block.kind === "hero") meshes.push(...this.heroDetails(block.slab));
+      yield;
     }
 
     // Road markings for the road lines/segments this chunk owns.
@@ -201,8 +239,12 @@ export class ChunkManager {
       if (m) {
         meshes.push(m);
         m.receiveShadows = true;
+        // Hidden until the whole chunk is ready (no half-built chunks).
+        m.setEnabled(false);
       }
+      yield;
     }
+    for (const m of meshes) m.setEnabled(true);
 
     const centerX = (cx + 0.5) * CHUNK_SIZE;
     const centerZ = (cz + 0.5) * CHUNK_SIZE;

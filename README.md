@@ -50,6 +50,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - **Idle:** weight shifts between legs.
   - **Enemies:** hits make them swell briefly and knock light ones about.
   - **Cars:** the nose dips under braking, squats when pulling away, and the car bounces slightly on the road.
+  - Also new: a knees-tucked, arms-up jump pose (civilian jumps and short drops), a push-off pose when climbing in hover and knees bending when sinking, arms flung wide when popping flares, a limp unconscious fall during an oxygen blackout, shuffling feet when turning on the spot, a full piece-by-piece suit-up at the tower after a respawn, and rocket pips popping as they reload.
   - These add to the existing animation (walk/run cycles, landing crouch, hover sway, banking and steering arms, tricks, barrel rolls, suit latch / step-out / eject, skydive, Unibeam pose, head tracking, enemy warp-in and wreckage, pedestrian panic, and HUD / menu motion).
 - **Device tuning (Chromebook, iPhone 15, iPhone X):**
   - Phones and Chromebooks (detected by "CrOS") start on Low.
@@ -57,6 +58,12 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - Slow devices still step down.
   - The bundle is compiled to ES2020 and checked for syntax newer than Safari 16. The iPhone X maxes out at iOS 16, and nothing needs newer.
   - Memory is bounded as described above.
+  - **Frame-time work:**
+    - Building a newly visible chunk is now spread over several frames (about 3 ms per frame) instead of done in one go.
+    - The HUD caches its element lookups and only writes to the page when a value actually changes.
+    - Measured on the emulated iPhone X layout at Low during a flying fight, the simulation's CPU cost is about 2.2 ms per frame on average, with the worst frame down from about 25 ms to 11 ms. At **4× CPU throttling** (to approximate a slow phone or Chromebook CPU) it's about 10 ms on average, with a peak around 38 ms (from 62 ms). The JS heap stays around 60–75 MB.
+    - A new browser test enforces a budget at 4× throttling: under 16 ms average and 80 ms peak, and under 250 MB heap.
+    - GPU cost can't be measured here (software rendering), so real-device frame rates still need checking on the hardware.
 
 ## Milestone 9 – phone rotation that always works, armour schemes, time of day, rescues
 
@@ -367,7 +374,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **32 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **34 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
   - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between far corners of the city keeps collider and layout memory bounded.**
   - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**

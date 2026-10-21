@@ -43,7 +43,19 @@ export interface RadarBlip {
 
 export class Hud {
   readonly el: HTMLElement;
-  private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.el.querySelector(sel) as T;
+  /** Cached element lookup (the HUD's elements never change). */
+  private qcache = new Map<string, HTMLElement>();
+  private q = <T extends HTMLElement = HTMLElement>(sel: string): T => {
+    let e = this.qcache.get(sel);
+    if (!e) this.qcache.set(sel, (e = this.el.querySelector(sel) as HTMLElement));
+    return e as T;
+  };
+  /** Write text only when it changed (avoids needless layout work). */
+  private text(sel: string, v: string): void {
+    const e = this.q(sel);
+    if (e.textContent !== v) e.textContent = v;
+  }
+  private lastPips = -1;
   private tape: HTMLElement;
   private compassW = 0;
   private markersEl: HTMLElement;
@@ -154,7 +166,7 @@ export class Hud {
   }
 
   setHint(text: string): void {
-    this.q(".v-hint").textContent = text;
+    this.text(".v-hint", text);
   }
 
   /** Enemy brackets with health bars; red diamond = rocket lock. */
@@ -172,13 +184,16 @@ export class Hud {
         root.appendChild(el);
         this.targetEls.push(el);
       }
-      el.style.display = "";
-      el.style.transform = `translate3d(${p.x}px,${p.y}px,0) scale(${it.scale})`;
-      el.className = `h-target k-${it.kind}${it.locked ? " locked" : ""}${it.assist ? " assist" : ""}`;
-      (el.querySelector("u") as HTMLElement).style.transform = `scaleX(${Math.max(0, it.hp)})`;
+      if (el.style.display) el.style.display = "";
+      el.style.transform = `translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,0) scale(${it.scale.toFixed(2)})`;
+      const cls = `h-target k-${it.kind}${it.locked ? " locked" : ""}${it.assist ? " assist" : ""}`;
+      if (el.className !== cls) el.className = cls;
+      const hp = `scaleX(${Math.max(0, it.hp).toFixed(3)})`;
+      const u = el.firstElementChild!.nextElementSibling!.firstElementChild as HTMLElement;
+      if (u.style.transform !== hp) u.style.transform = hp;
       n++;
     }
-    for (let k = n; k < this.targetEls.length; k++) this.targetEls[k].style.display = "none";
+    for (let k = n; k < this.targetEls.length; k++) if (this.targetEls[k].style.display !== "none") this.targetEls[k].style.display = "none";
   }
 
   setWeapons(rockets: number, max: number, kills: number, repulsorReady: boolean): void {
@@ -186,10 +201,13 @@ export class Hud {
       this.pipCount = max;
       this.q(".v-pips").innerHTML = "<i></i>".repeat(max);
     }
-    const pips = this.q(".v-pips").children;
-    for (let k = 0; k < pips.length; k++) pips[k].classList.toggle("on", k < rockets);
-    this.q(".v-kills").textContent = String(kills);
-    this.q(".v-rpl").textContent = repulsorReady ? "READY" : "LOW POWER";
+    if (rockets !== this.lastPips) {
+      this.lastPips = rockets;
+      const pips = this.q(".v-pips").children;
+      for (let k = 0; k < pips.length; k++) pips[k].classList.toggle("on", k < rockets);
+    }
+    this.text(".v-kills", String(kills));
+    this.text(".v-rpl", repulsorReady ? "READY" : "LOW POWER");
   }
 
   /** Rank name and progress (0..1) toward the next rank. */
@@ -201,7 +219,9 @@ export class Hud {
       void el.offsetWidth;
       el.classList.add("pulse");
     }
-    this.q(".v-xp").style.transform = `scaleX(${Math.max(0, Math.min(1, progress))})`;
+    const xp = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(3)})`;
+    const xe = this.q(".v-xp");
+    if (xe.style.transform !== xp) xe.style.transform = xp;
   }
 
   private bossLag = 1;
@@ -339,11 +359,11 @@ export class Hud {
   }
 
   setCapturePrompt(show: boolean): void {
-    this.el.classList.toggle("capture", show);
+    if (this.el.classList.contains("capture") !== show) this.el.classList.toggle("capture", show);
   }
 
   setCivilianHint(text: string): void {
-    this.q(".v-civ").textContent = text;
+    this.text(".v-civ", text);
   }
 
   setMarkers(markers: HudMarker[]): void {
@@ -366,9 +386,9 @@ export class Hud {
 
   setObjective(title: string, detail: string): void {
     const box = this.q(".h-objective");
-    box.classList.toggle("on", !!title);
-    this.q(".v-obj-t").textContent = title;
-    this.q(".v-obj").textContent = detail;
+    if (box.classList.contains("on") !== !!title) box.classList.toggle("on", !!title);
+    this.text(".v-obj-t", title);
+    this.text(".v-obj", detail);
   }
 
   private buildTape(): void {
