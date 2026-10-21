@@ -9,7 +9,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | | |
 |---|---|
 | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) | ![Phone controls faded when idle](docs/screenshots/28-mobile-controls-idle.png) |
-| ![Titan, sentinels and a spider walker](docs/screenshots/27-titan-sentinels.png) | ![Unibeam](docs/screenshots/22-unibeam.png) |
+| ![Titan, sentinels and a spider walker](docs/screenshots/27-titan-sentinels.png) | ![Flares](docs/screenshots/24-flares.png) |
 | ![Night over the city](docs/screenshots/25-night.png) | ![Midas armour by day with a boss bar](docs/screenshots/26-day-midas-boss.png) |
 | ![Unibeam](docs/screenshots/22-unibeam.png) | ![Clouds and contrails](docs/screenshots/23-clouds-contrails.png) |
 | ![Banked turn](docs/screenshots/19-bank-turn.png) | ![Piloting the empty suit in sentry mode](docs/screenshots/21-sentry-remote.png) |
