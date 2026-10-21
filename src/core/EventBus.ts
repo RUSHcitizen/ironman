@@ -28,7 +28,7 @@ export interface GameEvents extends Record<string, unknown> {
   areaChanged: { name: string };
   qualityChanged: { quality: string };
   /** Suit transformation started (toSuited) / finished (suited). */
-  suitTransform: { toSuited: boolean };
+  suitTransform: { toSuited: boolean; airborne: boolean };
   suitChanged: { suited: boolean };
   boost: Record<string, never>;
   sonicBoom: { x: number; y: number; z: number };

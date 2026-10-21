@@ -8,16 +8,34 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
-| ![In space](docs/screenshots/17-space.png) | ![Free fall after cutting thrust](docs/screenshots/18-freefall.png) |
+| ![Banked turn](docs/screenshots/19-bank-turn.png) | ![Piloting the empty suit in sentry mode](docs/screenshots/21-sentry-remote.png) |
+| ![Ejecting mid-air](docs/screenshots/20-eject.png) | ![In space](docs/screenshots/17-space.png) |
+| ![Free fall after cutting thrust](docs/screenshots/18-freefall.png) | ![Busy street](docs/screenshots/10-busy-street.png) |
 | ![Stepping out of the open armour](docs/screenshots/16-step-out.png) | ![City from 420 m](docs/screenshots/06-city-overview.png) |
 | ![Suit pieces latching on](docs/screenshots/13-suit-up-latch.png) | ![Called suit latching on](docs/screenshots/15-called-suit-latching.png) |
-| ![New enemy types](docs/screenshots/14-new-enemies.png) | ![Warbot](docs/screenshots/04-warbot.png) |
-| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Busy street](docs/screenshots/10-busy-street.png) |
+| ![New enemy types](docs/screenshots/14-new-enemies.png) | ![Avengers Tower pad](docs/screenshots/02-avengers-tower-pad.png) |
+| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Warbot](docs/screenshots/04-warbot.png) |
 | ![Stepped out of the suit](docs/screenshots/07-civilian.png) | ![Sentry mode](docs/screenshots/11-sentry.png) |
 | ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Suit flying in](docs/screenshots/12-suit-inbound.png) |
 | ![Title screen](docs/screenshots/01-title.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 6 – banked turns, mid-air eject, piloted sentry
+
+- **Banked turns, like the films.**
+  - In flight the whole body rolls about its long axis into a turn: turn right and the right arm drops while the left arm points up.
+  - The bank builds gradually, up to about 86° (nearly sideways) in a hard turn, and levels out when you straighten up.
+  - The more you're banked, the tighter the turn bites. Barrel rolls and corkscrews now spin about the same axis, and the camera tilts slightly with the bank.
+- **Eject mid-air.**
+  - `G` in hover or flight (EJECT on touch) throws you clear of the suit. You fall as a civilian, and the empty suit drifts down where you left it.
+  - Press `G` again to call it. It chases you down, leading your fall at up to about 500 km/h, and the pieces latch on in under a second.
+  - Once suited, the stabilisers catch you. If it doesn't reach you in time, the fall is fatal (anything over about 95 km/h as a civilian) and you go back to Avengers Tower.
+- **Sentry mode: pilot the empty suit.**
+  - `V` (SENTRY on touch) steps you out of the suit and gives you direct control of the empty armour: fly, fight, do tricks, even go to space. Your body waits where you left it, with a YOU marker on the compass.
+  - With nobody inside, a fatal fall only damages the suit and oxygen isn't used. If the suit is wrecked it drops offline and you're back in your body.
+  - `G` sends the suit back to you: you're back in your body, it flies over and latches on, and then you're flying it with you inside.
+  - `V` again returns you to your body, and the suit keeps guarding you on its own (the old AI sentry). On foot, `V` takes control of the suit wherever it is.
 
 ## Milestone 5 – space, oxygen, free fall and the step-out
 
@@ -135,8 +153,9 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Cut all thrust (free fall) / re-engage | `H` (re-engage: `H` or `Space`) | CUT / LIFT |
 | Repulsors (hold) | Left mouse or `X` | BLAST |
 | Micro-rockets (lock-on) | Right mouse or `R` | MSL |
-| Step out of the suit (landed) / call it back | `G` | SUIT · CALL SUIT |
-| Sentry mode for the empty suit (on foot, or step out into sentry) | `V` | SENTRY |
+| Step out (landed) / eject (in the air) / call the suit back / recall a piloted suit | `G` | SUIT OFF · EJECT · CALL SUIT · RECALL |
+| Sentry: pilot the empty suit / back to your body (suit guards you) | `V` | SENTRY · BODY |
+| Bank and turn in flight | `A` / `D` (or mouse) | Stick left / right |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -232,7 +251,7 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **39 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **50 unit tests** pass, covering:
   - City generation and collision.
   - Flight physics:
     - Civilian movement.
@@ -245,8 +264,11 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
     - **Tank shells arc and hurt.**
     - **Gunships circle-strafe at range.**
   - The autonomous suit (call, dock, sentry, offline).
-- **13 browser tests** pass on the desktop and emulated-mobile projects, including:
-  - **Hover flip and flight loop in the real game.**
+  - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
+- **18 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**
+  - **Space (oxygen drain, black sky), cutting thrust with `H`, and a fatal fall that returns you to Avengers Tower.**
+  - Hover flip and flight loop in the real game.
   - Mouse drag-look, the flight sequence, and weapons.
   - Suit off/on and the full step-out → sentry → call → dock flow (now with the piece-by-piece latch).
   - The touch layout and the WebGL error screen.

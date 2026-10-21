@@ -97,6 +97,51 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
+  test("flight turns bank the body nearly sideways", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 250, -300, 0, "flight", 48));
+    await page.keyboard.down("KeyD");
+    await until(page, (st) => st.bank < -1.0);
+    await page.keyboard.up("KeyD");
+    await page.keyboard.down("KeyA");
+    await until(page, (st) => st.bank > 1.0);
+    await page.keyboard.up("KeyA");
+    expect(errors).toEqual([]);
+  });
+
+  test("eject mid-air with G, then call the suit to catch you", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 260, -300, 0, "hover"));
+    await page.keyboard.press("KeyG");
+    const out = await until(page, (st) => !st.suited);
+    expect(out.grounded).toBe(false);
+    await page.keyboard.press("KeyG");
+    await until(page, (st) => st.suitState === "inbound" || st.suited);
+    const caught = await until(page, (st) => st.suited && !st.transforming, 90_000);
+    expect(caught.dead).toBe(false);
+    expect(caught.pos.y).toBeGreaterThan(5);
+    expect(errors).toEqual([]);
+  });
+
+  test("sentry: pilot the empty suit with V, then G brings it back onto you", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 0, -182, 0));
+    await until(page, (st) => st.grounded);
+    await page.keyboard.press("KeyV");
+    const r = await until(page, (st) => st.remote && st.suited);
+    // Fly the suit up; your body stays on the street.
+    await page.keyboard.down("Space");
+    await until(page, (st) => st.pos.y > r.bodyPos.y + 15);
+    await page.keyboard.up("Space");
+    const s2 = await state(page);
+    expect(Math.hypot(s2.bodyPos.x - r.bodyPos.x, s2.bodyPos.z - r.bodyPos.z)).toBeLessThan(0.01);
+    await page.keyboard.press("KeyG");
+    const back = await until(page, (st) => !st.remote && !st.suited);
+    expect(Math.hypot(back.pos.x - r.bodyPos.x, back.pos.z - r.bodyPos.z)).toBeLessThan(0.5);
+    await until(page, (st) => st.suited, 120_000);
+    expect(errors).toEqual([]);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {
@@ -136,16 +181,17 @@ test.describe("desktop controls", () => {
     const errors = await boot(page);
     await game(page, (g) => g.teleport(2.5, 0, -182, 0));
     await page.keyboard.press("KeyG");
-    const out = await until(page, (s) => !s.suited && s.suitState === "parked");
+    const out = await until(page, (s) => !s.suited && s.suitState === "parked" && !s.transforming);
     expect(Math.hypot(out.suitPos.x - out.pos.x, out.suitPos.z - out.pos.z)).toBeLessThan(3);
-    // Sentry: the empty suit engages hostiles on its own.
+    // Sentry: pilot the suit (V), then V again returns to the body and the
+    // suit keeps guarding on its own.
     await page.keyboard.press("KeyV");
-    await until(page, (s) => s.suitState === "sentry");
+    await until(page, (s) => s.remote);
+    await page.keyboard.press("KeyV");
+    await until(page, (s) => s.suitState === "sentry" && !s.remote);
     await game(page, (g) => g.spawnEnemy("drone", 40, 15, 0));
     await until(page, (s) => s.kills >= 1, 120_000);
     // Walk away (teleport for speed), then call it: it flies over and docks.
-    await page.keyboard.press("KeyV");
-    await until(page, (s) => s.suitState === "parked");
     await game(page, (g) => g.teleport(2.5, 0, -330, 0));
     await page.keyboard.press("KeyG");
     await until(page, (s) => s.suitState === "inbound");

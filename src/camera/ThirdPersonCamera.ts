@@ -115,7 +115,7 @@ export class ThirdPersonCamera {
     this.camera.position.set(px, py, pz);
     this.camera.rotation.x = -pitch;
     this.camera.rotation.y = yaw;
-    this.roll += ((flight ? p.bodyRoll * 0.18 : 0) - this.roll) * damp(4, dt);
+    this.roll += ((flight ? p.bank * 0.12 : 0) - this.roll) * damp(4, dt);
     this.camera.rotation.z = this.roll;
 
     this.fovKick = Math.max(0, this.fovKick - dt * 0.5);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CollisionWorld } from "../src/world/Collision";
-import { PlayerController } from "../src/player/PlayerController";
+import { PlayerController, TUNING } from "../src/player/PlayerController";
 import { SuitUnit } from "../src/player/SuitUnit";
 import { EnemyManager } from "../src/combat/Enemies";
 import { ProjectileSystem } from "../src/combat/Projectiles";
@@ -81,5 +81,25 @@ describe("autonomous suit", () => {
     for (let k = 0; k < 300 && s.suit.state === "sentry"; k++) s.suit.takeHit(30);
     expect(s.suit.state).toBe("parked");
     expect(s.suit.call()).toBe(false);
+  });
+
+  it("after a mid-air eject, a quick call catches you before you hit the ground", () => {
+    const s = setup();
+    s.player.spawn(0, 150, -300, Math.PI);
+    s.player.mode = "hover";
+    s.player.grounded = false;
+    s.player.eject();
+    s.suit.park(s.player.pos.x, s.player.pos.y, s.player.pos.z, Math.PI);
+    step(s, 0.6);
+    expect(s.player.suited).toBe(false);
+    expect(s.suit.call()).toBe(true);
+    const docked = step(s, 6);
+    expect(docked).toBe(true);
+    expect(s.player.grounded).toBe(false);
+    expect(s.player.beginSuitUp(TUNING.airLatchTime)).toBe(true);
+    step(s, 3);
+    expect(s.player.suited).toBe(true);
+    expect(s.player.dead).toBe(false);
+    expect(s.player.mode).toBe("hover");
   });
 });

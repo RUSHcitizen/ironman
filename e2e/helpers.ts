@@ -20,6 +20,10 @@ export interface DebugState {
   inSpace: boolean;
   space: number;
   stepOut: boolean;
+  remote: boolean;
+  bank: number;
+  grounded: boolean;
+  bodyPos: { x: number; y: number; z: number };
   suitPos: { x: number; y: number; z: number };
   mouseMode: boolean;
   pointerLocked: boolean;

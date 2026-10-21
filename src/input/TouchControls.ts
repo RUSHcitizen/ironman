@@ -97,19 +97,28 @@ export class TouchControls {
     return this.el.style.display !== "none";
   }
 
-  /** Show the suit's state on the civilian buttons. */
+  private suitState = "worn";
+  private lastMode = "ground";
+  private lastSuited = true;
+
+  /** Show the suit's state on the suit / sentry buttons. */
   setSuitState(state: string): void {
-    this.buttons.sentry.querySelector("small")!.textContent = state === "sentry" ? "SENTRY ON" : "SENTRY";
-    this.buttons.sentry.classList.toggle("active", state === "sentry");
+    this.suitState = state;
+    this.buttons.sentry.querySelector("small")!.textContent = state === "remote" ? "BODY" : state === "sentry" ? "PILOT" : "SENTRY";
+    this.buttons.sentry.classList.toggle("active", state === "sentry" || state === "remote");
+    this.el.classList.toggle("remote", state === "remote");
+    this.setMode(this.lastMode, this.lastSuited);
   }
 
   /** Update buttons to match the current flight mode / identity. */
   setMode(mode: string, suited = true): void {
+    this.lastMode = mode;
+    this.lastSuited = suited;
     const label = (b: ButtonName, t: string) => (this.buttons[b].querySelector("small")!.textContent = t);
     label("up", !suited ? "JUMP" : mode === "ground" ? "LIFT" : mode === "flight" ? "CLIMB" : "UP");
     label("down", mode === "flight" ? "DIVE" : "DOWN");
     label("fly", mode === "flight" ? "HOVER" : "FLY");
-    label("suit", suited ? "SUIT OFF" : "CALL SUIT");
+    label("suit", this.suitState === "remote" ? "RECALL" : suited ? (mode === "ground" ? "SUIT OFF" : "EJECT") : "CALL SUIT");
     this.buttons.fly.classList.toggle("active", mode === "flight");
     this.el.classList.toggle("civ", !suited);
     this.el.dataset.mode = mode;

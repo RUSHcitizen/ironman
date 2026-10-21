@@ -137,6 +137,40 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.keyboard.press("KeyH");
   await frames(page, 20);
 
+  // Banked turn: the whole body rolls nearly sideways into the turn.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 220, -300, 0, "flight", 48); g.player.viewPitch = 0;`);
+  await page.keyboard.down("KeyD");
+  await frames(page, 45);
+  await page.screenshot({ path: `${OUT}/19-bank-turn.png` });
+  await page.keyboard.up("KeyD");
+
+  // Eject mid-air (G), then call the suit back before hitting the ground.
+  await run(page, `g.teleport(2.5, 240, -300, 0, "hover"); g.player.viewPitch = -0.3;`);
+  await frames(page, 4);
+  await page.keyboard.press("KeyG");
+  await frames(page, 14);
+  await page.screenshot({ path: `${OUT}/20-eject.png` });
+  await page.keyboard.press("KeyG");
+  for (let k = 0; k < 120; k++) {
+    await frames(page, 4);
+    if (await page.evaluate(() => (window as unknown as { __GAME: { player: { suited: boolean } } }).__GAME.player.suited)) break;
+  }
+  await frames(page, 40);
+
+  // Sentry: pilot the empty suit while your body waits on the street.
+  await run(page, `g.teleport(11, 0.15, -182, 0); g.player.viewPitch = -0.1;`);
+  await frames(page, 6);
+  await page.keyboard.press("KeyV");
+  await frames(page, 30);
+  await page.keyboard.down("Space");
+  await frames(page, 12);
+  await page.keyboard.up("Space");
+  await run(page, `g.player.viewYaw = Math.PI; g.player.viewPitch = -0.35;`);
+  await frames(page, 16);
+  await page.screenshot({ path: `${OUT}/21-sentry-remote.png` });
+  await page.keyboard.press("KeyG");
+  await frames(page, 80);
+
   await page.keyboard.press("Escape");
   await frames(page, 3);
   await page.screenshot({ path: `${OUT}/08-settings-menu.png` });

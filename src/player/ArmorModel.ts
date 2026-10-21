@@ -39,6 +39,8 @@ export interface AvatarState {
   suit: { energy: number };
   /** Unpowered fall (skydive pose). */
   readonly falling?: boolean;
+  /** Flight bank about the body's long axis (radians). */
+  readonly bank?: number;
 }
 import { clamp, damp } from "../core/math";
 
@@ -74,7 +76,9 @@ export class ArmorModel {
   /** Hierarchy nodes in creation (parent-first) order. */
   private nodes: TransformNode[] = [];
   /** Piece-by-piece latch suit-up: per-part local start positions. */
-  private latch: { t: number; starts: Vector3[]; landed: boolean[]; lastDelay: number } | null = null;
+  private latch: { t: number; starts: Vector3[]; landed: boolean[]; lastDelay: number; speed: number } | null = null;
+  private qBank = new Quaternion();
+  private static readonly UP = new Vector3(0, 1, 0);
   /** Called when a piece clamps on (world position, part index). */
   onLatch: ((world: Vector3, index: number) => void) | null = null;
   /** Step-out: the empty suit opens up, then closes again (progress seconds). */
@@ -364,7 +368,7 @@ export class ArmorModel {
    * the given world positions (the arriving suit) or from all around (null).
    * Feet first, helmet last.
    */
-  latchFrom(worldStarts: Vector3[] | null): void {
+  latchFrom(worldStarts: Vector3[] | null, speed = 1): void {
     this.armorT = -1;
     this.open = null;
     this.refreshWorld();
@@ -388,7 +392,7 @@ export class ArmorModel {
     });
     this.armorShown = true;
     this.setCivilian(this.withCivilian);
-    this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1 };
+    this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1, speed };
   }
 
   /**
@@ -454,7 +458,7 @@ export class ArmorModel {
   private updateLatch(dt: number): void {
     const l = this.latch;
     if (!l) return;
-    l.t += dt;
+    l.t += dt * l.speed;
     const flight = 0.42;
     let done = true;
     this.parts.forEach((part, i) => {
@@ -526,7 +530,16 @@ export class ArmorModel {
     this.time += dt;
     const t = this.time;
     this.root.position.set(p.pos.x, p.pos.y, p.pos.z);
-    Quaternion.RotationYawPitchRollToRef(p.bodyYaw + p.trickYaw, p.bodyPitch + p.trickPitch, p.bodyRoll + p.rollSpin, this.pivot.rotationQuaternion!);
+    // In flight, barrel rolls and banking turn about the body's long axis
+    // (head to toe), so a right turn drops the right arm and lifts the left.
+    const flying = p.mode === "flight";
+    const q = this.pivot.rotationQuaternion!;
+    Quaternion.RotationYawPitchRollToRef(p.bodyYaw + p.trickYaw, p.bodyPitch + p.trickPitch, p.bodyRoll + (flying ? 0 : p.rollSpin), q);
+    const bank = (p.bank ?? 0) + (flying ? p.rollSpin : 0);
+    if (Math.abs(bank) > 1e-4) {
+      Quaternion.RotationAxisToRef(ArmorModel.UP, bank, this.qBank);
+      q.multiplyInPlace(this.qBank);
+    }
     // Keep visuals consistent if state changed without an animation (respawn etc.).
     if (this.armorT < 0 && !this.latch) {
       if (this.armorShown !== p.suited) this.setArmorVisible(p.suited);

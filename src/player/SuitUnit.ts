@@ -10,7 +10,8 @@ import type { ProjectileSystem } from "../combat/Projectiles";
 import { clamp, damp, dampAngle, wrapAngle } from "../core/math";
 import { dist, norm, type V3 } from "../combat/math3";
 
-export type SuitUnitState = "worn" | "parked" | "sentry" | "inbound";
+/** "remote": the player is piloting the empty suit directly. */
+export type SuitUnitState = "worn" | "parked" | "sentry" | "inbound" | "remote";
 
 const SENTRY_RANGE = 200;
 const INBOUND_SPEED = 80;
@@ -125,7 +126,7 @@ export class SuitUnit implements CombatTarget, AvatarState {
 
   /** Summon the suit: it flies to the player and docks. */
   call(): boolean {
-    if (this.state === "worn" || this.state === "inbound") return false;
+    if (this.state === "worn" || this.state === "inbound" || this.state === "remote") return false;
     if (!this.operational) {
       this.bus?.emit("alert", { text: `Suit offline - self-repair at ${Math.round(this.suit.overallIntegrity)}%`, level: "warn" });
       return false;
@@ -141,7 +142,7 @@ export class SuitUnit implements CombatTarget, AvatarState {
   /** Returns true on the frame the suit docks onto the player. */
   update(dt: number, p: PlayerController): boolean {
     dt = Math.min(dt, 0.05);
-    if (this.state === "worn") return false;
+    if (this.state === "worn" || this.state === "remote") return false;
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
     if (this.aimTimer > 0) this.aimTimer -= dt;
     if (this.rollCooldown > 0) this.rollCooldown -= dt;
@@ -302,7 +303,9 @@ export class SuitUnit implements CombatTarget, AvatarState {
 
   private updateInbound(dt: number, p: PlayerController): boolean {
     this.inboundTime += dt;
-    const goal = { x: p.pos.x, y: p.pos.y, z: p.pos.z };
+    // Lead a falling / moving person so the suit can catch them mid-air.
+    const lead = Math.min(0.6, dist(this.pos, p.pos) / 150);
+    const goal = { x: p.pos.x + p.vel.x * lead, y: p.pos.y + p.vel.y * lead, z: p.pos.z + p.vel.z * lead };
     const flat = Math.hypot(goal.x - this.pos.x, goal.z - this.pos.z);
     let tx = goal.x, ty = goal.y, tz = goal.z;
     if (flat > 45) {
@@ -312,14 +315,15 @@ export class SuitUnit implements CombatTarget, AvatarState {
       ty = Math.max(goal.y + 15, this.world.surfaceBelow(sx, 1000, sz, 3, 0) + 18, this.world.surfaceBelow(this.pos.x, 1000, this.pos.z, 3, 0) + 12);
     }
     const d = dist(this.pos, goal);
-    const speed = Math.min(INBOUND_SPEED, 6 + d * 1.6);
+    const speed = Math.min(p.grounded ? INBOUND_SPEED : INBOUND_SPEED * 1.75, 6 + d * 1.6 + Math.max(0, -p.vel.y));
     this.steer(tx, ty, tz, speed, dt, flat > 45 ? 3 : 6);
     this.fly(dt, flat > 45 ? 4 : 0);
     if (Math.hypot(this.vel.x, this.vel.z) > 3) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 6, dt);
     this.viewPitch = 0;
     // Dock when close (or give up on a stuck path after a while).
     // Dock when close - also when a wall right next to the player is in the way.
-    if ((d < DOCK_DISTANCE && Math.abs(this.pos.y - goal.y) < 5) || (this.blocked && flat < 8 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
+    const dp = dist(this.pos, p.pos);
+    if ((dp < DOCK_DISTANCE && !p.grounded) || (d < DOCK_DISTANCE && Math.abs(this.pos.y - goal.y) < 5) || (this.blocked && flat < 8 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
       this.state = "worn";
       this.vel.x = this.vel.y = this.vel.z = 0;
       return true;

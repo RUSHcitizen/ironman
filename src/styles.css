@@ -426,3 +426,9 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 .h-dead span { font-size: calc(13px * var(--s)); letter-spacing: 0.15em; color: #e9f3ff; }
 #hud.dead .h-dead { opacity: 1; }
 #hud.space .h-area small::after { content: " · LOW ORBIT"; }
+
+/* Suited: sentry (pilot the empty suit) sits next to the SUIT button. */
+#touch:not(.civ) .t-sentry { display: grid; right: calc(128px + var(--sr)); top: calc(8px + var(--st)); bottom: auto; width: 52px; height: 52px; }
+#touch:not(.civ) .t-sentry span { font-size: 18px; }
+#touch:not(.civ) .t-sentry small { font-size: 8px; letter-spacing: 0.05em; }
+#hud.remote .h-mode b::before { content: "SENTRY · "; color: #ffd36b; }

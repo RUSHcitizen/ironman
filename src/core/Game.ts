@@ -24,6 +24,7 @@ import { ArmorModel } from "../player/ArmorModel";
 import { SpeedFx } from "../player/SpeedFx";
 import { SuitUnit } from "../player/SuitUnit";
 import type { CombatTarget } from "../combat/Targets";
+import type { AvatarState } from "../player/ArmorModel";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
 import { InputManager } from "../input/InputManager";
 import { Hud, type HudMarker, type HudTarget } from "../ui/Hud";
@@ -87,6 +88,30 @@ export class Game {
   private runTime = 0;
   private time = 0;
   private failTimer = 0;
+  /** Sentry mode: you pilot the empty suit while your body stands where you left it. */
+  remote = false;
+  private body: AvatarState = {
+    pos: { x: 0, y: 0, z: 0 },
+    vel: { x: 0, y: 0, z: 0 },
+    mode: "ground",
+    suited: false,
+    bodyYaw: 0,
+    bodyPitch: 0,
+    bodyRoll: 0,
+    rollSpin: 0,
+    trickPitch: 0,
+    trickYaw: 0,
+    walkPhase: 0,
+    landingTimer: 0,
+    viewPitch: 0,
+    rocketTimer: 0,
+    aimTimer: 0,
+    thrust: 0,
+    afterburner: false,
+    agl: 0,
+    suit: { energy: 100 },
+  };
+  private bodyMarker: HudMarker = { id: "body", label: "YOU", x: 0, z: 0, kind: "suit" };
   private projectM = Matrix.Identity();
   private projectV = new Vector3();
 
@@ -220,7 +245,7 @@ export class Game {
         bus.emit("alert", { text: "Suit's here, boss - locking on", level: "info", ttl: 3 });
       } else {
         this.stepOutOfSuit();
-        bus.emit("alert", { text: "Stepped out of the suit · G to call it · V for sentry mode", level: "info", ttl: 4 });
+        if (!e.airborne) bus.emit("alert", { text: "Stepped out of the suit · G to call it · V to pilot it as a sentry", level: "info", ttl: 4 });
       }
       this.syncTouchMode(e.toSuited);
     });
@@ -258,6 +283,12 @@ export class Game {
       this.failTimer = 2.6;
     });
     bus.on("suitFailure", () => {
+      if (this.remote) {
+        // Nobody inside: the wrecked suit just drops offline.
+        bus.emit("alert", { text: "Sentry suit critical - it's offline. Back to your body", level: "critical", ttl: 4 });
+        this.leaveRemote("parked");
+        return;
+      }
       bus.emit("alert", { text: "SUIT FAILURE - emergency return to Avengers Tower", level: "critical", ttl: 4 });
       this.failTimer = 1.6;
     });
@@ -277,23 +308,114 @@ export class Game {
     this.avatar.exitArmor();
   }
 
+  /**
+   * Sentry mode: you take direct control of the empty suit (fly, fight, the
+   * lot) while your body stays where it is. From the suit you step out of it
+   * first; on foot you take over the suit wherever it is.
+   */
+  enterRemote(): boolean {
+    const p = this.player;
+    const u = this.suitUnit;
+    if (this.remote || p.transformTimer > 0 || p.dead) return false;
+    const b = this.body;
+    if (p.suited) {
+      if (p.mode !== "ground" || !p.grounded || p.landingTimer > 0) {
+        this.bus.emit("alert", { text: "Land first to leave the suit as a sentry", level: "warn" });
+        return false;
+      }
+      // Step back out of the open suit; you keep piloting the armour.
+      let bx = p.pos.x - Math.sin(p.bodyYaw) * 1.3, bz = p.pos.z - Math.cos(p.bodyYaw) * 1.3;
+      if (this.world.overlaps(bx - 0.45, p.pos.y + 0.4, bz - 0.45, bx + 0.45, p.pos.y + 1.9, bz + 0.45)) {
+        bx = p.pos.x + Math.cos(p.bodyYaw) * 1.3;
+        bz = p.pos.z - Math.sin(p.bodyYaw) * 1.3;
+      }
+      b.pos.x = bx;
+      b.pos.z = bz;
+      b.pos.y = this.world.surfaceBelow(bx, p.pos.y + 0.5, bz, 0.4);
+      b.bodyYaw = p.bodyYaw;
+      this.suitAvatar.setVisible(true);
+      this.suitAvatar.playOpen();
+    } else {
+      if (u.state === "worn") return false;
+      if (!u.operational) {
+        this.bus.emit("alert", { text: `Suit offline - self-repair at ${Math.round(p.suit.overallIntegrity)}%`, level: "warn" });
+        return false;
+      }
+      if (!p.grounded) {
+        this.bus.emit("alert", { text: "Can't take remote control while falling - call the suit (G)!", level: "warn" });
+        return false;
+      }
+      b.pos.x = p.pos.x;
+      b.pos.y = p.pos.y;
+      b.pos.z = p.pos.z;
+      b.bodyYaw = p.bodyYaw;
+      p.possess({ x: u.pos.x, y: u.pos.y, z: u.pos.z, yaw: u.bodyYaw, suited: true, mode: u.mode, vel: u.vel });
+      this.suitAvatar.setVisible(true);
+    }
+    this.avatar.exitArmor();
+    u.state = "remote";
+    p.remote = true;
+    this.remote = true;
+    this.cam.snap();
+    this.refreshMarkers();
+    this.syncTouchMode();
+    this.input.touch.setSuitState("remote");
+    this.bus.emit("suitChanged", { suited: true });
+    this.bus.emit("alert", { text: "Sentry mode: you're piloting the empty suit · G brings it back to you · V back to your body", level: "success", ttl: 5 });
+    return true;
+  }
+
+  /** Hand the suit back to its own systems and return to your body. */
+  leaveRemote(next: "sentry" | "inbound" | "parked"): void {
+    if (!this.remote) return;
+    const p = this.player;
+    const u = this.suitUnit;
+    u.state = "parked";
+    u.pos.x = p.pos.x;
+    u.pos.y = p.pos.y;
+    u.pos.z = p.pos.z;
+    u.vel.x = p.vel.x;
+    u.vel.y = p.vel.y;
+    u.vel.z = p.vel.z;
+    u.mode = p.mode;
+    u.bodyYaw = p.bodyYaw;
+    u.bodyPitch = p.bodyPitch;
+    u.bodyRoll = 0;
+    this.remote = false;
+    p.remote = false;
+    const b = this.body;
+    p.possess({ x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.bodyYaw, suited: false });
+    if (next === "sentry") u.setSentry(true);
+    else if (next === "inbound") {
+      if (u.call()) this.bus.emit("alert", { text: "Suit coming back to you - locking on when it arrives", level: "success", ttl: 3 });
+    }
+    this.cam.snap();
+    this.refreshMarkers();
+    this.lastSuitState = "";
+    this.syncTouchMode(false);
+    this.bus.emit("suitChanged", { suited: false });
+  }
+
   /** G / V routing between the player and the autonomous suit. */
   private handleSuitCommands(input: { toggleSuit: boolean; sentry: boolean }): void {
     const p = this.player;
     const u = this.suitUnit;
     if (input.toggleSuit) {
-      if (p.suited) p.exitSuit();
-      else if (p.transformTimer <= 0) {
+      if (this.remote) this.leaveRemote("inbound");
+      else if (p.suited) {
+        // In the air, G ejects you - the suit stays behind and you fall.
+        if (p.mode !== "ground" || !p.grounded) p.eject();
+        else p.exitSuit();
+      } else if (p.transformTimer <= 0) {
         if (u.state === "inbound") this.bus.emit("alert", { text: `Suit inbound · ${Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z))} m`, level: "info", ttl: 2 });
         else if (u.call()) this.bus.emit("alert", { text: `Suit called - inbound from ${Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z))} m`, level: "success", ttl: 3 });
       }
     }
     if (input.sentry) {
-      if (p.suited) {
-        // Step out and leave the suit on guard.
-        if (p.exitSuit()) u.setSentry(true);
-      } else if (u.state === "sentry") u.setSentry(false);
-      else u.setSentry(true);
+      // V toggles between piloting the empty suit and your body (the suit
+      // keeps guarding you on its own when you go back).
+      if (this.remote) this.leaveRemote("sentry");
+      else if (p.transformTimer <= 0) this.enterRemote();
     }
     input.toggleSuit = false;
     input.sentry = false;
@@ -350,6 +472,11 @@ export class Game {
   }
 
   respawn(): void {
+    if (this.remote) {
+      this.remote = false;
+      this.player.remote = false;
+      this.player.suited = false;
+    }
     if (!this.player.suited) {
       // Respawn always returns you in the armour.
       this.suitUnit.state = "worn";
@@ -376,18 +503,19 @@ export class Game {
   private updateHint(): void {
     const p = this.player;
     if (!p.suited) {
-      this.hud.setHint(this.input.mouseMode ? "WASD walk · SHIFT sprint · SPACE jump · G call suit · V sentry" : "");
+      this.hud.setHint(this.input.mouseMode ? (p.grounded ? "WASD walk · SHIFT sprint · SPACE jump · G call suit · V pilot the suit (sentry)" : "FALLING · G call the suit NOW") : "");
       return;
     }
     if (!this.input.mouseMode) return this.hud.setHint("");
     const m = p.mode;
+    if (this.remote) return this.hud.setHint("SENTRY · piloting the empty suit · G bring it to you · V back to your body");
     if (p.freefall) return this.hud.setHint("FREE FALL · H / SPACE re-engage thrusters · SHIFT fly · WASD steer");
     this.hud.setHint(
       m === "ground"
         ? "SPACE lift-off · SHIFT launch · LMB blast · RMB rockets · G step out · V sentry"
         : m === "hover"
-          ? "SPACE/C altitude · SHIFT flight · H cut thrust · Q/E dodge · LMB/RMB fire"
-          : "W afterburner · S brake · H cut thrust · climb high to reach space",
+          ? "SPACE/C altitude · SHIFT flight · H cut thrust · G eject · Q/E dodge · LMB/RMB fire"
+          : "A/D bank & turn · W afterburner · S brake · H cut thrust · G eject",
     );
   }
 
@@ -454,15 +582,30 @@ export class Game {
     if (p.dead) input.fire = input.rockets = input.toggleSuit = input.sentry = false;
     this.handleSuitCommands(input);
     p.update(dt, input);
-    this.avatar.update(dt, p);
-    if (this.suitUnit.update(dt, p)) {
-      // Suit arrived: it breaks apart and each piece flies onto the civilian.
-      const starts = this.suitAvatar.pieceWorldPositions();
-      this.suitAvatar.setVisible(false);
-      this.avatar.latchFrom(starts);
-      p.beginSuitUp(TUNING.latchTime);
+    if (this.remote) {
+      // The controller is the suit; your body stands where you left it.
+      this.suitAvatar.update(dt, p);
+      this.avatar.update(dt, this.body);
+      this.suitUnit.pos.x = p.pos.x;
+      this.suitUnit.pos.y = p.pos.y;
+      this.suitUnit.pos.z = p.pos.z;
+      this.bodyMarker.x = this.body.pos.x;
+      this.bodyMarker.z = this.body.pos.z;
+    } else {
+      this.avatar.update(dt, p);
+      if (this.suitUnit.update(dt, p)) {
+        // Suit arrived: it breaks apart and each piece flies onto the civilian
+        // (much faster when it catches you mid-air).
+        const starts = this.suitAvatar.pieceWorldPositions();
+        this.suitAvatar.setVisible(false);
+        const air = !p.grounded;
+        const dur = air ? TUNING.airLatchTime : TUNING.latchTime;
+        this.avatar.latchFrom(starts, TUNING.latchTime / dur);
+        p.beginSuitUp(dur);
+        if (air) this.bus.emit("alert", { text: "Caught you, boss!", level: "success", ttl: 3 });
+      }
+      if (this.suitUnit.state !== "worn") this.suitAvatar.update(dt, this.suitUnit);
     }
-    if (this.suitUnit.state !== "worn") this.suitAvatar.update(dt, this.suitUnit);
     this.updateSuitStatus();
     this.cam.update(dt, p, this.world);
     const camPos = this.cam.position;
@@ -584,7 +727,8 @@ export class Game {
 
   private refreshMarkers(): void {
     const markers: HudMarker[] = [{ id: "tower", label: "TOWER", x: HERO_X, z: HERO_Z, kind: "poi" }, ...this.events.markers];
-    if (this.suitUnit && this.suitUnit.state !== "worn") markers.push(this.suitMarker);
+    if (this.remote) markers.push(this.bodyMarker);
+    else if (this.suitUnit && this.suitUnit.state !== "worn") markers.push(this.suitMarker);
     this.hud.setMarkers(markers);
   }
 
@@ -633,6 +777,10 @@ export class Game {
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
+      remote: this.remote,
+      bank: p.bank,
+      grounded: p.grounded,
+      bodyPos: { ...this.body.pos },
       freefall: p.freefall,
       blackout: p.blackout,
       dead: p.dead,

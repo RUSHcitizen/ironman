@@ -327,4 +327,55 @@ describe("PlayerController", () => {
     expect(p.bodyYaw).toBeCloseTo(0, 3);
     expect(p.transformTimer).toBe(0);
   });
+
+  it("banks gradually and nearly sideways in a turn: right turn drops the right arm", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 300, -400, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.flightSpeed = 48;
+    sim(p, 0.15, { moveX: 1 });
+    const early = p.bank;
+    expect(early).toBeLessThan(0);
+    expect(early).toBeGreaterThan(-0.6);
+    sim(p, 2.5, { moveX: 1 });
+    // Negative bank about the long axis = left shoulder up, right arm down.
+    expect(p.bank).toBeLessThan(-1.2);
+    expect(p.bank).toBeGreaterThanOrEqual(-1.5);
+    sim(p, 2.5, { moveX: -1 });
+    expect(p.bank).toBeGreaterThan(1.2);
+    sim(p, 3);
+    expect(Math.abs(p.bank)).toBeLessThan(0.2);
+  });
+
+  it("G mid-air ejects: you fall out of the suit as a civilian and die if nobody catches you", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 120, -400, Math.PI);
+    p.mode = "hover";
+    p.grounded = false;
+    expect(p.eject()).toBe(true);
+    expect(p.suited).toBe(false);
+    expect(p.mode).toBe("ground");
+    sim(p, 1);
+    expect(p.pos.y).toBeLessThan(120);
+    sim(p, 8);
+    expect(p.dead).toBe(true);
+  });
+
+  it("an empty suit flown remotely survives a fall that would kill a pilot, and uses no oxygen", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 400, -400, 0);
+    p.remote = true;
+    p.mode = "hover";
+    p.grounded = false;
+    sim(p, 0.1, {}, { cutThrust: true });
+    sim(p, 15);
+    expect(p.dead).toBe(false);
+    expect(p.grounded).toBe(true);
+    expect(p.suit.overallIntegrity).toBeLessThan(100);
+    p.possess({ x: 0, y: 3000, z: -400, yaw: 0, suited: true, mode: "hover" });
+    expect(p.mode).toBe("hover");
+    sim(p, 5);
+    expect(p.suit.oxygen).toBe(100);
+  });
 });

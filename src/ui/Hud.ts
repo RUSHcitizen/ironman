@@ -341,6 +341,7 @@ export class Hud {
     this.q(".v-oxy-t").textContent = `${Math.round(o)}%`;
     this.q(".h-hypoxia").style.opacity = String(p.suited ? Math.min(1, Math.max(0, (30 - o) / 30)) : 0);
     this.el.classList.toggle("space", p.inSpace);
+    this.el.classList.toggle("remote", p.remote);
     this.q(".v-int").textContent = `${Math.round(p.suit.overallIntegrity)}%`;
     for (const part of SUIT_PARTS) {
       const v = p.suit.integrity[part];

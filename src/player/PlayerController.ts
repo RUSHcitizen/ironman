@@ -45,6 +45,12 @@ export const TUNING = {
   civilianLethalFall: 26,
   /** Air drag coefficient (sea-level terminal velocity ~96 m/s, faster in thin air). */
   drag: 0.0024,
+  /** A person without armour falls slower (terminal ~54 m/s). */
+  civilianDrag: 0.0075,
+  /** Max bank (radians) when turning in flight: nearly sideways. */
+  maxBank: 1.5,
+  /** Quick piece-by-piece suit-up when the suit catches you mid-air. */
+  airLatchTime: 0.8,
   /** Oxygen: % per second used on internal supply (thin air -> space), refill rate below. */
   oxygenUse: 0.9,
   oxygenUseSpace: 2.5,
@@ -76,6 +82,10 @@ export class PlayerController {
   bodyYaw = 0;
   bodyPitch = 0;
   bodyRoll = 0;
+  /** Bank about the body's long axis in flight: turning right drops the right arm. */
+  bank = 0;
+  /** Piloting the empty suit remotely (nobody inside). */
+  remote = false;
   /** Extra roll from barrel rolls (radians, visual only). */
   rollSpin = 0;
   rollTimer = 0;
@@ -137,6 +147,7 @@ export class PlayerController {
     this.viewPitch = -0.15;
     this.bodyPitch = this.bodyRoll = 0;
     this.rollSpin = this.rollTimer = 0;
+    this.bank = 0;
     this.trick = null;
     this.trickPitch = this.trickYaw = 0;
     this.yawRate = this.pitchRate = this.lookRate = 0;
@@ -153,6 +164,29 @@ export class PlayerController {
     this.oxygenWarned = 100;
     this.zone = "air";
     this.setMode("ground");
+  }
+
+  /**
+   * Take control of a body at a given state (switching between the person
+   * and the remotely piloted suit). Keeps the shared suit systems.
+   */
+  possess(o: { x: number; y: number; z: number; yaw: number; suited: boolean; mode?: FlightMode; vel?: { x: number; y: number; z: number } }): void {
+    const oxygen = this.suit.oxygen;
+    this.spawn(o.x, o.y, o.z, o.yaw);
+    this.suit.oxygen = oxygen;
+    this.suited = o.suited;
+    if (o.vel) {
+      this.vel.x = o.vel.x;
+      this.vel.y = o.vel.y;
+      this.vel.z = o.vel.z;
+    }
+    if (o.suited && o.mode && o.mode !== "ground") {
+      this.grounded = false;
+      this.airTime = 1;
+      this.flightSpeed = Math.hypot(this.vel.x, this.vel.z);
+      if (o.mode === "flight") this.flightSpeed = Math.max(this.flightSpeed, TUNING.minFlightSpeed + 10);
+      this.setMode(o.mode);
+    }
   }
 
   /** Above the edge of space. */
@@ -230,8 +264,34 @@ export class PlayerController {
     this.transformToSuited = false;
     this.transformTimer = TUNING.stepOutTime;
     this.vel.x = this.vel.z = 0;
-    this.bus?.emit("suitTransform", { toSuited: false });
+    this.bus?.emit("suitTransform", { toSuited: false, airborne: false });
     this.finishTransform();
+    return true;
+  }
+
+  /**
+   * Bail out of the armour mid-air: you are thrown clear and fall as a
+   * civilian. Call the suit back (G) before you hit the ground.
+   */
+  eject(): boolean {
+    if (!this.suited || this.transformTimer > 0 || this.remote || this.dead) return false;
+    this.transformToSuited = false;
+    this.transformTimer = 0.35;
+    this.freefall = this.blackout = false;
+    this.trick = null;
+    this.trickPitch = this.trickYaw = 0;
+    this.afterburner = this.wasAfterburner = false;
+    this.yawRate = this.pitchRate = 0;
+    const s = Math.sin(this.bodyYaw), c = Math.cos(this.bodyYaw);
+    this.vel.x -= s * 3;
+    this.vel.z -= c * 3;
+    this.vel.y = Math.max(this.vel.y, 0) + 5;
+    this.grounded = false;
+    this.airTime = 0.3;
+    this.setMode("ground");
+    this.bus?.emit("suitTransform", { toSuited: false, airborne: true });
+    this.finishTransform();
+    this.alert("EJECTED! Call the suit (G) before you hit the ground!", "critical");
     return true;
   }
 
@@ -240,8 +300,8 @@ export class PlayerController {
     if (this.transformTimer > 0 || this.suited) return false;
     this.transformToSuited = true;
     this.transformTimer = duration;
-    this.vel.x = this.vel.z = 0;
-    this.bus?.emit("suitTransform", { toSuited: true });
+    if (this.grounded) this.vel.x = this.vel.z = 0;
+    this.bus?.emit("suitTransform", { toSuited: true, airborne: !this.grounded });
     return true;
   }
 
@@ -284,6 +344,7 @@ export class PlayerController {
     if (this.mode === "ground") this.updateGround(dt, input);
     else if (this.mode === "hover") this.updateHover(dt, input);
     else this.updateFlight(dt, input);
+    if (this.mode !== "flight") this.bank += (0 - this.bank) * damp(4, dt);
     this.updateRoll(dt, input);
     this.updateTricks(dt, input.trick);
 
@@ -313,12 +374,12 @@ export class PlayerController {
 
   private updateGround(dt: number, input: InputState): void {
     const move = this.planarInput(input);
-    const steppingOut = this.transformTimer > 0 && !this.transformToSuited;
+    const steppingOut = this.transformTimer > 0 && !this.transformToSuited && this.grounded;
     const locked = this.landingTimer > 0 || this.transformTimer > 0;
     let speed = this.suited ? TUNING.walkSpeed : input.sprint ? TUNING.civilianSprint : TUNING.civilianWalk;
     if (locked) speed = 0;
     const falling = this.falling;
-    if (this.freefall || falling) {
+    if (this.freefall || falling || (!this.grounded && this.airTime > 0.2)) {
       // Unpowered fall: keep momentum, steer a little like a skydiver.
       const air = TUNING.gravity * 0.45;
       this.vel.x += move.x * air * dt;
@@ -340,7 +401,7 @@ export class PlayerController {
     if (!this.grounded) {
       // Aerodynamic drag (weaker in thin air, so falls from space get fast).
       const sp = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
-      const f = Math.min(1, TUNING.drag * airDensity(this.pos.y) * sp * dt);
+      const f = Math.min(1, (this.suited ? TUNING.drag : TUNING.civilianDrag) * airDensity(this.pos.y) * sp * dt);
       this.vel.x -= this.vel.x * f;
       this.vel.y -= this.vel.y * f;
       this.vel.z -= this.vel.z * f;
@@ -452,7 +513,9 @@ export class PlayerController {
   private updateFlight(dt: number, input: InputState): void {
     // Smoothed steering: rates ease in and out, so turns carve instead of snap.
     const turnRate = TUNING.turnRate * (1.25 - Math.min(0.5, this.flightSpeed / 250));
-    this.yawRate += (input.moveX * turnRate - this.yawRate) * damp(3.5, dt);
+    // Banked turns bite harder: roll into the turn and it tightens.
+    const bankGrip = 0.75 + 0.45 * Math.min(1, Math.abs(this.bank) / TUNING.maxBank);
+    this.yawRate += (input.moveX * turnRate * bankGrip - this.yawRate) * damp(3.5, dt);
     this.viewYaw = wrapAngle(this.viewYaw + this.yawRate * dt);
     const pitchIn = ((input.ascend ? 1 : 0) - (input.descend ? 1 : 0)) * TUNING.pitchRate;
     this.pitchRate += (pitchIn - this.pitchRate) * damp(3.5, dt);
@@ -507,11 +570,13 @@ export class PlayerController {
     this.vel.y += (dy * this.flightSpeed - this.vel.y) * k;
     this.vel.z += (dz * this.flightSpeed - this.vel.z) * k;
 
-    // Body lies along the flight path; bank into the turn you are making.
+    // Body lies along the flight path and banks into the turn about its long
+    // axis, gradually going nearly sideways (right turn: right arm down).
     const turn = this.yawRate + this.lookRate * 0.35;
     this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 6, dt);
     this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(5, dt);
-    this.bodyRoll += (clamp(-turn * 0.6, -1.3, 1.3) - this.bodyRoll) * damp(3, dt);
+    this.bodyRoll += (0 - this.bodyRoll) * damp(6, dt);
+    this.bank += (clamp(-turn * 0.95, -TUNING.maxBank, TUNING.maxBank) - this.bank) * damp(2.2, dt);
     this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 2.5);
 
     if (input.toggleFlight || (braking && this.flightSpeed < TUNING.minFlightSpeed)) {
@@ -629,8 +694,13 @@ export class PlayerController {
     if (this.mode === "ground") {
       if (supported) {
         if (!this.grounded && fallSpeed > (this.suited ? TUNING.lethalFall : TUNING.civilianLethalFall)) {
-          this.die(overWater ? "water" : "fall", fallSpeed);
-          return;
+          if (!this.remote) {
+            this.die(overWater ? "water" : "fall", fallSpeed);
+            return;
+          }
+          // Nobody inside: the empty suit just takes a beating.
+          this.suit.damage(25);
+          this.alert("Empty suit crashed - armour damaged", "warn");
         }
         if (!this.grounded && fallSpeed > 14) this.landed(fallSpeed > 22);
         this.grounded = true;
@@ -778,13 +848,13 @@ export class PlayerController {
     const s = this.suit;
     const y = this.pos.y;
     const zone = y > SPACE_ALTITUDE ? "space" : y > OXYGEN_ALTITUDE ? "thin" : "air";
-    if (zone !== this.zone && this.suited) {
+    if (zone !== this.zone && this.suited && !this.remote) {
       if (zone === "space") this.alert("You're in space, boss. Oxygen is limited - watch the gauge", "success");
       else if (zone === "thin" && this.zone === "air") this.alert("Thin air - switching to internal oxygen", "warn");
       else if (zone === "air") this.alert("Breathable air - oxygen recharging", "info");
     }
     this.zone = zone;
-    if (zone === "air" || !this.suited) {
+    if (zone === "air" || !this.suited || this.remote) {
       s.oxygen = Math.min(100, s.oxygen + TUNING.oxygenRefill * dt);
       if (s.oxygen > 60) this.oxygenWarned = 100;
     } else {
@@ -801,7 +871,7 @@ export class PlayerController {
         this.alert(text, level);
       }
     }
-    if (s.oxygen <= 0 && !this.blackout && this.suited) {
+    if (s.oxygen <= 0 && !this.blackout && this.suited && !this.remote) {
       this.blackout = true;
       this.cutThrusters("Pilot unconscious - no oxygen. Thrusters offline");
     } else if (this.blackout && s.oxygen >= TUNING.oxygenWake) {
