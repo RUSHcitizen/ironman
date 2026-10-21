@@ -417,7 +417,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **36 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **38 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
   - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between far corners of the city keeps collider and layout memory bounded.**
   - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**
