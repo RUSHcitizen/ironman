@@ -33,7 +33,6 @@ const GOLD: RGB = [0.9, 0.68, 0.3];
 export class ChunkManager {
   private chunks = new Map<string, LoadedChunk>();
   private specs = new Map<string, ChunkSpec>();
-  private allChunks: [number, number][] = [];
   private scanX = Infinity;
   private scanZ = Infinity;
   private pending = true;
@@ -50,21 +49,27 @@ export class ChunkManager {
     return cx + "," + cz;
   }
 
-  /** Generate layout data and register colliders for every chunk. */
+  /**
+   * Hook the collision world up to lazy per-chunk generation: a chunk's
+   * layout and colliders are created the first time anything touches it.
+   */
   registerWorld(): void {
-    this.allChunks = this.districtChunks();
-    for (const [cx, cz] of this.allChunks) {
-      const spec = generateChunk(cx, cz);
-      this.specs.set(ChunkManager.key(cx, cz), spec);
-      for (const b of chunkColliders(spec)) this.world.add(b);
-    }
+    this.world.provider = (cx, cz) => chunkColliders(this.spec(cx, cz));
+  }
+
+  /** Cached chunk layout (deterministic, generated on demand). */
+  private spec(cx: number, cz: number): ChunkSpec {
+    const key = ChunkManager.key(cx, cz);
+    let s = this.specs.get(key);
+    if (!s) this.specs.set(key, (s = generateChunk(cx, cz)));
+    return s;
   }
 
   /** Synchronously load every chunk within `radius` (used during the loading screen). */
   loadAround(x: number, z: number, radius: number): number {
     let n = 0;
     this.pending = true;
-    for (const [cx, cz] of this.districtChunks()) {
+    for (const [cx, cz] of this.chunksNear(x, z, radius)) {
       if (chunkDistance(cx, cz, x, z) < radius && !this.chunks.has(ChunkManager.key(cx, cz))) {
         this.load(cx, cz);
         n++;
@@ -83,15 +88,29 @@ export class ChunkManager {
     this.scanX = x;
     this.scanZ = z;
     let missing: [number, number, number][] = [];
-    for (const [cx, cz] of this.allChunks) {
+    for (const [cx, cz] of this.chunksNear(x, z, viewDistance)) {
       const d = chunkDistance(cx, cz, x, z);
-      const key = ChunkManager.key(cx, cz);
-      if (d < viewDistance && !this.chunks.has(key)) missing.push([d, cx, cz]);
-      else if (d > viewDistance + 260 && this.chunks.has(key)) this.unload(cx, cz);
+      if (d < viewDistance && !this.chunks.has(ChunkManager.key(cx, cz))) missing.push([d, cx, cz]);
+    }
+    for (const c of [...this.chunks.values()]) {
+      if (Math.hypot(c.centerX - x, c.centerZ - z) - CHUNK_SIZE * 0.71 > viewDistance + 260) {
+        this.unload(Math.floor(c.centerX / CHUNK_SIZE), Math.floor(c.centerZ / CHUNK_SIZE));
+      }
     }
     this.pending = missing.length > budget;
     missing = missing.sort((a, b) => a[0] - b[0]).slice(0, budget);
     for (const [, cx, cz] of missing) this.load(cx, cz);
+  }
+
+  /** District chunks within `radius` (plus a margin) of a point. */
+  chunksNear(x: number, z: number, radius: number): [number, number][] {
+    const r = Math.ceil(radius / CHUNK_SIZE) + 1;
+    const ccx = Math.floor(x / CHUNK_SIZE), ccz = Math.floor(z / CHUNK_SIZE);
+    const out: [number, number][] = [];
+    for (let cx = Math.max(DISTRICT.minChunk, ccx - r); cx <= Math.min(DISTRICT.maxChunk, ccx + r); cx++) {
+      for (let cz = Math.max(DISTRICT.minChunk, ccz - r); cz <= Math.min(DISTRICT.maxChunk, ccz + r); cz++) out.push([cx, cz]);
+    }
+    return out;
   }
 
   /** All chunk coordinates of the current district. */
@@ -110,7 +129,7 @@ export class ChunkManager {
   load(cx: number, cz: number): void {
     const key = ChunkManager.key(cx, cz);
     if (this.chunks.has(key)) return;
-    const spec = this.specs.get(key) ?? generateChunk(cx, cz);
+    const spec = this.spec(cx, cz);
     const masonry = new GeometryBatch(FACADE_TILE.masonryU, FACADE_TILE.masonryV);
     const glass = new GeometryBatch(FACADE_TILE.glassU, FACADE_TILE.glassV);
     const concrete = new GeometryBatch(8, 8);

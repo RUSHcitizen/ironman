@@ -6,7 +6,7 @@ import { ProcGeo } from "../world/ProcGeo";
 import type { WorldMaterials } from "../world/Materials";
 import type { RGB } from "../world/CityGenerator";
 import type { Enemy, EnemyKind, EnemyManager } from "./Enemies";
-import { SHIELD_RADIUS } from "./Enemies";
+import { SHIELD_RADIUS, isCloaked } from "./Enemies";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { setInstanceCount } from "../world/instancing";
@@ -271,6 +271,68 @@ export class EnemyRenderer {
       2,
     );
 
+    // Sentinel: sleek silver humanoid robot (Ultron-style), red eyes and core.
+    const chrome: RGB = [0.62, 0.64, 0.68];
+    make(
+      "sentinel",
+      g.merge("sentinelBody", [
+        g.box(0.62, 0.8, 0.36, chrome, 0, 0.35, 0),
+        g.box(0.44, 0.35, 0.3, GUN, 0, -0.2, 0),
+        g.sphere(0.2, chrome, 0, 1.0, 0.02, 8, 0.9, 1.15, 1),
+        g.box(0.16, 0.75, 0.16, chrome, -0.42, 0.25, 0),
+        g.box(0.16, 0.75, 0.16, chrome, 0.42, 0.25, 0),
+        g.box(0.16, 0.8, 0.18, GUN, -0.14, -0.75, 0),
+        g.box(0.16, 0.8, 0.18, GUN, 0.14, -0.75, 0),
+      ]),
+      g.merge("sentinelGlow", [g.box(0.24, 0.05, 0.05, W1, 0, 1.05, 0.19), g.sphere(0.09, W1, 0, 0.45, 0.19, 6), g.sphere(0.08, W1, -0.14, -1.18, 0, 4), g.sphere(0.08, W1, 0.14, -1.18, 0, 4)]),
+      24,
+    );
+    // Spider walker: armoured pod on six splayed legs.
+    const legs: Mesh[] = [];
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+      const lx = Math.sin(a), lz = Math.cos(a);
+      legs.push(g.box(0.3, 0.3, 2.6, DARK, lx * 2.2, 1.9, lz * 2.2, a), g.box(0.28, 2.2, 0.28, GUN, lx * 3.4, 0.95, lz * 3.4));
+    }
+    make(
+      "spider",
+      g.merge("spiderBody", [g.sphere(1.7, hull, 0, 2.2, 0, 10, 1.2, 0.7, 1.35), g.box(1.6, 0.8, 1.2, DARK, 0, 3.1, -0.3), g.cyl(0.2, 0.25, 1.8, DARK, 0, 3.3, 0.9, 8, Math.PI / 2.6), ...legs]),
+      g.merge("spiderGlow", [g.sphere(0.25, W1, -0.5, 2.5, 2.1, 6), g.sphere(0.25, W1, 0.5, 2.5, 2.1, 6), g.sphere(0.18, W1, 0, 3.75, 1.6, 6)]),
+      8,
+    );
+    // Cloaker: angular stealth drone (only visible while decloaked).
+    make(
+      "cloaker",
+      g.merge("cloakerBody", [g.box(2.4, 0.18, 1.2, [0.12, 0.13, 0.16], 0, 0, -0.1), g.box(0.7, 0.4, 1.8, [0.1, 0.1, 0.12], 0, 0.1, 0), g.cyl(0, 0.35, 0.9, DARK, 0, 0, 1.2, 4, Math.PI / 2)]),
+      g.merge("cloakerGlow", [g.box(1.8, 0.04, 0.05, W1, 0, 0, 0.52), g.sphere(0.12, W1, 0, 0.05, 1.5, 4)]),
+      12,
+    );
+    // Titan: a towering super-heavy mech (the warbot's big brother).
+    const titanPlate: RGB = [0.24, 0.24, 0.27];
+    make(
+      "titan",
+      g.merge("titanBody", [
+        g.box(5.8, 4.0, 4.2, titanPlate, 0, 7.0, 0),
+        g.box(4.0, 1.8, 3.2, GUN, 0, 4.7, 0),
+        g.box(2.0, 1.4, 2.0, DARK, 0, 9.6, 0.6),
+        g.box(2.0, 2.0, 2.8, RED, -3.8, 8.3, 0),
+        g.box(2.0, 2.0, 2.8, RED, 3.8, 8.3, 0),
+        g.cyl(0.5, 0.6, 4.6, DARK, 3.8, 9.6, 2.6, 10, Math.PI / 2),
+        g.box(1.3, 4.0, 1.3, GUN, -3.6, 5.6, 0.5),
+        g.box(1.6, 4.4, 1.8, GUN, -1.6, 2.2, 0),
+        g.box(1.6, 4.4, 1.8, GUN, 1.6, 2.2, 0),
+        g.box(2.2, 0.7, 3.2, DARK, -1.6, 0.35, 0.4),
+        g.box(2.2, 0.7, 3.2, DARK, 1.6, 0.35, 0.4),
+      ]),
+      g.merge("titanGlow", [
+        g.box(1.6, 0.3, 0.08, W1, 0, 9.8, 1.62),
+        g.box(1.5, 1.1, 0.08, W1, -3.8, 8.3, 1.45),
+        g.box(1.5, 1.1, 0.08, W1, 3.8, 8.3, 1.45),
+        g.sphere(0.45, W1, 0, 7.2, 2.15, 8),
+      ]),
+      2,
+    );
+
     // Shield bubble (one per shield drone), faint additive purple.
     this.bubble = CreateSphere("shieldBubble", { diameter: 2, segments: 16 }, scene);
     this.bubble.material = mats.additive("shieldMat", Color3.White(), 1);
@@ -300,7 +362,7 @@ export class EnemyRenderer {
     }
     const counts = new Map<EnemyKind, number>();
     for (const e of mgr.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || isCloaked(e)) continue;
       const km = this.kinds.get(e.kind)!;
       const n = counts.get(e.kind) ?? 0;
       if (n >= km.max) continue;
@@ -352,6 +414,17 @@ export class EnemyRenderer {
       roll = e.phase * 9;
     } else if (e.kind === "jammer") {
       y += Math.sin(e.phase * 2.5) * 0.25;
+    } else if (e.kind === "sentinel") {
+      // Leans hard into its dash, hovers upright otherwise.
+      const sp = Math.hypot(e.vx, e.vz);
+      pitch = Math.min(1.2, sp * 0.02) + Math.sin(e.phase * 2) * 0.05;
+      y += Math.sin(e.phase * 2.2) * 0.2;
+    } else if (e.kind === "spider" || e.kind === "titan") {
+      // Heavy gait bob.
+      y += Math.abs(Math.sin(e.phase * (e.kind === "titan" ? 2.2 : 5))) * (e.kind === "titan" ? 0.35 : 0.2);
+      roll = Math.sin(e.phase * (e.kind === "titan" ? 1.1 : 2.5)) * 0.03;
+    } else if (e.kind === "cloaker") {
+      roll = Math.sin(e.phase) * 0.15;
     } else if (e.kind === "carrier") {
       pitch = Math.sin(e.phase * 0.3) * 0.03;
       roll = Math.sin(e.phase * 0.23) * 0.04;
@@ -396,7 +469,17 @@ export class EnemyRenderer {
       gr = 1.3;
       gg = 0.9;
       gb = 0.1;
-    } else if (e.kind === "warbot" || e.kind === "tank" || e.kind === "sniper") {
+    } else if (e.kind === "sentinel") {
+      const c = 0.8 + e.charge * 2;
+      gr = c;
+      gg = 0.12 + e.charge * 0.3;
+      gb = 0.08;
+    } else if (e.kind === "cloaker") {
+      // Shimmering as it decloaks.
+      gr = 0.4 + Math.sin(e.phase * 30) * 0.2;
+      gg = 0.9;
+      gb = 1.3;
+    } else if (e.kind === "warbot" || e.kind === "tank" || e.kind === "sniper" || e.kind === "spider" || e.kind === "titan") {
       const c = 0.5 + e.charge * 1.5;
       gr = c;
       gg = 0.1 + e.charge * 0.4;

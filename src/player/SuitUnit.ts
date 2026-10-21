@@ -5,7 +5,7 @@ import { SUIT_PARTS } from "./SuitSystems";
 import type { FlightMode, PlayerController } from "./PlayerController";
 import type { AvatarState } from "./ArmorModel";
 import type { CombatTarget } from "../combat/Targets";
-import type { Enemy, EnemyManager } from "../combat/Enemies";
+import { isCloaked, type Enemy, type EnemyManager } from "../combat/Enemies";
 import type { ProjectileSystem } from "../combat/Projectiles";
 import { clamp, damp, dampAngle, wrapAngle } from "../core/math";
 import { dist, norm, type V3 } from "../combat/math3";
@@ -243,7 +243,7 @@ export class SuitUnit implements CombatTarget, AvatarState {
     let bd = SENTRY_RANGE;
     const me = this.center;
     for (const e of this.enemies.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || isCloaked(e)) continue;
       const c = this.enemies.center(e);
       const d = dist(me, c);
       if (d >= bd) continue;

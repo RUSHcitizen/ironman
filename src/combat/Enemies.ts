@@ -16,10 +16,14 @@ export type EnemyKind =
   | "jet"
   | "swarmer"
   | "jammer"
-  | "carrier";
+  | "carrier"
+  | "sentinel"
+  | "spider"
+  | "cloaker"
+  | "titan";
 
 /** Flying kinds (spawned in the air, not on a surface). */
-export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier"]);
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker"]);
 
 /** EMP pulse radius of the jammer drone. */
 export const EMP_RADIUS = 32;
@@ -51,7 +55,16 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   swarmer: { hp: 8, radius: 0.6, centerY: 0, range: 230, score: 40 },
   jammer: { hp: 70, radius: 1.4, centerY: 0, range: 260, score: 350 },
   carrier: { hp: 1400, radius: 10, centerY: 0, range: 460, score: 3000 },
+  sentinel: { hp: 70, radius: 1.2, centerY: 0, range: 300, score: 300 },
+  spider: { hp: 170, radius: 2.6, centerY: 1.6, range: 320, score: 550 },
+  cloaker: { hp: 40, radius: 1.1, centerY: 0, range: 260, score: 400 },
+  titan: { hp: 950, radius: 5, centerY: 5.8, range: 420, score: 2500 },
 };
+
+/** Is this enemy currently invisible (cloaked)? */
+export function isCloaked(e: { kind: string; charge: number; flash: number; state: string }): boolean {
+  return e.kind === "cloaker" && e.state !== "engage" && e.flash < 0.05;
+}
 
 /** Placeholder target when nothing is engageable: enemies just patrol. */
 const IDLE_TARGET: CombatTarget = {
@@ -230,6 +243,10 @@ export class EnemyManager {
       e.vz += -Math.sin(e.yaw) * s * 24;
       e.vy += this.rng.range(-4, 8);
       e.dodgeCooldown = 2.2;
+    } else if (e.kind === "cloaker" && e.state !== "engage" && this.rng.chance(0.6)) {
+      // Senses the lock and slips sideways while still invisible.
+      e.strafe *= -1;
+      e.dodgeCooldown = 2;
     } else if ((e.kind === "trooper" || e.kind === "sniper") && e.state !== "hop" && this.rng.chance(0.25)) {
       this.startHop(e);
       e.dodgeCooldown = 3;
@@ -242,12 +259,17 @@ export class EnemyManager {
     e.hp -= amount;
     e.flash = 1;
     e.aware = true;
+    if (e.kind === "cloaker") {
+      // Hit: the cloak drops for a moment.
+      e.state = "engage";
+      e.stateTimer = Math.max(e.stateTimer, 2);
+    }
     if (e.hp <= 0) {
       e.alive = false;
       this.kills++;
       const c = this.center(e);
-      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet";
-      const size = e.kind === "carrier" ? 16 : big ? 9 : e.kind === "kamikaze" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
+      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider";
+      const size = e.kind === "carrier" || e.kind === "titan" ? 16 : big ? 9 : e.kind === "kamikaze" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : 0, true);
       this.weapons?.wreck(c, size);
       this.bus?.emit("kill", { kind: e.kind, total: this.kills });
@@ -320,6 +342,18 @@ export class EnemyManager {
           break;
         case "carrier":
           this.updateCarrier(e, dt, p, d);
+          break;
+        case "sentinel":
+          this.updateSentinel(e, dt, p, d);
+          break;
+        case "spider":
+          this.updateSpider(e, dt, p, d);
+          break;
+        case "cloaker":
+          this.updateCloaker(e, dt, p, d);
+          break;
+        case "titan":
+          this.updateWarbot(e, dt, p, d);
           break;
       }
     }
@@ -530,6 +564,8 @@ export class EnemyManager {
 
   private updateWarbot(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
     const t = p.center;
+    // The titan is the same machine scaled up 1.8x: bigger reach, bigger hits.
+    const S = e.kind === "titan" ? 1.8 : 1;
     if (!e.aware) {
       e.yaw += dt * 0.2;
       return;
@@ -546,7 +582,7 @@ export class EnemyManager {
           const fx = Math.sin(e.yaw) * sp, fz = Math.cos(e.yaw) * sp;
           const tryMove = (mx: number, mz: number) => {
             const nx = e.x + mx, nz = e.z + mz;
-            if (this.world.overlaps(nx - 2.2, e.ground + 0.5, nz - 2.2, nx + 2.2, e.ground + 5, nz + 2.2)) return false;
+            if (this.world.overlaps(nx - 2.2 * S, e.ground + 0.5, nz - 2.2 * S, nx + 2.2 * S, e.ground + 5 * S, nz + 2.2 * S)) return false;
             if (Math.abs(this.world.surfaceBelow(nx, e.ground + 0.5, nz, 1) - e.ground) > 0.6) return false;
             e.x = nx;
             e.z = nz;
@@ -561,9 +597,9 @@ export class EnemyManager {
         }
         this.burst(e, dt, p, 85, 3, 0.1, 0.04);
         if (e.stateTimer <= 0) {
-          const low = t.y - e.ground < 10;
+          const low = t.y - e.ground < 10 * S;
           const roll = this.rng.next();
-          if (low && flat < 22) {
+          if (low && flat < 22 * S) {
             e.state = "slam";
             e.stateTimer = 0.9;
           } else if (roll < 0.5 && e.los) {
@@ -587,7 +623,7 @@ export class EnemyManager {
         if (e.missileTimer <= 0 && e.stateTimer > 0.1) {
           e.missileTimer = 0.25;
           const side = Math.floor(e.stateTimer / 0.25) % 2 === 0 ? 1 : -1;
-          const from = { x: e.x + Math.cos(e.yaw) * side * 1.8, y: e.y + 5.2, z: e.z - Math.sin(e.yaw) * side * 1.8 };
+          const from = { x: e.x + Math.cos(e.yaw) * side * 1.8 * S, y: e.y + 5.2 * S, z: e.z - Math.sin(e.yaw) * side * 1.8 * S };
           this.weapons?.missile(from, norm({ x: (t.x - from.x) * 0.3, y: 1, z: (t.z - from.z) * 0.3 }), 12);
         }
         if (e.stateTimer <= 0) this.toWalk(e);
@@ -600,7 +636,7 @@ export class EnemyManager {
         e.aimX += (t.x - e.aimX) * k;
         e.aimY += (t.y - e.aimY) * k;
         e.aimZ += (t.z - e.aimZ) * k;
-        const eye = { x: e.x + Math.sin(e.yaw) * 1.4, y: e.y + 4.4, z: e.z + Math.cos(e.yaw) * 1.4 };
+        const eye = { x: e.x + Math.sin(e.yaw) * 1.4 * S, y: e.y + 4.4 * S, z: e.z + Math.cos(e.yaw) * 1.4 * S };
         this.weapons?.beam(eye, { x: e.aimX, y: e.aimY, z: e.aimZ }, "telegraph");
         if (e.stateTimer <= 0) {
           const dir = norm({ x: e.aimX - eye.x, y: e.aimY - eye.y, z: e.aimZ - eye.z });
@@ -613,7 +649,7 @@ export class EnemyManager {
           const c = p.center;
           const tt = Math.max(0, (c.x - eye.x) * dir.x + (c.y - eye.y) * dir.y + (c.z - eye.z) * dir.z);
           const px = eye.x + dir.x * tt - c.x, py = eye.y + dir.y * tt - c.y, pz = eye.z + dir.z * tt - c.z;
-          if (tt < len && Math.hypot(px, py, pz) < 1.8) p.takeHit(22);
+          if (tt < len && Math.hypot(px, py, pz) < 1.8 * S) p.takeHit(22 * S);
           this.bus?.emit("weapon", { kind: "laser", x: eye.x, y: eye.y, z: eye.z });
           e.charge = 0;
           this.toWalk(e);
@@ -624,8 +660,8 @@ export class EnemyManager {
         e.charge = 1 - e.stateTimer / 0.9;
         if (e.stateTimer <= 0) {
           e.charge = 0;
-          this.weapons?.shockwave({ x: e.x, y: e.ground + 0.3, z: e.z }, 22);
-          if (flat < 22 && t.y - e.ground < 6) p.takeHit(16);
+          this.weapons?.shockwave({ x: e.x, y: e.ground + 0.3, z: e.z }, 22 * S);
+          if (flat < 22 * S && t.y - e.ground < 6 * S) p.takeHit(16 * S);
           this.toWalk(e);
         }
         break;
@@ -937,6 +973,136 @@ export class EnemyManager {
       e.fireTimer = this.rng.range(1.8, 2.6);
     }
     this.burst(e, dt, p, 110, 3, 0.12, 0.06);
+  }
+
+  /**
+   * Sentinel (Ultron-style flying robot): circles, then telegraphs and
+   * rams you at high speed, peels off, and fires hand blasts in between.
+   */
+  private updateSentinel(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.orbit += dt * 0.4;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 14, e.anchor.y, e.anchor.z + Math.sin(e.orbit) * 14, 10, dt);
+      this.flyMove(e, dt, 4);
+      return;
+    }
+    this.faceTowards(e, t, dt, 8);
+    e.stateTimer -= dt;
+    if (e.state === "charge") {
+      // Wind-up: hold still, eyes glowing.
+      e.charge = 1 - e.stateTimer / 0.6;
+      this.steerTo(e, e.x, e.y, e.z, 0, dt, 4);
+      if (e.stateTimer <= 0) {
+        e.state = "slam";
+        e.stateTimer = 1.2;
+        const dir = norm({ x: t.x - e.x, y: t.y - e.y, z: t.z - e.z });
+        e.vx = dir.x * 62;
+        e.vy = dir.y * 62;
+        e.vz = dir.z * 62;
+        e.charge = 0;
+      }
+    } else if (e.state === "slam") {
+      // Ramming dash: hits once on contact.
+      if (d < 3 && e.burstLeft !== -1) {
+        p.takeHit(12);
+        e.burstLeft = -1;
+        this.weapons?.shockwave(this.center(e), 6);
+      }
+      if (e.stateTimer <= 0) {
+        e.state = "retreat";
+        e.stateTimer = 1.6;
+        e.burstLeft = 0;
+      }
+    } else {
+      if (e.state === "patrol") e.state = "engage";
+      e.orbit += e.strafe * dt * 0.9;
+      const r = e.state === "retreat" ? 45 : 24;
+      this.steerTo(e, t.x + Math.cos(e.orbit) * r, t.y + 4 + Math.sin(e.phase) * 3, t.z + Math.sin(e.orbit) * r, 34, dt, 2.5);
+      if (e.state === "retreat" && e.stateTimer <= 0) e.state = "engage";
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0 && e.los) {
+        e.fireTimer = this.rng.range(1.6, 2.6);
+        e.burstLeft = 2;
+      }
+      e.moveTimer -= dt;
+      if (e.moveTimer <= 0 && e.state === "engage" && d < 70 && e.los) {
+        e.moveTimer = this.rng.range(4, 6.5);
+        e.state = "charge";
+        e.stateTimer = 0.6;
+      }
+    }
+    if (e.state !== "slam") this.burst(e, dt, p, 95, 4, 0.12, 0.03);
+    this.flyMove(e, dt, 3);
+  }
+
+  /** Spider walker: six-legged street walker that lobs fans of mortar shells. */
+  private updateSpider(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.yaw += dt * 0.2;
+      return;
+    }
+    this.faceTowards(e, t, dt, 1.8);
+    const flat = Math.hypot(t.x - e.x, t.z - e.z);
+    if (flat > 45) {
+      const sp = 6 * dt;
+      const fx = Math.sin(e.yaw) * sp, fz = Math.cos(e.yaw) * sp;
+      const tryMove = (mx: number, mz: number) => {
+        const nx = e.x + mx, nz = e.z + mz;
+        if (this.world.overlaps(nx - 2, e.ground + 0.5, nz - 2, nx + 2, e.ground + 3, nz + 2)) return false;
+        if (Math.abs(this.world.surfaceBelow(nx, e.ground + 0.5, nz, 1) - e.ground) > 0.6) return false;
+        e.x = nx;
+        e.z = nz;
+        return true;
+      };
+      if (!tryMove(fx, fz)) tryMove(fz * e.strafe, -fx * e.strafe) || (e.strafe *= -1);
+    }
+    e.fireTimer -= dt;
+    e.charge = clamp01(1 - e.fireTimer / 0.7);
+    if (e.fireTimer <= 0 && e.los) {
+      e.fireTimer = this.rng.range(4, 5.5);
+      const from = { x: e.x, y: e.y + 3.2, z: e.z };
+      for (const spread of [-0.18, 0, 0.18]) {
+        const T = clamp01(Math.hypot(t.x - from.x, t.z - from.z) / 140) * 2.4 + 0.8;
+        const c = Math.cos(spread), s = Math.sin(spread);
+        const rx = t.x - from.x, rz = t.z - from.z;
+        const ax = from.x + rx * c - rz * s, az = from.z + rx * s + rz * c;
+        const g = 14;
+        this.weapons?.shell(from, { x: (ax - from.x) / T, y: (t.y - from.y + 0.5 * g * T * T) / T, z: (az - from.z) / T }, 10);
+      }
+    }
+  }
+
+  /**
+   * Cloaker: invisible stealth drone. It shimmers into view only to fire a
+   * burst, then fades again. Hitting it knocks the cloak off briefly.
+   */
+  private updateCloaker(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    e.orbit += e.strafe * dt * 0.5;
+    const r = 40 + Math.sin(e.phase * 0.5) * 12;
+    if (!e.aware) {
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 20, e.anchor.y, e.anchor.z + Math.sin(e.orbit) * 20, 10, dt);
+      this.flyMove(e, dt, 5);
+      return;
+    }
+    this.steerTo(e, t.x + Math.cos(e.orbit) * r, t.y + 8, t.z + Math.sin(e.orbit) * r, 28, dt, 1.8);
+    this.faceTowards(e, t, dt, 5);
+    this.flyMove(e, dt, 5);
+    e.stateTimer -= dt;
+    if (e.state === "engage") {
+      // Decloaked: fire, then vanish again.
+      if (e.stateTimer <= 0) {
+        e.state = "patrol";
+        e.stateTimer = this.rng.range(3, 5);
+      }
+    } else if (e.stateTimer <= 0 && e.los && d < 200) {
+      e.state = "engage";
+      e.stateTimer = 1.6;
+      e.burstLeft = 4;
+    }
+    this.burst(e, dt, p, 100, 5, 0.18, 0.025);
   }
 
   private toWalk(e: Enemy): void {

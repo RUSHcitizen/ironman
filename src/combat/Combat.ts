@@ -2,7 +2,7 @@ import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import type { PlayerController } from "../player/PlayerController";
 import type { InputState } from "../input/InputState";
-import { ENEMY_STATS, type Enemy, type EnemyManager } from "./Enemies";
+import { ENEMY_STATS, isCloaked, type Enemy, type EnemyManager } from "./Enemies";
 import type { ProjectileSystem } from "./Projectiles";
 import { dist, norm, segmentPointDistance, type V3 } from "./math3";
 
@@ -174,7 +174,7 @@ export class Combat {
   private findLocks(camPos: V3, aim: V3): Enemy[] {
     const cands: [number, Enemy][] = [];
     for (const e of this.enemies.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || isCloaked(e)) continue;
       const c = this.enemies.center(e);
       const d = dist(c, camPos);
       if (d > LOCK_RANGE) continue;

@@ -31,7 +31,7 @@ import { Hud, type HudMarker, type HudTarget, type RadarBlip } from "../ui/Hud";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SuitAudio } from "../audio/SuitAudio";
 import { CityEvents } from "../gameplay/CityEvents";
-import { EnemyManager, ENEMY_STATS, AIR_KINDS, type EnemyKind } from "../combat/Enemies";
+import { EnemyManager, ENEMY_STATS, AIR_KINDS, isCloaked, type EnemyKind } from "../combat/Enemies";
 import { ProjectileSystem } from "../combat/Projectiles";
 import { Combat, MAX_ROCKETS, aimDirection } from "../combat/Combat";
 import { EnemyRenderer } from "../combat/EnemyRenderer";
@@ -149,7 +149,7 @@ export class Game {
     this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
-    await progress(0.15, "Surveying 59 km² of city");
+    await progress(0.15, "Surveying 299 km² of city");
     this.chunks.registerWorld();
     await progress(0.3, "Constructing nearby districts");
     this.chunks.loadAround(SPAWN.x, SPAWN.z, this.settings.preset.viewDistance);
@@ -580,7 +580,7 @@ export class Game {
     const ratio = Math.min(this.device.dpr, q.pixelRatio);
     this.engine.setHardwareScalingLevel(1 / ratio);
     this.env.setViewDistance(q.viewDistance);
-    this.cam.camera.maxZ = 8000;
+    this.cam.camera.maxZ = 12000;
     this.traffic.setCount(q.cars);
     this.peds.setCount(q.pedestrians);
     this.avatar.setParticles(q.particles);
@@ -779,7 +779,7 @@ export class Game {
 
   /** The toughest engaged heavy unit nearby gets a boss bar. */
   private updateBossBar(dt: number): void {
-    const names: Partial<Record<EnemyKind, string>> = { carrier: "DREADNOUGHT CARRIER", warbot: "WARBOT", gunship: "GUNSHIP", tank: "HOVER TANK" };
+    const names: Partial<Record<EnemyKind, string>> = { titan: "TITAN", carrier: "DREADNOUGHT CARRIER", warbot: "WARBOT", spider: "SPIDER WALKER", gunship: "GUNSHIP", tank: "HOVER TANK" };
     let best: (typeof this.enemies.enemies)[number] | null = null;
     const p = this.player.pos;
     for (const e of this.enemies.enemies) {
@@ -795,8 +795,8 @@ export class Game {
     const b = this.radarBlips;
     b.length = 0;
     for (const e of this.enemies.enemies) {
-      if (!e.alive) continue;
-      b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" });
+      if (!e.alive || isCloaked(e)) continue;
+      b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "titan" || e.kind === "spider" });
     }
     for (const m of this.hud.markers) b.push({ x: m.x, z: m.z, kind: m.kind === "event" ? "event" : m.kind === "suit" ? "suit" : "poi" });
     this.hud.updateRadar(dt, this.player, b);
@@ -817,7 +817,7 @@ export class Game {
     const locks = new Set(this.combat.locks);
     const aim = aimDirection(this.player);
     for (const e of this.enemies.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || isCloaked(e)) continue;
       const c = this.enemies.center(e);
       const dx = c.x - camPos.x, dy = c.y - camPos.y, dz = c.z - camPos.z;
       const d = Math.hypot(dx, dy, dz);

@@ -9,6 +9,8 @@ import {
   ROAD_WIDTH,
   DISTRICT_MIN,
   DISTRICT_MAX,
+  DISTRICT,
+  CHUNK_SIZE,
 } from "./WorldConfig";
 
 const CELL = 32;
@@ -23,6 +25,32 @@ export class CollisionWorld {
   private stamp = 0;
   private marks = new WeakMap<Box, number>();
   readonly boxes: Box[] = [];
+  /**
+   * Lazy collider source: called the first time any query touches a city
+   * chunk, so the whole (huge) city never has to be registered up front.
+   */
+  provider: ((cx: number, cz: number) => Box[]) | null = null;
+  private loadedChunks = new Set<number>();
+
+  /** Number of chunks whose colliders have been generated. */
+  get chunksLoaded(): number {
+    return this.loadedChunks.size;
+  }
+
+  /** Make sure colliders exist for every chunk overlapping the rectangle. */
+  ensure(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    if (!this.provider) return;
+    const c0x = Math.max(DISTRICT.minChunk, Math.floor(minX / CHUNK_SIZE)), c1x = Math.min(DISTRICT.maxChunk, Math.floor(maxX / CHUNK_SIZE));
+    const c0z = Math.max(DISTRICT.minChunk, Math.floor(minZ / CHUNK_SIZE)), c1z = Math.min(DISTRICT.maxChunk, Math.floor(maxZ / CHUNK_SIZE));
+    for (let cx = c0x; cx <= c1x; cx++) {
+      for (let cz = c0z; cz <= c1z; cz++) {
+        const k = (cx + 512) * 1024 + (cz + 512);
+        if (this.loadedChunks.has(k)) continue;
+        this.loadedChunks.add(k);
+        for (const b of this.provider(cx, cz)) this.add(b);
+      }
+    }
+  }
 
   private key(cx: number, cz: number): number {
     return ((cx + 32768) << 16) | (cz + 32768);
@@ -44,6 +72,7 @@ export class CollisionWorld {
 
   /** Visit each box overlapping the XZ rectangle exactly once. */
   query(minX: number, minZ: number, maxX: number, maxZ: number, fn: (b: Box) => void): void {
+    this.ensure(minX, minZ, maxX, maxZ);
     const s = ++this.stamp;
     const x0 = Math.floor(minX / CELL), x1 = Math.floor(maxX / CELL);
     const z0 = Math.floor(minZ / CELL), z1 = Math.floor(maxZ / CELL);

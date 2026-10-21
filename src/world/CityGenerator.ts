@@ -96,7 +96,7 @@ const NAME_A = [
 ];
 const NAME_B = ["Heights", "Square", "Yards", "Point", "Row", "Commons", "Gate", "Rise", "Village", "Docks", "Hill", "Bend", "Terrace", "Landing", "Park"];
 
-const REGION_CHUNKS = 2;
+const REGION_CHUNKS = 3;
 const REGIONS = Math.ceil((DISTRICT.maxChunk - DISTRICT.minChunk + 1) / REGION_CHUNKS);
 
 /** Deterministic district names (regions of 2x2 chunks), with a few landmarks. */
@@ -124,6 +124,30 @@ const LANDMARK_AREAS: [number, number, string][] = [
   [3000, 2800, "Eastbridge"],
 ];
 
+/**
+ * Extra skyscraper clusters spread over the outer city (deterministic): one
+ * per ~3.6 km cell beyond the original core, each with its own name.
+ */
+const OUTER_CORE_NAMES = [
+  "Stark Industries Park", "Hammer Yards", "Oscorp Heights", "Roxxon Plaza", "Damage Control", "Baxter Point", "Liberty Spire",
+  "Hell's Kitchen", "Astoria Rise", "Queens Gate", "Bronx Terrace", "Coney Docks", "Kingsbridge", "Flushing Meadows",
+  "Red Hook", "Long Island Point", "Jersey Heights", "Staten Rise", "Governors Point", "Pier Forty", "Midtown West", "Neon Row",
+];
+export const OUTER_CORES: { x: number; z: number; r: number; k: number; name: string }[] = (() => {
+  const rng = new Rng(WORLD_SEED + 404);
+  const out: { x: number; z: number; r: number; k: number; name: string }[] = [];
+  let n = 0;
+  for (let gx = -2; gx <= 2; gx++) {
+    for (let gz = -2; gz <= 2; gz++) {
+      const x = gx * 3500 + rng.range(-700, 700), z = gz * 3500 + rng.range(-700, 700);
+      if (Math.hypot(x, z) < 4300) continue;
+      out.push({ x, z, r: rng.range(380, 620), k: rng.range(0.75, 1.1), name: OUTER_CORE_NAMES[n++ % OUTER_CORE_NAMES.length] });
+    }
+  }
+  return out;
+})();
+for (const c of OUTER_CORES) LANDMARK_AREAS.push([c.x, c.z, c.name]);
+
 /** District name for a chunk. */
 export function areaName(cx: number, cz: number): string {
   const x = (cx + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH, z = (cz + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH;
@@ -150,8 +174,10 @@ export function skylineFactor(x: number, z: number): number {
   const south = (1 - Math.hypot(x - 2900, z + 2700) / 520) * 1.05;
   const ironworks = (1 - Math.hypot(x + 2900, z + 2900) / 380) * 0.7;
   const eastbridge = (1 - Math.hypot(x - 3000, z - 2800) / 450) * 0.9;
+  let outer = 0;
+  for (const c of OUTER_CORES) outer = Math.max(outer, (1 - Math.hypot(x - c.x, z - c.z) / c.r) * c.k);
   // Everywhere else is still a dense low/mid-rise city, never empty.
-  return clamp(Math.max(midtown, downtown, east, west, north, south, ironworks, eastbridge, 0.08), 0, 1.15);
+  return clamp(Math.max(midtown, downtown, east, west, north, south, ironworks, eastbridge, outer, 0.08), 0, 1.15);
 }
 
 export function blockKind(i: number, j: number): BlockKind {

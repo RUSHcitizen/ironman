@@ -64,6 +64,10 @@ const TEMPLATES: Template[] = [
   { title: "EMP strike", detail: "Jammer drones drain suit power - keep your distance", place: "air", squad: ["jammer", "jammer", "drone", "drone", "drone"], minLevel: 1 },
   { title: "Air superiority", detail: "Jets escorting a gunship", place: "air", squad: ["gunship", "jet", "jet", "shielder", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
   { title: "DREADNOUGHT INBOUND", detail: "Carrier airship launching swarmers - bring rockets", place: "air", squad: ["carrier", "jet", "jet", "jammer"], minLevel: 3 },
+  { title: "Ultron sentinels", detail: "Flying robots that ram you - dodge the dash", place: "air", squad: ["sentinel", "sentinel", "sentinel", "sentinel"], minLevel: 1 },
+  { title: "Spider walkers", detail: "Six-legged walkers lobbing mortars down the avenue", place: "street", squad: ["spider", "spider", "trooper", "trooper"], minLevel: 2 },
+  { title: "Ghost squadron", detail: "Cloaked drones - they only show when they fire", place: "air", squad: ["cloaker", "cloaker", "cloaker", "drone"], minLevel: 2 },
+  { title: "TITAN AWAKENS", detail: "Super-heavy mech - dodge the laser and the stomp", place: "street", squad: ["titan", "sentinel", "sentinel", "spider"], minLevel: 4 },
   { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
   { title: "Rooftop distress beacon", detail: "Civilian signal from a rooftop", place: "roof", squad: [] },
@@ -357,11 +361,11 @@ export class CityEvents {
       }
       // Ground units: find a nearby spot at the same surface height that is not inside a building.
       for (let k = 0; k < 20; k++) {
-        const r = kind === "warbot" ? 0 : kind === "tank" ? this.rng.range(0, 25) : this.rng.range(2, t.place === "roof" ? 9 : 14);
+        const r = kind === "warbot" || kind === "titan" ? 0 : kind === "tank" || kind === "spider" ? this.rng.range(0, 25) : this.rng.range(2, t.place === "roof" ? 9 : 14);
         const a = this.rng.range(0, Math.PI * 2);
         const gx = x + Math.cos(a) * r, gz = z + Math.sin(a) * r;
         const s = this.world.surfaceBelow(gx, top + 1, gz, 0.4);
-        const half = kind === "tank" || kind === "warbot" ? 2.4 : 0.5;
+        const half = kind === "titan" ? 4.2 : kind === "tank" || kind === "warbot" || kind === "spider" ? 2.4 : 0.5;
         const blocked = this.world.overlaps(gx - half, s + 0.4, gz - half, gx + half, s + 1.8, gz + half);
         if (Math.abs(s - top) < 0.6 && !blocked) {
           this.enemies.spawn(kind, gx, s, gz, group);

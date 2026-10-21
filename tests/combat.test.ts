@@ -5,6 +5,7 @@ import { EnemyManager } from "../src/combat/Enemies";
 import { ProjectileSystem } from "../src/combat/Projectiles";
 import { Combat, UNIBEAM } from "../src/combat/Combat";
 import { rankFor } from "../src/gameplay/Progress";
+import { isCloaked } from "../src/combat/Enemies";
 import { emptyInput, type InputState } from "../src/input/InputState";
 
 function setup() {
@@ -258,5 +259,59 @@ describe("new enemy types", () => {
     expect(rankFor(1500).name).toBe("VIGILANTE");
     expect(rankFor(13000).name).toBe("AVENGER");
     expect(rankFor(1e6).next).toBeNull();
+  });
+
+  it("sentinels wind up, ram you at high speed, then peel away", () => {
+    const s = setup();
+    s.player.mode = "hover";
+    s.player.grounded = false;
+    s.player.pos.y = 20;
+    const e = s.enemies.spawn("sentinel", 0, 24, 40);
+    let charged = false, dashSpeed = 0;
+    for (let k = 0; k < 12 * 60; k++) {
+      run(s, 1 / 60);
+      if (e.state === "charge") charged = true;
+      if (e.state === "slam") dashSpeed = Math.max(dashSpeed, Math.hypot(e.vx, e.vy, e.vz));
+    }
+    expect(charged).toBe(true);
+    expect(dashSpeed).toBeGreaterThan(40);
+    expect(s.player.suit.overallIntegrity).toBeLessThan(100);
+  });
+
+  it("spider walkers lob fans of mortar shells", () => {
+    const s = setup();
+    s.enemies.spawn("spider", 0, 0, 90);
+    let shells = 0;
+    for (let k = 0; k < 8 * 60 && shells < 3; k++) {
+      run(s, 1 / 60);
+      shells = Math.max(shells, s.proj.projectiles.filter((p) => p.kind === "shell").length);
+    }
+    expect(shells).toBeGreaterThanOrEqual(3);
+  });
+
+  it("cloakers stay invisible (no lock-on) until they fire or get hit", () => {
+    const s = setup();
+    s.player.viewPitch = 0.1;
+    const e = s.enemies.spawn("cloaker", 0, 8, 60);
+    run(s, 0.5);
+    expect(isCloaked(e)).toBe(true);
+    expect(s.combat.locks).not.toContain(e);
+    s.enemies.damage(e, 5);
+    expect(isCloaked(e)).toBe(false);
+    let fired = false;
+    for (let k = 0; k < 10 * 60 && !fired; k++) {
+      run(s, 1 / 60);
+      fired = s.proj.projectiles.some((p) => p.kind === "enemyBolt");
+    }
+    expect(fired).toBe(true);
+  });
+
+  it("the titan is a scaled-up warbot boss", () => {
+    const s = setup();
+    const t = s.enemies.spawn("titan", 0, 0, 80);
+    run(s, 10);
+    expect(t.alive).toBe(true);
+    expect(t.maxHp).toBeGreaterThan(900);
+    expect(s.player.suit.overallIntegrity).toBeLessThan(100);
   });
 });

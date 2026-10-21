@@ -266,10 +266,10 @@ export class Environment {
     ground.freezeWorldMatrix();
     ground.metadata = { drawOrder: 1 };
 
-    const water = CreateGround("water", { width: 16000, height: 16000 }, this.scene);
+    const water = CreateGround("water", { width: 60000, height: 60000 }, this.scene);
     water.position.y = WATER_Y;
     this.waterTex = this.mats.water.diffuseTexture as Texture;
-    this.waterTex.uScale = this.waterTex.vScale = 640;
+    this.waterTex.uScale = this.waterTex.vScale = 2400;
     water.material = this.mats.water;
     water.isPickable = false;
     water.freezeWorldMatrix();
