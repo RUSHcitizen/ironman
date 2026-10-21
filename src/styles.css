@@ -444,24 +444,28 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
   #rotate .l-panel h1 { letter-spacing: 0.06em; padding-left: 0; }
 }
 
-/* Sharp-turn buttons sit above the move stick; beam above UP; flares by the sharp turns. */
-.t-sharp, .t-beam, .t-flare { display: none; width: 58px; height: 58px; }
-.t-sharp span, .t-beam span, .t-flare span { font-size: 20px; }
+/* Sharp turns and flares join the right-hand cluster (clear of the side
+   gauges); BEAM sits in the top row next to SENTRY / SUIT. */
+.t-sharp, .t-flare { display: none; width: 56px; height: 56px; }
+.t-beam { display: none; right: calc(188px + var(--sr)); top: calc(8px + var(--st)); width: 52px; height: 52px; border-color: #a8f4ff; color: #e4fbff; box-shadow: 0 0 12px rgba(107, 233, 255, 0.35); }
+.t-sharp span, .t-beam span, .t-flare span { font-size: 18px; }
 .t-sharp small, .t-beam small, .t-flare small { font-size: 8px; letter-spacing: 0.08em; }
-.t-sharpL { left: calc(18px + var(--sl)); bottom: calc(196px + var(--sb)); }
-.t-sharpR { left: calc(84px + var(--sl)); bottom: calc(196px + var(--sb)); }
-.t-flare { left: calc(150px + var(--sl)); bottom: calc(196px + var(--sb)); border-color: #ffd36b; color: #ffe3a0; }
-.t-beam { right: calc(24px + var(--sr)); bottom: calc(210px + var(--sb)); border-color: #a8f4ff; color: #e4fbff; box-shadow: 0 0 12px rgba(107, 233, 255, 0.35); }
+.t-sharpR { right: calc(286px + var(--sr)); bottom: calc(30px + var(--sb)); }
+.t-sharpL { right: calc(350px + var(--sr)); bottom: calc(30px + var(--sb)); }
+.t-flare { right: calc(340px + var(--sr)); bottom: calc(120px + var(--sb)); border-color: #ffd36b; color: #ffe3a0; }
 .t-beam.charging { background: rgba(107, 233, 255, 0.25); }
 #touch[data-mode="hover"]:not(.civ) .t-sharp, #touch[data-mode="flight"]:not(.civ) .t-sharp { display: grid; }
 #touch:not(.civ) .t-beam, #touch:not(.civ) .t-flare { display: grid; }
 @media (max-height: 380px) {
-  .t-sharp, .t-beam, .t-flare { width: 50px; height: 50px; }
-  .t-sharpL, .t-sharpR, .t-flare { bottom: calc(168px + var(--sb)); }
-  .t-sharpR { left: calc(74px + var(--sl)); }
-  .t-flare { left: calc(130px + var(--sl)); }
-  .t-beam { bottom: calc(180px + var(--sb)); }
+  .t-sharp, .t-flare { width: 50px; height: 50px; }
+  .t-sharpR { right: calc(240px + var(--sr)); bottom: calc(24px + var(--sb)); }
+  .t-sharpL { right: calc(296px + var(--sr)); bottom: calc(24px + var(--sb)); }
+  .t-flare { right: calc(294px + var(--sr)); bottom: calc(100px + var(--sb)); }
 }
+/* Touch: radar sits between the suit panel and the compass; on narrow
+   screens there is no room, so it hides. */
+html.touch .h-radar { width: 70px; height: 70px; left: calc(166px + var(--sl)); top: calc(8px + var(--st)); }
+@media (max-width: 740px) { html.touch .h-radar { display: none; } }
 /* Every touch button gives a little press feedback. */
 .t-btn { transition: transform 0.12s ease-out, background-color 0.15s, box-shadow 0.2s; }
 .t-btn.on { box-shadow: 0 0 18px rgba(107, 233, 255, 0.55); }
@@ -497,7 +501,6 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 }
 @keyframes sweep { to { transform: rotate(360deg); } }
 #hud.civ .h-radar { display: none; }
-html.touch .h-radar { width: calc(104px * var(--s)); height: calc(104px * var(--s)); top: calc(54px + var(--st)); }
 
 .d-xp { height: 3px; background: rgba(255, 181, 71, 0.2); margin-top: 3px; overflow: hidden; }
 .d-xp i { display: block; height: 100%; background: var(--amber); transform-origin: left; transition: transform 0.4s ease-out; }
