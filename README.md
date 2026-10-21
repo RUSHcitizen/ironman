@@ -64,6 +64,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
     - Measured on the emulated iPhone X layout at Low during a flying fight, the simulation's CPU cost is about 2.2 ms per frame on average, with the worst frame down from about 25 ms to 11 ms. At **4× CPU throttling** (to approximate a slow phone or Chromebook CPU) it's about 10 ms on average, with a peak around 38 ms (from 62 ms). The JS heap stays around 60–75 MB.
     - A new browser test enforces a budget at 4× throttling: under 16 ms average and 80 ms peak, and under 250 MB heap.
     - GPU cost can't be measured here (software rendering), so real-device frame rates still need checking on the hardware.
+  - **Checking on your own device:** turn on menu → "Show FPS / performance counter" to see live FPS, per-frame simulation time and the active preset. The menu also shows the GPU, WebGL version and browser the device reports.
 
 ## Milestone 9 – phone rotation that always works, armour schemes, time of day, rescues
 

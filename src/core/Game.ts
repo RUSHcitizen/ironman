@@ -205,6 +205,7 @@ export class Game {
     this.hud.setVisible(false);
     this.input.touch.setVisible(false);
     this.wireEvents();
+    this.menu.setDeviceInfo(deviceLine(this.engine));
     this.settings.onChange(() => this.applySettings());
     this.applySettings();
     this.updateHint();
@@ -801,6 +802,7 @@ export class Game {
     this.updateBossBar(dt);
     const rank = this.progress.rank;
     const lo = rankLow(rank.index);
+    this.hud.perfNote = `sim ${this.updateMs.toFixed(1)} ms · ${this.settings.data.quality.toUpperCase()}`;
     this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
     this.input.touch.setRockets(this.combat.rockets);
     this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
@@ -998,4 +1000,12 @@ export class Game {
       pointerLocked: this.input.isPointerLocked,
     };
   }
+}
+
+/** "GPU · WebGL2 · Safari/Chrome" line for the settings menu. */
+function deviceLine(engine: Engine): string {
+  const info = engine.getGlInfo();
+  const ua = navigator.userAgent;
+  const browser = /CrOS/.test(ua) ? "ChromeOS" : /iPhone|iPad/.test(ua) ? "iOS Safari" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  return `Device: ${info.renderer || "unknown GPU"} · WebGL${engine.webGLVersion} · ${browser}`;
 }

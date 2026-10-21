@@ -53,7 +53,8 @@ export class SettingsMenu {
         <section>
           <label>Volume <output data-o="volume"></output></label>
           <input type="range" min="0" max="1" step="0.05" data-k="volume"/>
-          <label class="m-toggle"><input type="checkbox" data-k="showFps"/><span>Show FPS counter</span></label>
+          <label class="m-toggle"><input type="checkbox" data-k="showFps"/><span>Show FPS / performance counter</span></label>
+          <p class="m-note m-device"></p>
         </section>
         <button data-a="respawn">Return to Avengers Tower</button>
         <details ${isTouch ? "" : "open"}>
@@ -106,6 +107,11 @@ export class SettingsMenu {
     });
     settings.onChange(() => this.sync());
     this.sync();
+  }
+
+  /** Device line: GPU and browser engine (to check real-device support). */
+  setDeviceInfo(text: string): void {
+    this.el.querySelector(".m-device")!.textContent = text;
   }
 
   get isOpen(): boolean {

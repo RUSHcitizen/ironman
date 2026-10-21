@@ -56,6 +56,8 @@ export class Hud {
     if (e.textContent !== v) e.textContent = v;
   }
   private lastPips = -1;
+  /** Extra performance info for the FPS counter (set by the game). */
+  perfNote = "";
   private tape: HTMLElement;
   private compassW = 0;
   private markersEl: HTMLElement;
@@ -432,7 +434,7 @@ export class Hud {
     this.fpsTime += dt;
     if (this.fpsTime >= 0.5) {
       this.fps = this.frames / this.fpsTime;
-      this.fpsEl.textContent = `${this.fps.toFixed(0)} FPS`;
+      this.fpsEl.textContent = `${this.fps.toFixed(0)} FPS · ${this.perfNote}`;
       this.frames = 0;
       this.fpsTime = 0;
     }
