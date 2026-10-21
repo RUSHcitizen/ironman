@@ -402,6 +402,13 @@ export class EnemyRenderer {
       roll = Math.max(-0.4, Math.min(0.4, -side * 0.025));
     } else if (e.kind === "shielder") {
       y += Math.sin(e.phase * 2) * 0.3;
+      roll = Math.sin(e.phase * 0.8) * 0.12;
+    } else if (e.kind === "trooper" || e.kind === "sniper") {
+      // Lean into strafes; tuck forward on jet-pack hops; idle breathing bob.
+      const side = e.state === "hop" ? e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw) : e.strafe * 2.5;
+      roll = Math.max(-0.3, Math.min(0.3, -side * 0.05)) + (e.state === "hop" ? Math.sin(e.phase * 6) * 0.08 : 0);
+      pitch = e.state === "hop" ? Math.max(-0.4, Math.min(0.4, -e.vy * 0.03)) : 0;
+      y += Math.sin(e.phase * 2.4) * 0.02;
     } else if (e.kind === "tank") {
       y += 0.4 + Math.sin(e.phase * 2) * 0.08; // hovering hull
     } else if (e.kind === "jet") {
@@ -414,6 +421,9 @@ export class EnemyRenderer {
       roll = e.phase * 9;
     } else if (e.kind === "jammer") {
       y += Math.sin(e.phase * 2.5) * 0.25;
+      // The coil spins up as the pulse charges.
+      roll = 0;
+      pitch = Math.sin(e.phase) * 0.05;
     } else if (e.kind === "sentinel") {
       // Leans hard into its dash, hovers upright otherwise.
       const sp = Math.hypot(e.vx, e.vz);
@@ -429,7 +439,8 @@ export class EnemyRenderer {
       pitch = Math.sin(e.phase * 0.3) * 0.03;
       roll = Math.sin(e.phase * 0.23) * 0.04;
     }
-    Quaternion.RotationYawPitchRollToRef(e.yaw, pitch, roll, this.q);
+    const spin = e.kind === "jammer" ? e.phase * (1.5 + e.charge * 12) : e.kind === "shielder" ? e.phase * 0.9 : 0;
+    Quaternion.RotationYawPitchRollToRef(e.yaw + spin, pitch, roll, this.q);
     // Warp in: grow from nothing with a slight overshoot.
     const w = Math.min(1, e.age / 0.5);
     const grow = w >= 1 ? 1 : 1 + 2.4 * Math.pow(w - 1, 3) + 1.4 * Math.pow(w - 1, 2);
