@@ -254,13 +254,15 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
-  test("hold the afterburner to go hypersonic past Mach 1", async ({ page }) => {
+  test("hold the afterburner high up to go hypersonic past Mach 1, with no white rings", async ({ page }) => {
     const errors = await boot(page);
-    await game(page, (g) => g.teleport(2.5, 400, -300, 0, "flight", 200));
+    await game(page, (g) => g.teleport(2.5, 1500, -300, 0, "flight", 200));
     await page.keyboard.down("KeyW");
     const s = await until(page, (st) => (st as unknown as { hypersonic: boolean }).hypersonic && st.speed > 343, 90_000);
+    const rings = await page.evaluate(() => (window as unknown as { __GAME: { projectiles: { fx: { kind: string }[] } } }).__GAME.projectiles.fx.filter((f) => f.kind === "sonic").length);
     await page.keyboard.up("KeyW");
     expect(s.speed).toBeGreaterThan(343);
+    expect(rings).toBe(0);
     await expect(page.locator(".v-mode")).toHaveText(/HYPERSONIC|AFTERBURNER|FLIGHT/);
     expect(errors).toEqual([]);
   });

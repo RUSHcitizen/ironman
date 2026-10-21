@@ -262,10 +262,6 @@ export class ProjectileSystem implements EnemyWeapons {
     }
   }
 
-  sonicBoom(at: V3, yaw: number, pitch: number): void {
-    this.fx.push({ kind: "sonic", ...at, size: 14, t: 0, life: 0.7, yaw, pitch });
-  }
-
   // ------------------------------------------------------------------------
 
   update(dt: number): void {

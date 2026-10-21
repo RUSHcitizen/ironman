@@ -21,11 +21,12 @@ export const TUNING = {
   walkSpeed: 8,
   civilianWalk: 3.4,
   civilianSprint: 7,
-  // Flight is 2.5x (150% faster) than before; hover 1.5x so it stays precise.
+  // Flight was made 2.5x faster, then trimmed by 25% (now ~1.875x the original);
+  // hover is 1.5x so it stays precise.
   hoverSpeed: 27,
   hoverVertical: 16,
-  cruiseSpeed: 120,
-  afterburnerSpeed: 312.5,
+  cruiseSpeed: 90,
+  afterburnerSpeed: 234.375,
   /** Real Mach 1 at sea level: the sound barrier is a genuine milestone. */
   sonicSpeed: 343,
   /** Hold the afterburner this long to go hypersonic (x1.35 top speed). */
@@ -151,6 +152,8 @@ export class PlayerController {
   recoil = 0;
   /** Hit flinch (1 when hit, decays) and the side it came from (-1 left / +1 right). */
   flinch = 0;
+  /** Air-braking in flight (drives the flare-out pose). */
+  braking = false;
   flinchSide = 0;
   nearMissStreak = 0;
   private nearMissTimer = 0;
@@ -616,10 +619,11 @@ export class PlayerController {
     this.lookRate += (input.lookX / Math.max(dt, 1e-3) - this.lookRate) * damp(5, dt);
 
     const braking = input.moveY < -0.25;
+    this.braking = braking;
     this.afterburner = input.moveY > 0.25 && this.suit.energy > 0;
     if (this.afterburner && !this.wasAfterburner) {
       // Afterburner kick.
-      this.flightSpeed += 30;
+      this.flightSpeed += 22;
       this.bus?.emit("boost", {});
     }
     this.wasAfterburner = this.afterburner;
@@ -627,7 +631,7 @@ export class PlayerController {
     this.burnTime = this.afterburner ? this.burnTime + dt : 0;
     const hyper = this.burnTime > TUNING.hyperDelay && this.suit.energy > 0;
     if (hyper && !this.hypersonic) {
-      this.flightSpeed += 40;
+      this.flightSpeed += 30;
       this.bus?.emit("hypersonic", { ...this.pos });
     }
     this.hypersonic = hyper;
@@ -637,9 +641,9 @@ export class PlayerController {
     let target = (this.afterburner ? TUNING.afterburnerSpeed * (hyper ? TUNING.hyperBoost : 1) : TUNING.cruiseSpeed) * thin * (1 + 0.3 * this.rush);
     // Gravity assist: dives build speed, climbs bleed it.
     const sp = Math.sin(this.viewPitch);
-    target += sp < 0 ? -sp * 112 : -sp * (this.afterburner ? 20 : 50);
+    target += sp < 0 ? -sp * 84 : -sp * (this.afterburner ? 15 : 37.5);
     if (braking) target = 0;
-    const accel = hyper ? 150 : this.afterburner ? 112 : braking ? 100 : sp < -0.2 ? 75 : 50;
+    const accel = hyper ? 112 : this.afterburner ? 84 : braking ? 100 : sp < -0.2 ? 56 : 37.5;
     this.flightSpeed = moveTowards(this.flightSpeed, target, accel * dt);
 
     if (this.flightSpeed > TUNING.sonicSpeed && !this.sonicDone) {
@@ -798,7 +802,7 @@ export class PlayerController {
     const s = Math.sin(this.viewYaw), co = Math.cos(this.viewYaw);
     const close = (dx: number, dy: number, dz: number) => this.world.raycast(c.x, c.y, c.z, dx, dy, dz, 7) < 7;
     // RUSH: skimming rooftops / the street or threading between buildings.
-    if (this.flightSpeed > 100) {
+    if (this.flightSpeed > 75) {
       const skim = this.world.raycast(c.x, c.y, c.z, 0, -1, 0, 28) < 28;
       const side = this.world.raycast(c.x, c.y, c.z, co, 0, -s, 14) < 14 || this.world.raycast(c.x, c.y, c.z, -co, 0, s, 14) < 14;
       if (skim || side) this.rush = Math.min(1, this.rush + (side ? 0.07 : 0.045));
@@ -883,6 +887,9 @@ export class PlayerController {
       this.flightSpeed *= 0.88;
       this.suit.damage(impactSpeed * 0.04, ["arms", "legs"]);
       const hs = Math.hypot(this.vel.x, this.vel.z);
+      // The body jolts away from the wall (it's on the side opposite the deflection).
+      this.flinch = Math.max(this.flinch, 0.5);
+      if (hs > 5) this.flinchSide = wrapAngle(Math.atan2(this.vel.x, this.vel.z) - this.viewYaw) > 0 ? -1 : 1;
       if (hs > 5) this.viewYaw = dampAngle(this.viewYaw, Math.atan2(this.vel.x, this.vel.z), 12, dt);
       this.bus?.emit("scrape", { x: this.pos.x, y: this.pos.y + 1, z: this.pos.z, speed: impactSpeed });
       impactSpeed = 0;

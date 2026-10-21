@@ -447,22 +447,24 @@ describe("PlayerController", () => {
     expect(p.bank).toBeGreaterThan(-1.0);
   });
 
-  it("flight is 150% faster (2.5x): cruise 120 m/s, afterburner 312 m/s", () => {
-    expect(TUNING.cruiseSpeed).toBe(48 * 2.5);
-    expect(TUNING.afterburnerSpeed).toBe(125 * 2.5);
+  it("flight is 25% slower than the 2.5x pass: cruise 90 m/s, afterburner ~234 m/s", () => {
+    expect(TUNING.cruiseSpeed).toBe(48 * 2.5 * 0.75);
+    expect(TUNING.afterburnerSpeed).toBe(125 * 2.5 * 0.75);
     const p = new PlayerController(makeWorld());
     p.spawn(0, 200, -400, Math.PI);
     p.mode = "flight";
     p.grounded = false;
     p.viewPitch = 0;
     sim(p, 4);
-    expect(p.speed).toBeGreaterThan(110);
+    expect(p.speed).toBeGreaterThan(80);
+    expect(p.speed).toBeLessThan(100);
     sim(p, 1.2, { moveY: 1 });
     expect(p.hypersonic).toBe(false);
-    expect(p.speed).toBeGreaterThan(200);
+    expect(p.speed).toBeGreaterThan(150);
+    expect(p.speed).toBeLessThan(240);
   });
 
-  it("holding the afterburner goes hypersonic past Mach 1 (sonic boom)", () => {
+  it("holding the afterburner goes hypersonic; in thin air high up it breaks Mach 1 (sonic boom)", () => {
     const events: string[] = [];
     const bus = { emit: (t: string) => events.push(t) } as never;
     const p = new PlayerController(makeWorld(), bus);
@@ -470,11 +472,16 @@ describe("PlayerController", () => {
     p.mode = "flight";
     p.grounded = false;
     p.viewPitch = 0;
-    p.flightSpeed = 120;
+    p.flightSpeed = 90;
     sim(p, 6, { moveY: 1 });
     expect(p.hypersonic).toBe(true);
-    expect(p.speed).toBeGreaterThan(343);
     expect(events).toContain("hypersonic");
+    expect(p.speed).toBeGreaterThan(290);
+    expect(p.speed).toBeLessThan(343);
+    // Higher up the thinner air lets the same burn push past the sound barrier.
+    p.pos.y = 1500;
+    sim(p, 6, { moveY: 1 });
+    expect(p.speed).toBeGreaterThan(343);
     expect(events).toContain("sonicBoom");
     expect(p.topSpeed).toBeGreaterThan(343);
     sim(p, 0.1);

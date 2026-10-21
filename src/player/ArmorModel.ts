@@ -43,6 +43,10 @@ export interface AvatarState {
   readonly bank?: number;
   /** Unibeam firing pose timer. */
   readonly beamTimer?: number;
+  /** Flight extras: air-braking, hypersonic stage and the RUSH meter (0..1). */
+  readonly braking?: boolean;
+  readonly hypersonic?: boolean;
+  readonly rush?: number;
   /** Where the pilot is looking (head and torso turn toward it). */
   readonly viewYaw?: number;
   /** Repulsor recoil 0..1. */
@@ -120,6 +124,9 @@ export class ArmorModel {
   private beamGlow = 0;
   /** Take-off spring (1 at lift-off, decays) and the last mode seen. */
   private launch = 0;
+  /** Afterburner surge (1 when the burner lights, decays) and its last state. */
+  private surge = 0;
+  private lastBurn = false;
   private lastMode = "ground";
   /** Slow idle weight shift on the ground. */
   private idleT = 0;
@@ -749,6 +756,82 @@ export class ArmorModel {
       pose.shR = [pose.shR![0] + Math.abs(bk) * 0.15, pose.shR![1] + Math.max(0, bk) * 0.55 - Math.max(0, -bk) * 0.12];
       pose.hipL = [pose.hipL![0], pose.hipL![1] - bk * 0.12];
       pose.hipR = [pose.hipR![0], pose.hipR![1] - bk * 0.12];
+
+      // Speed streamlines the body: at cruise the legs paddle and the arms
+      // hang loose; flat out, the arms tuck in and the legs lock straight.
+      const spd = Math.hypot(p.vel.x, p.vel.y, p.vel.z);
+      const fast = clamp((spd - 50) / 150, 0, 1);
+      const paddle = Math.sin(t * 2.4) * 0.09 * (1 - fast);
+      pose.knL = [pose.knL![0] * (1 - fast) + Math.max(0, paddle) * 1.5, 0];
+      pose.knR = [pose.knR![0] * (1 - fast) + Math.max(0, -paddle) * 1.5, 0];
+      pose.hipL = [pose.hipL![0] + paddle, pose.hipL![1]];
+      pose.hipR = [pose.hipR![0] - paddle, pose.hipR![1]];
+      pose.shL = [pose.shL![0] + fast * 0.12, pose.shL![1] * (1 - fast * 0.5)];
+      pose.shR = [pose.shR![0] + fast * 0.12, pose.shR![1] * (1 - fast * 0.5)];
+      pose.elL = [-0.06 - (1 - fast) * 0.2, 0];
+      pose.elR = [-0.06 - (1 - fast) * 0.2, 0];
+
+      // Dives: arms sweep right back and the legs press together. Climbs:
+      // the arms open a little for lift and the knees drive.
+      const climb = clamp(p.vel.y / Math.max(30, spd), -1, 1);
+      if (climb < 0) {
+        const d = -climb;
+        pose.shL = [pose.shL![0] + d * 0.3, pose.shL![1] * (1 - d * 0.6)];
+        pose.shR = [pose.shR![0] + d * 0.3, pose.shR![1] * (1 - d * 0.6)];
+        pose.hipL = [pose.hipL![0], pose.hipL![1] + d * 0.05];
+        pose.hipR = [pose.hipR![0], pose.hipR![1] - d * 0.05];
+        pose.neck = [pose.neck![0] - d * 0.15, 0];
+      } else {
+        pose.shL = [pose.shL![0], pose.shL![1] - climb * 0.3];
+        pose.shR = [pose.shR![0], pose.shR![1] + climb * 0.3];
+        pose.knL = [pose.knL![0] + climb * 0.25, 0];
+        pose.knR = [pose.knR![0] + climb * 0.15, 0];
+      }
+
+      // Afterburner surge: the arms whip back, the chest pushes out and the
+      // legs snap together as the boots light.
+      if (p.afterburner && !this.lastBurn) this.surge = 1;
+      this.lastBurn = p.afterburner;
+      if (this.surge > 0.01) {
+        const k = Math.sin(this.surge * Math.PI);
+        pose.spine = [pose.spine![0] - k * 0.2, 0];
+        pose.shL = [pose.shL![0] + k * 0.45, pose.shL![1] * (1 - k * 0.7)];
+        pose.shR = [pose.shR![0] + k * 0.45, pose.shR![1] * (1 - k * 0.7)];
+        pose.knL = [pose.knL![0] * (1 - k), 0];
+        pose.knR = [pose.knR![0] * (1 - k), 0];
+        this.surge = Math.max(0, this.surge - dt * 2.2);
+      }
+
+      // RUSH: chin up, chest proud.
+      const rush = p.rush ?? 0;
+      pose.spine = [pose.spine![0] - rush * 0.12, pose.spine![1]];
+      pose.neck = [pose.neck![0] - rush * 0.1, 0];
+
+      // Afterburner and hypersonic buffeting: a fast shimmer through the body.
+      const buzz = (p.hypersonic ? 1 : p.afterburner ? 0.35 : 0) * fast;
+      if (buzz > 0) {
+        pose.spine = [pose.spine![0] + Math.sin(t * 37) * 0.025 * buzz, pose.spine![1] + Math.sin(t * 29) * 0.02 * buzz];
+        pose.shL = [pose.shL![0] + Math.sin(t * 41) * 0.05 * buzz, pose.shL![1]];
+        pose.shR = [pose.shR![0] + Math.sin(t * 43 + 1) * 0.05 * buzz, pose.shR![1]];
+      }
+
+      // Air-braking: flare out. The arms swing forward and spread, palms
+      // pushing against the air, and the legs swing down under the body.
+      if (p.braking) {
+        pose.shL = [-1.15, -0.65];
+        pose.shR = [-1.15, 0.65];
+        pose.elL = [-0.35, 0];
+        pose.elR = [-0.35, 0];
+        pose.hipL = [-0.85, -0.08];
+        pose.hipR = [-0.75, 0.08];
+        pose.knL = [0.55, 0];
+        pose.knR = [0.45, 0];
+        pose.neck = [-0.8, 0];
+      }
+    }
+    if (!flying) {
+      this.surge = 0;
+      this.lastBurn = false;
     }
     // Firing poses: repulsor palm out, both forearms up for rockets.
     if (p.suited) {

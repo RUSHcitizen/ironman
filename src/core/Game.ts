@@ -304,9 +304,7 @@ export class Game {
     });
     bus.on("evaded", () => this.hud.popup("EVADED"));
     bus.on("boost", () => this.cam.addKick(0.1));
-    bus.on("sonicBoom", (e) => {
-      const p = this.player;
-      this.projectiles.sonicBoom(e, p.viewYaw, p.viewPitch);
+    bus.on("sonicBoom", () => {
       this.cam.addShake(0.6);
       this.cam.addKick(0.2);
       this.hud.popup("SONIC BOOM");
@@ -327,7 +325,7 @@ export class Game {
     bus.on("ringPassed", (e) => {
       // Every ring is a boost: speed, a sip of power, and a punchy FOV kick.
       const p = this.player;
-      if (p.mode === "flight") p.flightSpeed += 35;
+      if (p.mode === "flight") p.flightSpeed += 26;
       p.suit.charge(6);
       this.cam.addKick(0.14);
       this.hud.popup(e.index >= e.total ? "COURSE COMPLETE" : `RING ${e.index}/${e.total}`);
@@ -337,8 +335,6 @@ export class Game {
       this.hud.popup("HYPERSONIC");
       this.cam.addKick(0.25);
       this.cam.addShake(0.5);
-      const p = this.player;
-      this.projectiles.sonicBoom(p.pos, p.viewYaw, p.viewPitch);
     });
     bus.on("rush", (e) => {
       this.hud.popup(e.level >= 2 ? "MAX RUSH" : "RUSH");
@@ -880,7 +876,7 @@ export class Game {
     this.input.touch.setCharging(this.combat.beamCharge >= 0);
     this.updateThrusterWash(dt);
     this.updateNewSuit(dt);
-    this.updateVapourCone(dt);
+    this.updateBuffeting(dt);
     this.evictFar(dt);
     this.updateRadar(dt);
     this.updateBossBar(dt);
@@ -950,16 +946,11 @@ export class Game {
     this.chunks.dropSpecs(this.world.evictFar(p.x, p.z, 2600));
   }
 
-  private coneTimer = 0;
-  /** Hypersonic: a pulsing vapour cone of rings around the suit, plus a little buffeting. */
-  private updateVapourCone(dt: number): void {
+  /** Hypersonic: a little camera buffeting. */
+  private updateBuffeting(dt: number): void {
     const p = this.player;
     if (!p.hypersonic || p.mode !== "flight") return;
     this.cam.addShake(dt * 0.6);
-    this.coneTimer -= dt;
-    if (this.coneTimer > 0) return;
-    this.coneTimer = 0.22;
-    this.projectiles.fx.push({ kind: "sonic", x: p.pos.x, y: p.pos.y + 1, z: p.pos.z, size: 3.5, t: 0, life: 0.35, yaw: p.viewYaw, pitch: p.viewPitch });
   }
 
   private washTimer = 0;
