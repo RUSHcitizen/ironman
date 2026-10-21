@@ -10,6 +10,8 @@ export interface CombatTarget {
   readonly evading: boolean;
   /** Returns false if the hit was evaded or ignored. */
   takeHit(damage: number): boolean;
+  /** EMP: drains suit power (optional). */
+  emp?(drain: number): void;
 }
 
 /** Nearest engageable target to a point, or null. */

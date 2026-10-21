@@ -148,4 +148,58 @@ describe("new enemy types", () => {
     expect(Math.hypot(g.x, g.z)).toBeGreaterThan(40);
     expect(s.player.suit.overallIntegrity).toBeLessThan(100);
   });
+
+  it("interceptor jets make fast strafing passes, overshoot and come back", () => {
+    const s = setup();
+    s.player.mode = "hover";
+    s.player.pos.y = 60;
+    s.player.grounded = false;
+    const j = s.enemies.spawn("jet", 0, 120, 300);
+    let maxSpeed = 0, retreated = false;
+    for (let k = 0; k < 12 * 60; k++) {
+      run(s, 1 / 60);
+      maxSpeed = Math.max(maxSpeed, Math.hypot(j.vx, j.vy, j.vz));
+      if (j.state === "retreat") retreated = true;
+    }
+    expect(maxSpeed).toBeGreaterThan(70);
+    expect(retreated).toBe(true);
+    expect(s.player.suit.overallIntegrity).toBeLessThan(100);
+  });
+
+  it("swarmers buzz in close, peck at you and pop in one hit", () => {
+    const s = setup();
+    const w = s.enemies.spawn("swarmer", 0, 6, 60);
+    run(s, 5);
+    expect(Math.hypot(w.x, w.z)).toBeLessThan(25);
+    s.enemies.damage(w, 10);
+    expect(w.alive).toBe(false);
+  });
+
+  it("EMP jammers charge and pulse, draining suit power", () => {
+    const s = setup();
+    s.player.mode = "hover";
+    s.player.pos.y = 10;
+    s.player.grounded = false;
+    const j = s.enemies.spawn("jammer", 0, 15, 30);
+    let charged = false;
+    for (let k = 0; k < 10 * 60 && s.player.suit.energy > 80; k++) {
+      run(s, 1 / 60);
+      if (j.state === "charge") charged = true;
+      s.player.suit.energy = Math.min(s.player.suit.energy, 100);
+    }
+    expect(charged).toBe(true);
+    expect(s.player.suit.energy).toBeLessThan(80);
+  });
+
+  it("the Dreadnought carrier launches swarmers that don't count toward its incident group", () => {
+    const s = setup();
+    const c = s.enemies.spawn("carrier", 0, 70, 120, 5);
+    run(s, 14);
+    expect(c.alive).toBe(true);
+    const swarm = s.enemies.enemies.filter((e) => e.alive && e.kind === "swarmer");
+    expect(swarm.length).toBeGreaterThanOrEqual(3);
+    expect(swarm.length).toBeLessThanOrEqual(9);
+    expect(swarm.every((e) => e.group === -c.id)).toBe(true);
+    expect(s.enemies.aliveInGroup(5)).toBe(1);
+  });
 });

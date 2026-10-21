@@ -28,6 +28,12 @@ export class InputManager {
   private pointerLocked = false;
   private rocketClick = false;
   private keyRoll = 0;
+  /** Shift+A / Shift+D chord this frame. */
+  private keySharp = 0;
+  /** Shift was used in a chord, so releasing it doesn't toggle flight. */
+  private shiftChord = false;
+  /** Shift tapped on its own (toggles flight on release). */
+  private shiftTap = false;
   private touchUpWas = false;
   private state: InputState = emptyInput();
   /** True while the last-used pointing device was a mouse. */
@@ -51,8 +57,14 @@ export class InputManager {
       const k = e.code;
       if (!this.keys.has(k)) {
         this.pressed.add(k);
-        // Double-tap A / D = barrel roll.
-        if (k === "KeyA" || k === "KeyD") {
+        const shift = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+        if (k === "ShiftLeft" || k === "ShiftRight") this.shiftChord = false;
+        if (shift && (k === "KeyA" || k === "KeyD")) {
+          // Shift+A / Shift+D = sharp turn.
+          this.keySharp = k === "KeyA" ? -1 : 1;
+          this.shiftChord = true;
+        } else if (k === "KeyA" || k === "KeyD") {
+          // Double-tap A / D = barrel roll.
           const now = performance.now();
           if (now - (this.lastKeyTime.get(k) ?? 0) < DOUBLE_TAP_MS) this.keyRoll = k === "KeyA" ? -1 : 1;
           this.lastKeyTime.set(k, now);
@@ -62,7 +74,10 @@ export class InputManager {
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "AltLeft"].includes(k)) e.preventDefault();
       if (/^Key|Space|Arrow/.test(k)) this.setMouseMode(true);
     });
-    window.addEventListener("keyup", (e) => this.keys.delete(e.code));
+    window.addEventListener("keyup", (e) => {
+      this.keys.delete(e.code);
+      if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !this.shiftChord) this.shiftTap = true;
+    });
     window.addEventListener("blur", () => this.reset());
     document.addEventListener("visibilitychange", () => document.hidden && this.reset());
 
@@ -142,6 +157,8 @@ export class InputManager {
   reset(): void {
     this.keys.clear();
     this.pressed.clear();
+    this.shiftTap = false;
+    this.keySharp = 0;
     this.mouseDX = this.mouseDY = 0;
     this.mouseButtons = 0;
     this.dragging = false;
@@ -181,7 +198,11 @@ export class InputManager {
     this.touchUpWas = t.ascend;
     s.takeoff = this.hit("Space") || touchUp;
     s.sprint = this.down("ShiftLeft", "ShiftRight");
-    s.toggleFlight = this.hit("ShiftLeft", "ShiftRight", "KeyF") || t.consume("fly");
+    // Shift toggles flight when tapped on its own (released without A / D).
+    s.toggleFlight = this.shiftTap || this.hit("KeyF") || t.consume("fly");
+    this.shiftTap = false;
+    s.sharpTurn = this.keySharp;
+    this.keySharp = 0;
     s.fire = (this.pointerLocked && (this.mouseButtons & 1) !== 0) || this.down("KeyX") || t.fire;
     s.rockets = this.rocketClick || this.hit("KeyR") || t.consume("msl");
     s.toggleSuit = this.hit("KeyG") || t.consume("suit");

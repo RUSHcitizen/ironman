@@ -378,4 +378,24 @@ describe("PlayerController", () => {
     sim(p, 5);
     expect(p.suit.oxygen).toBe(100);
   });
+
+  it("Shift+A / Shift+D sharp turn snaps the heading ~90 degrees with a hard bank", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 300, -400, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.flightSpeed = 60;
+    p.vel.z = -60;
+    sim(p, 0.2, {}, { sharpTurn: 1 });
+    expect(p.sharp).not.toBeNull();
+    expect(p.bank).toBeLessThan(-1.0);
+    sim(p, 0.6);
+    expect(p.sharp).toBeNull();
+    // Heading turned right by ~90 degrees (PI -> 3PI/2 = -PI/2).
+    expect(Math.abs(Math.atan2(Math.sin(p.viewYaw + Math.PI / 2), Math.cos(p.viewYaw + Math.PI / 2)))).toBeLessThan(0.05);
+    // The flight path follows: most velocity now along the new heading (-X).
+    expect(p.vel.x).toBeLessThan(-35);
+    sim(p, 0.1, {}, { sharpTurn: -1 });
+    expect(p.bank).toBeGreaterThan(-1.0);
+  });
 });

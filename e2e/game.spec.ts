@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, devices } from "@playwright/test";
 import { boot, state, until, game } from "./helpers";
 
 // Small viewport keeps SwiftShader (CPU rendering) fast enough to simulate.
@@ -289,4 +289,21 @@ test("shows a recoverable error when WebGL is unavailable", async ({ page }) => 
   await expect(page.locator("#e-message")).toContainText("WebGL");
   await expect(page.locator("#e-retry")).toBeVisible();
   await expect(page.locator("#loading")).toBeHidden();
+});
+
+test("phone: nothing overflows in portrait, and rotating to landscape clears the rotate hint", async ({ browser }) => {
+  const { defaultBrowserType: _d, ...phone } = devices["iPhone SE"];
+  const ctx = await browser.newContext(phone);
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await expect(page.locator("#rotate")).toBeVisible();
+  const overflow = await page.evaluate(() =>
+    [...document.querySelectorAll("#rotate *, #loading *")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.tagName),
+  );
+  expect(overflow).toEqual([]);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await expect(page.locator("#rotate")).toBeHidden();
+  await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
+  await expect(page.locator("#l-start")).toBeInViewport();
+  await ctx.close();
 });

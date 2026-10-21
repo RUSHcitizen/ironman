@@ -49,6 +49,9 @@ export const TUNING = {
   civilianDrag: 0.0075,
   /** Max bank (radians) when turning in flight: nearly sideways. */
   maxBank: 1.5,
+  /** Shift+A / Shift+D: snap through ~90 degrees. */
+  sharpTurnTime: 0.6,
+  sharpTurnAngle: Math.PI / 2,
   /** Quick piece-by-piece suit-up when the suit catches you mid-air. */
   airLatchTime: 0.8,
   /** Oxygen: % per second used on internal supply (thin air -> space), refill rate below. */
@@ -84,6 +87,9 @@ export class PlayerController {
   bodyRoll = 0;
   /** Bank about the body's long axis in flight: turning right drops the right arm. */
   bank = 0;
+  /** Sharp turn in progress (Shift+A / Shift+D). */
+  sharp: { dir: number; t: number; dur: number } | null = null;
+  private sharpCooldown = 0;
   /** Piloting the empty suit remotely (nobody inside). */
   remote = false;
   /** Extra roll from barrel rolls (radians, visual only). */
@@ -148,6 +154,7 @@ export class PlayerController {
     this.bodyPitch = this.bodyRoll = 0;
     this.rollSpin = this.rollTimer = 0;
     this.bank = 0;
+    this.sharp = null;
     this.trick = null;
     this.trickPitch = this.trickYaw = 0;
     this.yawRate = this.pitchRate = this.lookRate = 0;
@@ -243,6 +250,13 @@ export class PlayerController {
       this.bus?.emit("suitFailure", {});
     }
     return true;
+  }
+
+  /** EMP pulse from a jammer drone: knocks out suit power. */
+  emp(drain: number): void {
+    if (!this.suited) return;
+    this.suit.energy = Math.max(0, this.suit.energy - drain);
+    this.alert(`EMP hit - power drained to ${Math.round(this.suit.energy)}%`, "warn");
   }
 
   /**
@@ -344,6 +358,7 @@ export class PlayerController {
     if (this.mode === "ground") this.updateGround(dt, input);
     else if (this.mode === "hover") this.updateHover(dt, input);
     else this.updateFlight(dt, input);
+    this.updateSharpTurn(dt, input.sharpTurn);
     if (this.mode !== "flight") this.bank += (0 - this.bank) * damp(4, dt);
     this.updateRoll(dt, input);
     this.updateTricks(dt, input.trick);
@@ -565,6 +580,7 @@ export class PlayerController {
       rate = 12;
       this.trickPitch = -phi;
     }
+    if (this.sharp) rate = Math.max(rate, 7); // the flight path snaps round too
     const k = damp(rate, dt);
     this.vel.x += (dx * this.flightSpeed - this.vel.x) * k;
     this.vel.y += (dy * this.flightSpeed - this.vel.y) * k;
@@ -576,7 +592,7 @@ export class PlayerController {
     this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 6, dt);
     this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(5, dt);
     this.bodyRoll += (0 - this.bodyRoll) * damp(6, dt);
-    this.bank += (clamp(-turn * 0.95, -TUNING.maxBank, TUNING.maxBank) - this.bank) * damp(2.2, dt);
+    if (!this.sharp) this.bank += (clamp(-turn * 0.95, -TUNING.maxBank, TUNING.maxBank) - this.bank) * damp(2.2, dt);
     this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 2.5);
 
     if (input.toggleFlight || (braking && this.flightSpeed < TUNING.minFlightSpeed)) {
@@ -629,6 +645,34 @@ export class PlayerController {
       this.suit.charge(3 * this.styleCombo);
       this.bus?.emit("trick", { name: TRICKS[tr.kind].label, combo: this.styleCombo });
     }
+  }
+
+  /**
+   * Sharp turn (Shift+A / Shift+D): snap the heading ~90 degrees with a hard,
+   * past-vertical bank in flight (the flight path follows); a quick pivot in
+   * hover. Costs a little speed and power.
+   */
+  private updateSharpTurn(dt: number, req: number): void {
+    if (this.sharpCooldown > 0) this.sharpCooldown -= dt;
+    if (req !== 0 && !this.sharp && this.sharpCooldown <= 0 && this.suited && (this.mode === "flight" || this.mode === "hover") && this.suit.energy > 2 && !this.trick) {
+      const dur = this.mode === "flight" ? TUNING.sharpTurnTime : 0.35;
+      this.sharp = { dir: Math.sign(req), t: 0, dur };
+      this.sharpCooldown = dur + 0.15;
+      this.suit.drain(2);
+      if (this.mode === "flight") this.flightSpeed *= 0.9;
+      this.bus?.emit("boost", {});
+    }
+    const sh = this.sharp;
+    if (!sh) return;
+    const e0 = smooth(sh.t / sh.dur);
+    sh.t = Math.min(sh.dur, sh.t + dt);
+    const e1 = smooth(sh.t / sh.dur);
+    this.viewYaw = wrapAngle(this.viewYaw + sh.dir * TUNING.sharpTurnAngle * (e1 - e0));
+    if (this.mode === "flight") {
+      // Hard bank, slightly past vertical, faster than a normal turn.
+      this.bank += (-sh.dir * 1.75 - this.bank) * damp(9, dt);
+    } else this.bodyYaw = this.viewYaw;
+    if (sh.t >= sh.dur || this.mode === "ground") this.sharp = null;
   }
 
   /** Barrel roll / dodge: lateral burst with brief invulnerability. */
@@ -892,4 +936,9 @@ export class PlayerController {
       this.alert("Power reserves low", s.energy <= 0 ? "critical" : "warn");
     } else if (s.energy > 35) this.lowEnergyWarned = false;
   }
+}
+
+function smooth(u: number): number {
+  const x = clamp(u, 0, 1);
+  return x * x * (3 - 2 * x);
 }

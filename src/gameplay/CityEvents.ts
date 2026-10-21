@@ -36,6 +36,11 @@ const TEMPLATES: Template[] = [
   { title: "Gunship assault", detail: "Heavy VTOL gunship over the district", place: "air", squad: ["gunship", "drone", "drone"], minLevel: 1 },
   { title: "Armoured convoy", detail: "Hover tanks shelling the avenue", place: "street", squad: ["tank", "tank", "trooper", "trooper"], minLevel: 2 },
   { title: "All-out assault", detail: "Gunship, shield drone and a tank", place: "street", squad: ["gunship", "shielder", "tank", "drone", "drone", "sniper"], minLevel: 4 },
+  { title: "Interceptor squadron", detail: "Fighter jets making strafing runs", place: "air", squad: ["jet", "jet", "jet"], minLevel: 1 },
+  { title: "Hunter swarm", detail: "A cloud of tiny seekers - sweep them up", place: "air", squad: ["swarmer", "swarmer", "swarmer", "swarmer", "swarmer", "swarmer", "swarmer", "swarmer", "swarmer", "swarmer"] },
+  { title: "EMP strike", detail: "Jammer drones drain suit power - keep your distance", place: "air", squad: ["jammer", "jammer", "drone", "drone", "drone"], minLevel: 1 },
+  { title: "Air superiority", detail: "Jets escorting a gunship", place: "air", squad: ["gunship", "jet", "jet", "shielder", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
+  { title: "DREADNOUGHT INBOUND", detail: "Carrier airship launching swarmers - bring rockets", place: "air", squad: ["carrier", "jet", "jet", "jammer"], minLevel: 3 },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
   { title: "Rooftop distress beacon", detail: "Civilian signal from a rooftop", place: "roof", squad: [] },
 ];
@@ -188,7 +193,7 @@ export class CityEvents {
     for (const kind of t.squad) {
       if (AIR_KINDS.has(kind)) {
         const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(4, 16);
-        const lift = kind === "gunship" ? 35 : 18;
+        const lift = kind === "carrier" ? 75 : kind === "gunship" || kind === "jet" ? 35 : 18;
         this.enemies.spawn(kind, x + Math.cos(a) * r, Math.max(y, top + lift) + this.rng.range(-4, 6), z + Math.sin(a) * r, group);
         continue;
       }

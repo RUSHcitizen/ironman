@@ -4,10 +4,27 @@ import { nearestTarget, type CombatTarget } from "./Targets";
 import { Rng } from "../core/math";
 import { dist, len, norm, type V3 } from "./math3";
 
-export type EnemyKind = "drone" | "kamikaze" | "trooper" | "warbot" | "gunship" | "sniper" | "shielder" | "tank";
+export type EnemyKind =
+  | "drone"
+  | "kamikaze"
+  | "trooper"
+  | "warbot"
+  | "gunship"
+  | "sniper"
+  | "shielder"
+  | "tank"
+  | "jet"
+  | "swarmer"
+  | "jammer"
+  | "carrier";
 
 /** Flying kinds (spawned in the air, not on a surface). */
-export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder"]);
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier"]);
+
+/** EMP pulse radius of the jammer drone. */
+export const EMP_RADIUS = 32;
+/** The Dreadnought keeps at most this many swarmers of its own alive. */
+export const CARRIER_MAX_SWARM = 9;
 
 /** Allies within this range of a shield drone take reduced damage. */
 export const SHIELD_RADIUS = 22;
@@ -30,6 +47,10 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   sniper: { hp: 35, radius: 1.0, centerY: 1.1, range: 380, score: 250 },
   shielder: { hp: 60, radius: 1.3, centerY: 0, range: 260, score: 300 },
   tank: { hp: 280, radius: 2.9, centerY: 1.4, range: 300, score: 700 },
+  jet: { hp: 90, radius: 2.4, centerY: 0, range: 420, score: 450 },
+  swarmer: { hp: 8, radius: 0.6, centerY: 0, range: 230, score: 40 },
+  jammer: { hp: 70, radius: 1.4, centerY: 0, range: 260, score: 350 },
+  carrier: { hp: 1400, radius: 10, centerY: 0, range: 460, score: 3000 },
 };
 
 /** Placeholder target when nothing is engageable: enemies just patrol. */
@@ -95,6 +116,8 @@ export interface EnemyWeapons {
   /** Ballistic explosive shell (tank). */
   shell(from: V3, vel: V3, damage: number): void;
   shockwave(at: V3, radius: number): void;
+  /** Electromagnetic pulse: drains suit power within the radius. */
+  emp(at: V3, radius: number, drain: number, damage: number): void;
 }
 
 /**
@@ -111,6 +134,8 @@ export class EnemyManager {
   private nextId = 1;
   private rng = new Rng(777);
   weapons: EnemyWeapons | null = null;
+  /** Units spawned mid-update (carrier launches), added after the loop. */
+  private launched: Enemy[] = [];
 
   constructor(
     private world: CollisionWorld,
@@ -172,8 +197,18 @@ export class EnemyManager {
     return e;
   }
 
+  /** Spawn during update without disturbing iteration. */
+  private launch(kind: EnemyKind, x: number, y: number, z: number, group: number): Enemy {
+    const e = this.spawn(kind, x, y, z, group);
+    this.enemies.pop();
+    this.launched.push(e);
+    e.aware = true;
+    return e;
+  }
+
   clear(): void {
     this.enemies.length = 0;
+    this.launched.length = 0;
   }
 
   center(e: Enemy): V3 {
@@ -206,8 +241,8 @@ export class EnemyManager {
       e.alive = false;
       this.kills++;
       const c = this.center(e);
-      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank";
-      const size = big ? 9 : e.kind === "kamikaze" ? 5 : 3.2;
+      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet";
+      const size = e.kind === "carrier" ? 16 : big ? 9 : e.kind === "kamikaze" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : 0, true);
       this.bus?.emit("kill", { kind: e.kind, total: this.kills });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
@@ -267,9 +302,23 @@ export class EnemyManager {
         case "tank":
           this.updateTank(e, dt, p, d);
           break;
+        case "jet":
+          this.updateJet(e, dt, p, d);
+          break;
+        case "swarmer":
+          this.updateSwarmer(e, dt, p, d);
+          break;
+        case "jammer":
+          this.updateJammer(e, dt, p, d);
+          break;
+        case "carrier":
+          this.updateCarrier(e, dt, p, d);
+          break;
       }
     }
-    // Drop long-dead entries.
+    // Drop long-dead entries (and add units launched this frame).
+    for (const e of this.launched) this.enemies.push(e);
+    this.launched.length = 0;
     for (let i = this.enemies.length - 1; i >= 0; i--) if (!this.enemies[i].alive) this.enemies.splice(i, 1);
   }
 
@@ -377,7 +426,7 @@ export class EnemyManager {
     e.burstTimer = interval;
     e.burstLeft--;
     const from = this.center(e);
-    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : e.kind === "gunship" ? -1 : 0;
+    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : e.kind === "gunship" ? -1 : e.kind === "carrier" ? -5 : 0;
     this.weapons?.bolt(from, this.aimAt(from, p, speed, spread), speed, damage);
   }
 
@@ -741,6 +790,146 @@ export class EnemyManager {
       const g = 14;
       this.weapons?.shell(from, { x: (ax - from.x) / T, y: (ay - from.y + 0.5 * g * T * T) / T, z: (az - from.z) / T }, 15);
     }
+  }
+
+  /**
+   * Interceptor jet: high-speed strafing runs. It dives at you firing, blows
+   * past, extends out to a few hundred metres, then turns for another pass.
+   */
+  private updateJet(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    const speed = Math.hypot(e.vx, e.vy, e.vz);
+    if (!e.aware) {
+      e.orbit += dt * 0.25;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 120, e.anchor.y + 20, e.anchor.z + Math.sin(e.orbit) * 120, 45, dt, 1.2);
+    } else if (e.state === "retreat") {
+      // Extend away, climbing, before turning in again.
+      e.stateTimer -= dt;
+      const away = norm({ x: e.x - t.x, y: 0, z: e.z - t.z });
+      this.steerTo(e, e.x + away.x * 200 + Math.cos(e.phase) * 60, t.y + 45, e.z + away.z * 200 + Math.sin(e.phase) * 60, 95, dt, 1.4);
+      if (e.stateTimer <= 0 || d > 320) e.state = "charge";
+    } else {
+      // Attack run with a little lead.
+      e.state = "charge";
+      this.steerTo(e, t.x + p.vel.x * 0.5, t.y + p.vel.y * 0.5, t.z + p.vel.z * 0.5, 92, dt, 1.6);
+      const toT = norm({ x: t.x - e.x, y: t.y - e.y, z: t.z - e.z });
+      const facing = speed > 1 ? (e.vx * toT.x + e.vy * toT.y + e.vz * toT.z) / speed : 0;
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0 && e.los && facing > 0.8 && d < 220) {
+        e.burstLeft = 6;
+        e.fireTimer = 1.4;
+      }
+      if (d < 35) {
+        e.state = "retreat";
+        e.stateTimer = this.rng.range(2.5, 4);
+      }
+    }
+    if (speed > 2) this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 4);
+    this.burst(e, dt, p, 150, 4, 0.05, 0.018);
+    this.flyMove(e, dt, 18);
+  }
+
+  /** Hunter-killer swarmer: tiny, fast, fragile; buzzes around you in packs. */
+  private updateSwarmer(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.orbit += dt * 1.2;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 8, e.anchor.y + Math.sin(e.phase * 3), e.anchor.z + Math.sin(e.orbit) * 8, 14, dt, 3);
+      this.flyMove(e, dt, 3);
+      return;
+    }
+    e.orbit += e.strafe * dt * 1.6;
+    const r = 11 + Math.sin(e.phase * 2.3) * 4;
+    this.steerTo(e, t.x + Math.cos(e.orbit) * r, t.y + 2 + Math.sin(e.phase * 3.1) * 4, t.z + Math.sin(e.orbit) * r, 40, dt, 4);
+    this.faceTowards(e, t, dt, 10);
+    this.flyMove(e, dt, 2);
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0 && e.los && d < 90) {
+      e.fireTimer = this.rng.range(1.0, 1.7);
+      e.burstLeft = 1;
+    }
+    this.burst(e, dt, p, 90, 2, 0.1, 0.04);
+  }
+
+  /** EMP jammer: closes in, charges, and pulses - draining your suit's power. */
+  private updateJammer(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      this.steerTo(e, e.anchor.x, e.anchor.y + Math.sin(e.phase) * 2, e.anchor.z, 8, dt);
+      this.flyMove(e, dt, 5);
+      e.charge = 0;
+      return;
+    }
+    this.faceTowards(e, t, dt, 4);
+    if (e.state === "charge") {
+      // Hold position while the pulse builds (glows brighter).
+      e.stateTimer -= dt;
+      e.charge = 1 - e.stateTimer / 1.4;
+      this.steerTo(e, e.x, e.y, e.z, 0, dt, 3);
+      this.flyMove(e, dt, 5);
+      if (e.stateTimer <= 0) {
+        e.charge = 0;
+        e.state = "engage";
+        e.fireTimer = this.rng.range(5, 7);
+        this.weapons?.emp(this.center(e), EMP_RADIUS, 28, 4);
+      }
+      return;
+    }
+    e.orbit += e.strafe * dt * 0.7;
+    this.steerTo(e, t.x + Math.cos(e.orbit) * 20, t.y + 4, t.z + Math.sin(e.orbit) * 20, 30, dt, 2);
+    this.flyMove(e, dt, 5);
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0 && d < EMP_RADIUS * 0.9) {
+      e.state = "charge";
+      e.stateTimer = 1.4;
+    }
+  }
+
+  /**
+   * Dreadnought carrier (boss): a slow armoured airship that circles high
+   * above, launches swarmers, fires missile salvos and flak.
+   */
+  private updateCarrier(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.orbit += dt * 0.05;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 60, e.anchor.y, e.anchor.z + Math.sin(e.orbit) * 60, 6, dt, 0.5);
+    } else {
+      e.orbit += e.strafe * dt * 0.06;
+      this.steerTo(e, t.x + Math.cos(e.orbit) * 120, Math.max(t.y + 55, e.anchor.y), t.z + Math.sin(e.orbit) * 120, 12, dt, 0.5);
+    }
+    this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 0.5);
+    this.flyMove(e, dt, 40);
+    if (!e.aware) return;
+    // Launch bay: swarmers drop out of the belly.
+    e.moveTimer -= dt;
+    if (e.moveTimer <= 0) {
+      e.moveTimer = this.rng.range(8, 11);
+      let mine = 0;
+      // Launched swarmers get their own (negative) group so they don't count
+      // toward the incident the carrier belongs to.
+      for (const o of this.enemies) if (o.alive && o.kind === "swarmer" && o.group === -e.id) mine++;
+      for (let k = 0; k < 3 && mine < CARRIER_MAX_SWARM; k++, mine++) {
+        const s = this.launch("swarmer", e.x + this.rng.range(-4, 4), e.y - 4, e.z + this.rng.range(-4, 4), -e.id);
+        s.vy = -10;
+      }
+    }
+    // Missile salvo from the flanks.
+    e.missileTimer -= dt;
+    if (e.missileTimer <= 0 && e.los) {
+      e.missileTimer = this.rng.range(6, 8);
+      for (const side of [-1, 1, -1, 1]) {
+        const from = { x: e.x + Math.cos(e.yaw) * side * 8, y: e.y + 1, z: e.z - Math.sin(e.yaw) * side * 8 };
+        this.weapons?.missile(from, norm({ x: (t.x - from.x) * 0.4, y: 1, z: (t.z - from.z) * 0.4 }), 12);
+      }
+    }
+    // Flak turrets.
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0 && e.los && d < 300) {
+      e.burstLeft = 5;
+      e.fireTimer = this.rng.range(1.8, 2.6);
+    }
+    this.burst(e, dt, p, 110, 3, 0.12, 0.06);
   }
 
   private toWalk(e: Enemy): void {

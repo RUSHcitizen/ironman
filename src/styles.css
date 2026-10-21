@@ -276,6 +276,10 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
   transition: opacity 0.6s;
 }
 .overlay[hidden] { display: none; }
+/* Nothing in an overlay may be wider than the screen: on iPhone, overflowing
+   content widens the layout viewport, which then breaks rotating to landscape. */
+.overlay { overflow-x: hidden; }
+.overlay > * { min-width: 0; max-width: 100%; }
 .overlay.out { opacity: 0; pointer-events: none; }
 .l-panel { width: min(460px, 100%); text-align: center; display: grid; gap: 14px; justify-items: center; }
 .l-panel h1 { margin: 0; font-weight: 200; font-size: clamp(28px, 6vw, 50px); letter-spacing: 0.3em; padding-left: 0.3em; white-space: nowrap; color: #fff; text-shadow: 0 0 20px rgba(107, 233, 255, 0.5); }
@@ -300,7 +304,8 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
 .e-help { text-align: left; font-size: 13px; opacity: 0.8; margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .r-phone { width: 44px; height: 74px; border: 3px solid var(--cyan); border-radius: 8px; animation: rot 2s ease-in-out infinite; }
 @keyframes rot { 50%, 100% { transform: rotate(-90deg); } }
-#rotate { z-index: 20; }
+/* Opaque, so the loading screen doesn't bleed through the rotate hint. */
+#rotate { z-index: 20; background: #050a14; }
 #loading { background: radial-gradient(ellipse at 50% 40%, rgba(20, 40, 70, 0.35), rgba(3, 7, 14, 0.78)); }
 /* Short landscape screens (phones with browser bars): keep Engage reachable. */
 .overlay { overflow-y: auto; }
@@ -432,3 +437,9 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 #touch:not(.civ) .t-sentry span { font-size: 18px; }
 #touch:not(.civ) .t-sentry small { font-size: 8px; letter-spacing: 0.05em; }
 #hud.remote .h-mode b::before { content: "SENTRY · "; color: #ffd36b; }
+
+/* Narrow portrait phones: let titles wrap and tighten the letter spacing. */
+@media (max-width: 480px) {
+  .l-panel h1 { white-space: normal; letter-spacing: 0.15em; padding-left: 0.15em; font-size: clamp(22px, 8vw, 34px); overflow-wrap: anywhere; }
+  #rotate .l-panel h1 { letter-spacing: 0.06em; padding-left: 0; }
+}

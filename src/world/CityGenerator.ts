@@ -119,6 +119,9 @@ const LANDMARK_AREAS: [number, number, string][] = [
   [260, -1500, "Financial Spire"],
   [-600, 700, "Northpark"],
   [-1300, 2200, "Harbor Heights"],
+  [2900, -2700, "Southpoint"],
+  [-2900, -2900, "Ironworks"],
+  [3000, 2800, "Eastbridge"],
 ];
 
 /** District name for a chunk. */
@@ -144,8 +147,11 @@ export function skylineFactor(x: number, z: number): number {
   const east = (1 - Math.hypot(x - 1500, z - 1300) / 480) * 0.9;
   const west = (1 - Math.hypot(x + 1700, z + 500) / 420) * 0.8;
   const north = (1 - Math.hypot(x + 1300, z - 2200) / 500) * 0.95;
+  const south = (1 - Math.hypot(x - 2900, z + 2700) / 520) * 1.05;
+  const ironworks = (1 - Math.hypot(x + 2900, z + 2900) / 380) * 0.7;
+  const eastbridge = (1 - Math.hypot(x - 3000, z - 2800) / 450) * 0.9;
   // Everywhere else is still a dense low/mid-rise city, never empty.
-  return clamp(Math.max(midtown, downtown, east, west, north, 0.08), 0, 1.15);
+  return clamp(Math.max(midtown, downtown, east, west, north, south, ironworks, eastbridge, 0.08), 0, 1.15);
 }
 
 export function blockKind(i: number, j: number): BlockKind {

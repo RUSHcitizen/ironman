@@ -138,7 +138,7 @@ export class Game {
     this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
-    await progress(0.15, "Surveying 33 km² of city");
+    await progress(0.15, "Surveying 59 km² of city");
     this.chunks.registerWorld();
     await progress(0.3, "Constructing nearby districts");
     this.chunks.loadAround(SPAWN.x, SPAWN.z, this.settings.preset.viewDistance);
@@ -200,7 +200,12 @@ export class Game {
     await progress(1, "Systems online");
 
     window.addEventListener("resize", () => this.resize());
-    window.addEventListener("orientationchange", () => setTimeout(() => this.resize(), 250));
+    // Phones report the rotated size late: resize again once it has settled.
+    const settle = () => {
+      for (const ms of [100, 300, 700]) setTimeout(() => this.resize(), ms);
+    };
+    window.addEventListener("orientationchange", settle);
+    screen.orientation?.addEventListener?.("change", settle);
     window.visualViewport?.addEventListener("resize", () => this.resize());
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && this.started) this.setPaused(true);

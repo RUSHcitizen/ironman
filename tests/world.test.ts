@@ -71,8 +71,8 @@ describe("CollisionWorld", () => {
     expect(w.terrainHeight(-1000, -1000)).toBe(SIDEWALK_HEIGHT);
   });
 
-  it("covers a much bigger city (3.2 km square)", () => {
-    expect(DISTRICT_MAX - DISTRICT_MIN).toBeGreaterThanOrEqual(3200);
+  it("covers a much bigger city (7.68 km square, 59 km²)", () => {
+    expect(DISTRICT_MAX - DISTRICT_MIN).toBeGreaterThanOrEqual(7680);
   });
 
   it("detects overlaps", () => {

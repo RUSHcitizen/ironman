@@ -201,6 +201,76 @@ export class EnemyRenderer {
       8,
     );
 
+    // Interceptor jet: swept delta wing, twin tails, glowing engines.
+    const jetHull: RGB = [0.2, 0.21, 0.24];
+    make(
+      "jet",
+      g.merge("jetBody", [
+        g.box(1.3, 0.9, 7.5, jetHull, 0, 0, 0),
+        g.cyl(0, 0.62, 2.2, DARK, 0, 0.05, 4.8, 10, Math.PI / 2),
+        g.box(1.0, 0.5, 1.6, DARK, 0, 0.6, 1.8),
+        g.box(4.2, 0.14, 2.6, jetHull, -2.4, -0.1, -1.0, 0.45),
+        g.box(4.2, 0.14, 2.6, jetHull, 2.4, -0.1, -1.0, -0.45),
+        g.box(0.14, 1.5, 1.4, jetHull, -0.6, 1.0, -3.2),
+        g.box(0.14, 1.5, 1.4, jetHull, 0.6, 1.0, -3.2),
+        g.box(0.5, 0.3, 1.4, RED, -1.6, -0.35, 0.2),
+        g.box(0.5, 0.3, 1.4, RED, 1.6, -0.35, 0.2),
+      ]),
+      g.merge("jetGlow", [g.cyl(0.42, 0.42, 0.06, W1, -0.35, 0, -3.78, 10, Math.PI / 2), g.cyl(0.42, 0.42, 0.06, W1, 0.35, 0, -3.78, 10, Math.PI / 2), g.box(0.7, 0.2, 0.05, W1, 0, 0.62, 2.62)]),
+      8,
+    );
+    // Swarmer: a tiny spiked seeker.
+    make(
+      "swarmer",
+      g.merge("swarmBody", [g.ico(0.38, GUN, 0, 0, 0), g.box(1.2, 0.05, 0.12, DARK, 0, 0, 0, Math.PI / 4), g.box(1.2, 0.05, 0.12, DARK, 0, 0, 0, -Math.PI / 4), g.cyl(0, 0.1, 0.5, DARK, 0, 0, 0.45, 6, Math.PI / 2)]),
+      g.merge("swarmGlow", [g.sphere(0.16, W1, 0, 0, 0.3, 4)]),
+      48,
+    );
+    // EMP jammer: a coil drone with crackling emitter prongs.
+    make(
+      "jammer",
+      g.merge("jammerBody", [
+        g.cyl(0.7, 0.9, 1.1, GUN, 0, 0, 0, 12),
+        g.cyl(1.4, 1.4, 0.12, DARK, 0, 0.35, 0, 16),
+        g.cyl(1.4, 1.4, 0.12, DARK, 0, -0.35, 0, 16),
+        g.cyl(0.06, 0.06, 1.6, DARK, 0.9, 0, 0, 6),
+        g.cyl(0.06, 0.06, 1.6, DARK, -0.9, 0, 0, 6),
+        g.cyl(0.06, 0.06, 1.6, DARK, 0, 0, 0.9, 6),
+        g.cyl(0.06, 0.06, 1.6, DARK, 0, 0, -0.9, 6),
+      ]),
+      g.merge("jammerGlow", [g.cyl(1.1, 1.1, 0.14, W1, 0, 0, 0, 16), g.sphere(0.12, W1, 0.9, 0.85, 0, 4), g.sphere(0.12, W1, -0.9, 0.85, 0, 4), g.sphere(0.12, W1, 0, 0.85, 0.9, 4), g.sphere(0.12, W1, 0, 0.85, -0.9, 4)]),
+      12,
+    );
+    // Dreadnought carrier: a huge armoured airship with a launch bay and rotors.
+    const armour: RGB = [0.26, 0.27, 0.3];
+    make(
+      "carrier",
+      g.merge("carrierBody", [
+        g.sphere(5.5, armour, 0, 0, 0, 14, 1.0, 0.75, 3.6),
+        g.box(7.0, 2.2, 14.0, DARK, 0, -3.4, 0),
+        g.box(3.0, 3.0, 6.0, armour, 0, 4.2, 6),
+        g.box(1.2, 4.5, 4.0, armour, 0, 4.0, -16),
+        g.box(26, 0.6, 5.0, DARK, 0, 0.6, 4),
+        g.cyl(3.4, 3.4, 1.2, armour, -13, 0.9, 4, 18),
+        g.cyl(3.4, 3.4, 1.2, armour, 13, 0.9, 4, 18),
+        g.cyl(3.4, 3.4, 1.2, armour, -9, 0.9, -11, 18),
+        g.cyl(3.4, 3.4, 1.2, armour, 9, 0.9, -11, 18),
+        g.box(14, 0.5, 3.5, DARK, 0, 0.6, -11),
+        g.box(1.6, 1.6, 4.0, RED, -6.2, -1.2, 10),
+        g.box(1.6, 1.6, 4.0, RED, 6.2, -1.2, 10),
+        g.box(1.4, 1.4, 3.0, RED, 0, -4.8, 8),
+      ]),
+      g.merge("carrierGlow", [
+        g.box(5.0, 0.2, 9.0, W1, 0, -4.55, -1),
+        g.box(2.2, 0.5, 0.1, W1, 0, 4.6, 9.05),
+        g.cyl(2.9, 2.9, 0.1, W1, -13, 0.25, 4, 18),
+        g.cyl(2.9, 2.9, 0.1, W1, 13, 0.25, 4, 18),
+        g.cyl(2.9, 2.9, 0.1, W1, -9, 0.25, -11, 18),
+        g.cyl(2.9, 2.9, 0.1, W1, 9, 0.25, -11, 18),
+      ]),
+      2,
+    );
+
     // Shield bubble (one per shield drone), faint additive purple.
     this.bubble = CreateSphere("shieldBubble", { diameter: 2, segments: 16 }, scene);
     this.bubble.material = mats.additive("shieldMat", Color3.White(), 1);
@@ -272,6 +342,19 @@ export class EnemyRenderer {
       y += Math.sin(e.phase * 2) * 0.3;
     } else if (e.kind === "tank") {
       y += 0.4 + Math.sin(e.phase * 2) * 0.08; // hovering hull
+    } else if (e.kind === "jet") {
+      // Nose follows the flight path; bank hard into turns.
+      const sp = Math.hypot(e.vx, e.vy, e.vz) || 1;
+      pitch = -Math.asin(Math.max(-1, Math.min(1, e.vy / sp)));
+      const side = e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw);
+      roll = Math.max(-1.3, Math.min(1.3, -side * 0.04));
+    } else if (e.kind === "swarmer") {
+      roll = e.phase * 9;
+    } else if (e.kind === "jammer") {
+      y += Math.sin(e.phase * 2.5) * 0.25;
+    } else if (e.kind === "carrier") {
+      pitch = Math.sin(e.phase * 0.3) * 0.03;
+      roll = Math.sin(e.phase * 0.23) * 0.04;
     }
     Quaternion.RotationYawPitchRollToRef(e.yaw, pitch, roll, this.q);
     this.s.set(1, 1, 1);
@@ -296,9 +379,19 @@ export class EnemyRenderer {
       gr = 0.7;
       gg = 0.3;
       gb = 1.2;
-    } else if (e.kind === "gunship") {
+    } else if (e.kind === "gunship" || e.kind === "jet" || e.kind === "carrier") {
       gr = 1.2;
-      gg = 0.25;
+      gg = e.kind === "jet" ? 0.5 : 0.25;
+      gb = 0.1;
+    } else if (e.kind === "jammer") {
+      // Builds from dim blue to a blinding pulse.
+      const c = 0.4 + e.charge * 1.6 + (e.charge > 0 ? Math.sin(e.phase * 40) * 0.2 : 0);
+      gr = 0.3 * c;
+      gg = 0.7 * c;
+      gb = 1.3 * c;
+    } else if (e.kind === "swarmer") {
+      gr = 1.3;
+      gg = 0.9;
       gb = 0.1;
     } else if (e.kind === "warbot" || e.kind === "tank" || e.kind === "sniper") {
       const c = 0.5 + e.charge * 1.5;

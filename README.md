@@ -21,6 +21,27 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 7 – more enemies, a 59 km² city, faster rescues, sharp turns, phone rotation fix
+
+- **Four new enemy types:**
+  - **Interceptor jet:** makes strafing runs at about 330 km/h, firing as it closes. It blows past you, extends a few hundred metres, then turns in for another pass.
+  - **Swarmer:** a tiny, fast seeker that comes in packs. It buzzes around you in tight circles and pecks at you, and pops in one hit.
+  - **EMP jammer:** closes to about 20 m, then charges with a growing blue glow and pulses. The pulse drains about 28% of your suit power within 32 m, so break away when it lights up.
+  - **Dreadnought carrier (boss):** a huge armoured airship that circles high above. It launches swarmers from its belly (up to 9 at a time), fires 4-missile salvos and flak. It has 1,400 HP, so bring rockets.
+  - New incidents: interceptor squadron, hunter swarm, EMP strike, air superiority (jets escorting a gunship), and **DREADNOUGHT INBOUND**.
+- **A bigger map:** 24 × 24 chunks, about **7.7 km × 7.7 km (59 km²)**, with 144 districts and three new skyscraper clusters (Southpoint, Ironworks, Eastbridge).
+- **The suit catches you when you fall.**
+  - Before, the called suit aimed for a speed based only on how far away you were, so it settled about 40 m behind someone falling at full speed and never closed the gap.
+  - Now it matches your fall speed and closes in on top of that, diving at up to 260 m/s (faster if you're falling faster) with an instant launch. Mid-air it latches on within 10 m.
+  - In simulation it catches you within about 0.6–1.7 s of calling, even after a 12-second fall from space.
+- **Sharp turns: `Shift`+`A` / `Shift`+`D`.**
+  - In flight: snap the heading about 90° in 0.6 s with a hard bank just past vertical; the flight path really follows. It costs a little speed and power.
+  - In hover: a quick 90° pivot.
+  - `Shift` on its own still toggles flight, but now on release, and only if you didn't use it for a sharp turn. Keyboard only for now.
+- **Phone rotation fix.**
+  - In portrait on small phones, the "Rotate your device" and title text was wider than the screen (414 px on a 320 px iPhone SE). On iPhone, content wider than the screen widens Safari's page layout, which then breaks rotating to landscape.
+  - Titles now wrap and fit, the rotate screen is opaque, and the orientation check and canvas resize run again a moment after rotating (phones report the new size late).
+
 ## Milestone 6 – banked turns, mid-air eject, piloted sentry
 
 - **Banked turns, like the films.**
@@ -146,7 +167,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Move / strafe | `W A S D` / arrows | Left-thumb stick |
 | Take off / ascend (climb in flight) | `Space` | ▲ |
 | Descend (dive in flight) | `C` or `Ctrl` | ▼ |
-| Toggle flight / hover | `Shift` or `F` | FLY |
+| Toggle flight / hover | Tap `Shift` (on release), or `F` | FLY |
 | Afterburner / brake (in flight) | `W` / `S` | Stick up / down |
 | Barrel roll / dodge | `Q` / `E`, or double-tap `A` / `D` | Double-tap the right side |
 | Tricks: flip or loop / backflip / spin or corkscrew | `T` / `B` / `Y` | TRICK (flip in hover, loop in flight) |
@@ -156,6 +177,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Step out (landed) / eject (in the air) / call the suit back / recall a piloted suit | `G` | SUIT OFF · EJECT · CALL SUIT · RECALL |
 | Sentry: pilot the empty suit / back to your body (suit guards you) | `V` | SENTRY · BODY |
 | Bank and turn in flight | `A` / `D` (or mouse) | Stick left / right |
+| Sharp 90° turn (flight / hover) | `Shift`+`A` / `Shift`+`D` | — |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -251,7 +273,7 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **50 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **55 unit tests** pass, covering:
   - City generation and collision.
   - Flight physics:
     - Civilian movement.
@@ -264,15 +286,17 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
     - **Tank shells arc and hurt.**
     - **Gunships circle-strafe at range.**
   - The autonomous suit (call, dock, sentry, offline).
+  - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **18 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **20 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Phone rotation: nothing overflows the screen in portrait, and rotating to landscape clears the rotate hint and keeps Engage on screen.**
   - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**
   - **Space (oxygen drain, black sky), cutting thrust with `H`, and a fatal fall that returns you to Avengers Tower.**
   - Hover flip and flight loop in the real game.
   - Mouse drag-look, the flight sequence, and weapons.
   - Suit off/on and the full step-out → sentry → call → dock flow (now with the piece-by-piece latch).
   - The touch layout and the WebGL error screen.
-- The 33 km² city loads in about 2.5 s here (layout data and about 50k colliders up front; meshes stream in around the camera).
+- The 59 km² city loads in about 1.7–4.6 s here (layout data and about 102k colliders up front, which take about 0.25 s to generate; meshes stream in around the camera).
 
 **Not yet tested:**
 - **Real iPhone Safari**, a real Chromebook, or any physical GPU.

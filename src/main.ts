@@ -25,15 +25,24 @@ function setupRotateHint(isMobile: boolean): void {
   if (!isMobile) return;
   const el = $("rotate");
   let dismissed = false;
+  const landscape = matchMedia("(orientation: landscape)");
   const check = () => {
-    el.hidden = dismissed || window.innerWidth >= window.innerHeight;
+    el.hidden = dismissed || landscape.matches || window.innerWidth >= window.innerHeight;
+  };
+  // Phones report the new size a little after rotating, so check again later.
+  const recheck = () => {
+    check();
+    for (const ms of [100, 300, 700]) setTimeout(check, ms);
   };
   $("r-continue").addEventListener("click", () => {
     dismissed = true;
     check();
   });
   window.addEventListener("resize", check);
-  window.addEventListener("orientationchange", () => setTimeout(check, 200));
+  window.addEventListener("orientationchange", recheck);
+  landscape.addEventListener?.("change", recheck);
+  screen.orientation?.addEventListener?.("change", recheck);
+  window.visualViewport?.addEventListener("resize", check);
   check();
 }
 

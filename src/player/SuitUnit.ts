@@ -15,6 +15,8 @@ export type SuitUnitState = "worn" | "parked" | "sentry" | "inbound" | "remote";
 
 const SENTRY_RANGE = 200;
 const INBOUND_SPEED = 80;
+/** Catching a falling person: a full-power dive. */
+const RESCUE_SPEED = 260;
 /** The suit breaks apart and its pieces fly the last few metres onto the player. */
 const DOCK_DISTANCE = 7;
 
@@ -78,6 +80,10 @@ export class SuitUnit implements CombatTarget, AvatarState {
 
   get evading(): boolean {
     return this.rollTimer > 0;
+  }
+
+  emp(drain: number): void {
+    this.suit.energy = Math.max(0, this.suit.energy - drain);
   }
 
   takeHit(damage: number): boolean {
@@ -303,27 +309,50 @@ export class SuitUnit implements CombatTarget, AvatarState {
 
   private updateInbound(dt: number, p: PlayerController): boolean {
     this.inboundTime += dt;
-    // Lead a falling / moving person so the suit can catch them mid-air.
-    const lead = Math.min(0.6, dist(this.pos, p.pos) / 150);
+    // Falling person: full-power rescue dive straight at where they will be.
+    const rescue = !p.grounded && p.vel.y < -4;
+    const lead = rescue ? Math.min(1.2, dist(this.pos, p.pos) / RESCUE_SPEED + 0.1) : Math.min(0.6, dist(this.pos, p.pos) / 150);
     const goal = { x: p.pos.x + p.vel.x * lead, y: p.pos.y + p.vel.y * lead, z: p.pos.z + p.vel.z * lead };
     const flat = Math.hypot(goal.x - this.pos.x, goal.z - this.pos.z);
     let tx = goal.x, ty = goal.y, tz = goal.z;
-    if (flat > 45) {
+    if (flat > 45 && !rescue) {
       // Cruise above the rooftops along the way.
       const ahead = Math.min(flat, 60) / flat;
       const sx = this.pos.x + (goal.x - this.pos.x) * ahead, sz = this.pos.z + (goal.z - this.pos.z) * ahead;
       ty = Math.max(goal.y + 15, this.world.surfaceBelow(sx, 1000, sz, 3, 0) + 18, this.world.surfaceBelow(this.pos.x, 1000, this.pos.z, 3, 0) + 12);
     }
     const d = dist(this.pos, goal);
-    const speed = Math.min(p.grounded ? INBOUND_SPEED : INBOUND_SPEED * 1.75, 6 + d * 1.6 + Math.max(0, -p.vel.y));
-    this.steer(tx, ty, tz, speed, dt, flat > 45 ? 3 : 6);
-    this.fly(dt, flat > 45 ? 4 : 0);
+    const fall = Math.max(0, -p.vel.y);
+    const speed = rescue ? Math.max(RESCUE_SPEED, fall * 2.5) : Math.min(INBOUND_SPEED, 6 + d * 1.6);
+    if (rescue && this.inboundTime < 0.1) {
+      // Instant kick: no slow spool-up when it's an emergency.
+      const k = norm({ x: tx - this.pos.x, y: ty - this.pos.y, z: tz - this.pos.z });
+      this.vel.x = k.x * speed * 0.6;
+      this.vel.y = k.y * speed * 0.6;
+      this.vel.z = k.z * speed * 0.6;
+    }
+    if (rescue) {
+      // Match the person's fall, then close the gap on top of it - a plain
+      // seek would settle behind someone falling at terminal velocity.
+      let dx = p.vel.x + (tx - this.pos.x) * 3, dy = p.vel.y + (ty - this.pos.y) * 3, dz = p.vel.z + (tz - this.pos.z) * 3;
+      const l = Math.hypot(dx, dy, dz);
+      if (l > speed) {
+        dx *= speed / l;
+        dy *= speed / l;
+        dz *= speed / l;
+      }
+      const k = damp(9, dt);
+      this.vel.x += (dx - this.vel.x) * k;
+      this.vel.y += (dy - this.vel.y) * k;
+      this.vel.z += (dz - this.vel.z) * k;
+    } else this.steer(tx, ty, tz, speed, dt, flat > 45 ? 3 : 6);
+    this.fly(dt, rescue ? 0 : flat > 45 ? 4 : 0);
     if (Math.hypot(this.vel.x, this.vel.z) > 3) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 6, dt);
     this.viewPitch = 0;
     // Dock when close (or give up on a stuck path after a while).
     // Dock when close - also when a wall right next to the player is in the way.
     const dp = dist(this.pos, p.pos);
-    if ((dp < DOCK_DISTANCE && !p.grounded) || (d < DOCK_DISTANCE && Math.abs(this.pos.y - goal.y) < 5) || (this.blocked && flat < 8 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
+    if ((dp < DOCK_DISTANCE + 3 && !p.grounded) || (d < DOCK_DISTANCE && Math.abs(this.pos.y - goal.y) < 5) || (this.blocked && flat < 8 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
       this.state = "worn";
       this.vel.x = this.vel.y = this.vel.z = 0;
       return true;

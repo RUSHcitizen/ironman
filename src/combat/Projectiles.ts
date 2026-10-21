@@ -161,6 +161,16 @@ export class ProjectileSystem implements EnemyWeapons {
     this.bus?.emit("explosion", { ...at, size: radius * 0.6 });
   }
 
+  emp(at: V3, radius: number, drain: number, damage: number): void {
+    this.fx.push({ kind: "shock", ...at, size: radius, t: 0, life: 0.5, yaw: 0, pitch: 0 });
+    this.fx.push({ kind: "spark", ...at, size: 6, t: 0, life: 0.25, yaw: 0, pitch: 0 });
+    this.bus?.emit("weapon", { kind: "laser", ...at });
+    for (const t of this.targets) {
+      if (!t.targetable || dist(at, t.center) > radius) continue;
+      if (t.takeHit(damage)) t.emp?.(drain);
+    }
+  }
+
   sonicBoom(at: V3, yaw: number, pitch: number): void {
     this.fx.push({ kind: "sonic", ...at, size: 14, t: 0, life: 0.7, yaw, pitch });
   }
