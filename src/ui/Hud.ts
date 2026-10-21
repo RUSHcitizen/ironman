@@ -110,6 +110,7 @@ export class Hud {
           <b class="v-oxy-t">100%</b>
         </div>
       </div>
+      <div class="h-boss"><small class="v-boss-n"></small><div class="b-bar"><i class="v-boss"></i><u class="v-boss-lag"></u></div></div>
       <div class="h-radar"><canvas width="220" height="220"></canvas></div>
       <div class="h-targets"></div>
       <div class="h-dmg"></div>
@@ -201,6 +202,27 @@ export class Hud {
       el.classList.add("pulse");
     }
     this.q(".v-xp").style.transform = `scaleX(${Math.max(0, Math.min(1, progress))})`;
+  }
+
+  private bossLag = 1;
+  private bossName = "";
+  /** Boss health bar (null hides it). The pale "lag" bar trails damage. */
+  setBoss(name: string | null, hp: number, dt: number): void {
+    const el = this.q(".h-boss");
+    if (name === null) {
+      el.classList.remove("on");
+      this.bossName = "";
+      return;
+    }
+    if (name !== this.bossName) {
+      this.bossName = name;
+      this.bossLag = hp;
+      this.q(".v-boss-n").textContent = name;
+    }
+    el.classList.add("on");
+    this.bossLag = Math.max(hp, this.bossLag - dt * 0.35);
+    this.q(".v-boss").style.transform = `scaleX(${hp})`;
+    this.q(".v-boss-lag").style.transform = `scaleX(${this.bossLag})`;
   }
 
   /** Unibeam / flare readiness (seconds of cooldown left, charging flag). */

@@ -305,6 +305,12 @@ export class Game {
       this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${score}`);
       this.progress.add(score);
     });
+    bus.on("rescue", (e) => {
+      if (e.saved) {
+        this.hud.popup("CIVILIAN SAVED · +600");
+        this.progress.add(600);
+      }
+    });
     bus.on("rankUp", (e) => {
       this.hud.popup(`RANK UP · ${e.name}`);
       this.cam.addKick(0.12);
@@ -319,6 +325,7 @@ export class Game {
     });
     bus.on("playerDied", (e) => {
       const fast = Math.round(e.speed * 3.6);
+      this.hud.setVisible(true);
       this.hud.showDeath(e.cause === "water" ? "IMPACT · WATER" : "FATAL FALL", `Hit at ${fast} km/h · F.R.I.D.A.Y. is bringing you back to Avengers Tower`);
       this.cam.addShake(1.2);
       this.bus.emit("impact", { speed: e.speed });
@@ -477,7 +484,7 @@ export class Game {
     this.started = true;
     this.audio.unlock();
     this.audio.setVolume(this.settings.data.volume);
-    this.hud.setVisible(true);
+    this.hud.setVisible(this.settings.data.hud);
     this.input.touch.setVisible(!this.input.mouseMode);
     this.avatar.playSuitUp();
     this.setPaused(false);
@@ -534,6 +541,7 @@ export class Game {
     }
     this.failTimer = 0;
     this.hud.showDeath(null);
+    if (this.started) this.hud.setVisible(this.settings.data.hud);
     this.teleport(SPAWN.x, SPAWN.y, SPAWN.z, SPAWN.yaw);
     this.bus.emit("alert", { text: "Returned to Avengers Tower landing pad", level: "info" });
   }
@@ -580,6 +588,10 @@ export class Game {
     this.clouds.setCount(q.clouds);
     this.contrails.enabled = q.contrails;
     this.setBloom(q.bloom);
+    this.avatar.setScheme(s.suit);
+    this.suitAvatar.setScheme(s.suit);
+    if (this.env.time !== s.timeOfDay) this.env.setTimeOfDay(s.timeOfDay);
+    if (this.started) this.hud.setVisible(s.hud);
     this.hud.setShowFps(s.showFps);
     this.audio.setVolume(s.volume);
     this.visTimer = 0;
@@ -659,6 +671,11 @@ export class Game {
     if (input.menu) {
       this.setPaused(!this.paused);
       return;
+    }
+    if (input.cinematic) {
+      const on = !this.settings.data.hud;
+      this.settings.update({ hud: on });
+      if (on) this.bus.emit("alert", { text: "HUD on", level: "info", ttl: 1.5 });
     }
     const p = this.player;
     if (p.dead) input.fire = input.rockets = input.toggleSuit = input.sentry = false;
@@ -750,6 +767,7 @@ export class Game {
     this.input.touch.setCharging(this.combat.beamCharge >= 0);
     this.updateThrusterWash(dt);
     this.updateRadar(dt);
+    this.updateBossBar(dt);
     const rank = this.progress.rank;
     const lo = rankLow(rank.index);
     this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
@@ -757,6 +775,19 @@ export class Game {
     this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
     this.audio.update(p);
     this.autoQuality(dt);
+  }
+
+  /** The toughest engaged heavy unit nearby gets a boss bar. */
+  private updateBossBar(dt: number): void {
+    const names: Partial<Record<EnemyKind, string>> = { carrier: "DREADNOUGHT CARRIER", warbot: "WARBOT", gunship: "GUNSHIP", tank: "HOVER TANK" };
+    let best: (typeof this.enemies.enemies)[number] | null = null;
+    const p = this.player.pos;
+    for (const e of this.enemies.enemies) {
+      if (!e.alive || !names[e.kind] || !e.aware) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) > 600) continue;
+      if (!best || e.maxHp > best.maxHp) best = e;
+    }
+    this.hud.setBoss(best ? names[best.kind]! : null, best ? Math.max(0, best.hp / best.maxHp) : 0, dt);
   }
 
   private radarBlips: RadarBlip[] = [];
@@ -890,6 +921,10 @@ export class Game {
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
+      rescue: this.events.rescue,
+      saved: this.events.saved,
+      timeOfDay: this.env.time,
+      hudShown: this.settings.data.hud,
       remote: this.remote,
       bank: p.bank,
       grounded: p.grounded,

@@ -34,6 +34,11 @@ export interface SettingsData {
   invertY: boolean;
   volume: number; // 0..1
   showFps: boolean;
+  /** Armour colour scheme. */
+  suit: "classic" | "silver" | "warmachine" | "stealth" | "midas";
+  timeOfDay: "sunset" | "day" | "night";
+  /** Show the helmet HUD (off = cinematic). */
+  hud: boolean;
 }
 
 const KEY = "ironman.settings.v1";
@@ -47,6 +52,9 @@ export function defaultSettings(isMobile: boolean): SettingsData {
     invertY: false,
     volume: 0.6,
     showFps: false,
+    suit: "classic",
+    timeOfDay: "sunset",
+    hud: true,
   };
 }
 

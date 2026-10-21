@@ -18,8 +18,17 @@
 @media (max-height: 560px), (max-width: 760px) {
   :root { --s: 0.78; }
 }
+@container (max-height: 560px) {
+  #ui, .overlay { --s: 0.78; }
+}
+@container (max-width: 760px) {
+  #ui, .overlay { --s: 0.78; }
+}
 @media (max-height: 420px) {
   :root { --s: 0.66; }
+}
+@container (max-height: 420px) {
+  #ui, .overlay { --s: 0.66; }
 }
 
 * { box-sizing: border-box; }
@@ -36,13 +45,18 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
-body { position: fixed; inset: 0; }
+body { position: fixed; inset: 0; container-type: size; }
+/*
+ * Phone held upright: draw the whole game sideways (landscape), so turning
+ * the phone works even with the system rotation lock on. The rotated body is
+ * the containing block and size container for everything inside it.
+ */
+body.rot { inset: auto; top: 0; left: 0; width: var(--rot-w, 100vh); height: var(--rot-h, 100vw); transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
 #game {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  width: 100%;
+  height: 100%;
   display: block;
   outline: none;
   touch-action: none;
@@ -67,7 +81,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .h-top {
   position: absolute; top: calc(10px + var(--st)); left: 50%; transform: translateX(-50%);
-  width: min(46vw, 520px); display: flex; flex-direction: column; align-items: center;
+  width: min(46vw, 520px); width: min(46cqw, 520px); display: flex; flex-direction: column; align-items: center;
 }
 .h-compass {
   position: relative; width: 100%; height: calc(30px * var(--s)); overflow: hidden;
@@ -117,8 +131,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .h-gauge b { font-size: calc(30px * var(--s)); color: #fff; font-weight: 600; line-height: 1; }
 .h-gauge > span { font-size: calc(10px * var(--s)); opacity: 0.7; }
 .h-gauge em { font-style: normal; font-size: calc(10px * var(--s)); opacity: 0.8; white-space: nowrap; }
-.h-left { left: calc(4vw + var(--sl)); border-left: 2px solid var(--cyan-2); }
-.h-right { right: calc(4vw + var(--sr)); border-right: 2px solid var(--cyan-2); }
+.h-left { left: calc(4vw + var(--sl)); left: calc(4cqw + var(--sl)); border-left: 2px solid var(--cyan-2); }
+.h-right { right: calc(4vw + var(--sr)); right: calc(4cqw + var(--sr)); border-right: 2px solid var(--cyan-2); }
 .h-bar { width: 4px; height: calc(70px * var(--s)); background: var(--cyan-3); margin: 6px 0; display: flex; align-items: flex-end; }
 .h-bar i { display: block; width: 100%; height: 100%; background: var(--cyan); transform-origin: bottom; transform: scaleY(0); box-shadow: 0 0 6px var(--cyan); }
 #hud.burn .v-speedbar { background: var(--amber); }
@@ -149,7 +163,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .h-objective {
   position: absolute; top: calc(64px * var(--s) + var(--st)); right: calc(14px + var(--sr));
-  text-align: right; max-width: 40vw; opacity: 0; transition: opacity 0.4s;
+  text-align: right; max-width: 40vw; max-width: 40cqw; opacity: 0; transition: opacity 0.4s;
   color: var(--amber); text-shadow: 0 0 6px rgba(255, 181, 71, 0.6);
 }
 .h-objective.on { opacity: 1; }
@@ -158,7 +172,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .h-alerts {
   position: absolute; right: calc(14px + var(--sr)); top: calc(110px * var(--s) + var(--st));
-  display: flex; flex-direction: column; gap: 6px; align-items: flex-end; max-width: min(42vw, 360px);
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-end; max-width: min(42vw, 360px); max-width: min(42cqw, 360px);
 }
 .h-alert {
   background: var(--panel); border-right: 2px solid var(--cyan); padding: 6px 10px; font-size: calc(12px * var(--s));
@@ -185,14 +199,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 html.touch .h-diag { bottom: auto; top: calc(10px + var(--st)); left: calc(12px + var(--sl)); }
 html.touch .h-gauge { top: 40%; padding: 4px 8px; }
 html.touch .h-gauge .h-bar { display: none; }
-html.touch .h-left { left: calc(2vw + var(--sl)); }
-html.touch .h-right { right: calc(2vw + var(--sr)); }
+html.touch .h-left { left: calc(2vw + var(--sl)); left: calc(2cqw + var(--sl)); }
+html.touch .h-right { right: calc(2vw + var(--sr)); right: calc(2cqw + var(--sr)); }
 html.touch .h-mode { bottom: calc(8px + var(--sb)); }
-html.touch .h-top { width: min(40vw, 420px); }
+html.touch .h-top { width: min(40vw, 420px); width: min(40cqw, 420px); }
 html.touch .h-objective { top: calc(64px + var(--st)); }
 html.touch .h-alerts {
   top: calc(118px * var(--s) + var(--st)); right: auto; left: 50%; transform: translateX(-50%);
-  align-items: center; max-width: min(52vw, 420px);
+  align-items: center; max-width: min(52vw, 420px); max-width: min(52cqw, 420px);
 }
 html.touch .h-alert { border-right: 0; border-bottom: 2px solid var(--cyan); text-align: center; font-size: calc(11px * var(--s)); }
 html.touch .h-alert.a-warn { border-color: var(--amber); }
@@ -236,6 +250,11 @@ html.touch .h-alert.a-success { border-color: var(--green); }
   .t-fly { width: 74px; height: 74px; right: calc(98px + var(--sr)); }
   .t-up { bottom: calc(100px + var(--sb)); }
 }
+@container (max-height: 380px) {
+  .t-btn { width: 64px; height: 64px; }
+  .t-fly { width: 74px; height: 74px; right: calc(98px + var(--sr)); }
+  .t-up { bottom: calc(100px + var(--sb)); }
+}
 
 /* ---------------- Menu ---------------- */
 #menu {
@@ -244,8 +263,8 @@ html.touch .h-alert.a-success { border-color: var(--green); }
 }
 #menu.on { display: grid; }
 .m-panel {
-  width: min(560px, calc(100vw - 32px - var(--sl) - var(--sr)));
-  max-height: calc(100dvh - 24px - var(--st) - var(--sb)); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  width: min(560px, calc(100vw - 32px - var(--sl) - var(--sr))); width: min(560px, calc(100cqw - 32px - var(--sl) - var(--sr)));
+  max-height: calc(100dvh - 24px - var(--st) - var(--sb)); max-height: calc(100cqh - 24px - var(--st) - var(--sb)); overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 18px 20px; background: rgba(6, 18, 30, 0.92); border: 1px solid var(--cyan-2); border-radius: 8px;
   display: grid; gap: 14px; touch-action: pan-y;
 }
@@ -282,7 +301,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
 .overlay > * { min-width: 0; max-width: 100%; }
 .overlay.out { opacity: 0; pointer-events: none; }
 .l-panel { width: min(460px, 100%); text-align: center; display: grid; gap: 14px; justify-items: center; }
-.l-panel h1 { margin: 0; font-weight: 200; font-size: clamp(28px, 6vw, 50px); letter-spacing: 0.3em; padding-left: 0.3em; white-space: nowrap; color: #fff; text-shadow: 0 0 20px rgba(107, 233, 255, 0.5); }
+.l-panel h1 { margin: 0; font-weight: 200; font-size: clamp(28px, 6vw, 50px); font-size: clamp(28px, 6cqw, 50px); letter-spacing: 0.3em; padding-left: 0.3em; white-space: nowrap; color: #fff; text-shadow: 0 0 20px rgba(107, 233, 255, 0.5); }
 .l-panel h1 span { display: block; font-size: 0.28em; letter-spacing: 0.6em; color: var(--cyan); margin-top: 6px; }
 .l-logo { position: relative; width: 70px; height: 70px; }
 .l-logo i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--cyan); border-right-color: transparent; animation: spin 2.4s linear infinite; }
@@ -310,6 +329,14 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
 /* Short landscape screens (phones with browser bars): keep Engage reachable. */
 .overlay { overflow-y: auto; }
 @media (max-height: 420px) {
+  .l-panel { gap: 8px; }
+  .l-logo { display: none; }
+  .l-panel h1 { font-size: 26px; }
+  .l-start { min-height: 48px; }
+  .l-tip { display: none; }
+  .r-phone { display: none; }
+}
+@container (max-height: 420px) {
   .l-panel { gap: 8px; }
   .l-logo { display: none; }
   .l-panel h1 { font-size: 26px; }
@@ -368,7 +395,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
   display: none; font-size: 11px;
 }
 #hud.capture .h-capture { display: block; }
-.h-civ { position: absolute; left: calc(14px + var(--sl)); bottom: calc(56px + var(--sb)); max-width: 46vw; display: none; padding: 8px 12px; background: var(--panel); border-left: 2px solid var(--amber); }
+.h-civ { position: absolute; left: calc(14px + var(--sl)); bottom: calc(56px + var(--sb)); max-width: 46vw; max-width: 46cqw; display: none; padding: 8px 12px; background: var(--panel); border-left: 2px solid var(--amber); }
 .h-civ b { font-size: calc(13px * var(--s)); color: #fff; font-weight: 400; }
 /* Civilian: no helmet HUD, just compass, objective and phone-style alerts. */
 #hud.civ .h-gauge, #hud.civ .h-diag, #hud.civ .h-reticle, #hud.civ .h-weap, #hud.civ .h-targets, #hud.civ .h-vignette { display: none; }
@@ -395,6 +422,11 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
   .t-msl { width: 60px; height: 60px; right: calc(176px + var(--sr)); }
   .t-fly { width: 66px; height: 66px; right: calc(98px + var(--sr)); bottom: calc(22px + var(--sb)); }
 }
+@container (max-height: 380px) {
+  .t-fire { width: 72px; height: 72px; bottom: calc(96px + var(--sb)); right: calc(96px + var(--sr)); }
+  .t-msl { width: 60px; height: 60px; right: calc(176px + var(--sr)); }
+  .t-fly { width: 66px; height: 66px; right: calc(98px + var(--sr)); bottom: calc(22px + var(--sb)); }
+}
 
 /* Civilian: sentry toggle sits where the rocket button is when suited. */
 .t-sentry { display: none; right: calc(110px + var(--sr)); bottom: calc(116px + var(--sb)); width: 76px; height: 76px; border-color: var(--cyan); }
@@ -406,11 +438,13 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 .t-trick { display: none; right: calc(206px + var(--sr)); bottom: calc(120px + var(--sb)); width: 62px; height: 62px; border-color: #c48bff; color: #dcb8ff; }
 #touch[data-mode="hover"]:not(.civ) .t-trick, #touch[data-mode="flight"]:not(.civ) .t-trick { display: grid; }
 @media (max-height: 380px) { .t-trick { width: 54px; height: 54px; right: calc(176px + var(--sr)); bottom: calc(100px + var(--sb)); } }
+@container (max-height: 380px) { .t-trick { width: 54px; height: 54px; right: calc(176px + var(--sr)); bottom: calc(100px + var(--sb)); } }
 
 /* Cut-thrust button: only while flying in the suit. */
 .t-cut { display: none; right: calc(276px + var(--sr)); bottom: calc(120px + var(--sb)); width: 56px; height: 56px; border-color: #ffd36b; color: #ffe3a0; }
 #touch[data-mode="hover"]:not(.civ) .t-cut, #touch[data-mode="flight"]:not(.civ) .t-cut { display: grid; }
 @media (max-height: 380px) { .t-cut { width: 50px; height: 50px; right: calc(238px + var(--sr)); bottom: calc(100px + var(--sb)); } }
+@container (max-height: 380px) { .t-cut { width: 50px; height: 50px; right: calc(238px + var(--sr)); bottom: calc(100px + var(--sb)); } }
 
 /* Oxygen gauge (helmet HUD). */
 .d-oxy { height: 6px; background: rgba(140, 255, 190, 0.18); margin: 2px 0; overflow: hidden; }
@@ -440,7 +474,11 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 
 /* Narrow portrait phones: let titles wrap and tighten the letter spacing. */
 @media (max-width: 480px) {
-  .l-panel h1 { white-space: normal; letter-spacing: 0.15em; padding-left: 0.15em; font-size: clamp(22px, 8vw, 34px); overflow-wrap: anywhere; }
+  .l-panel h1 { white-space: normal; letter-spacing: 0.15em; padding-left: 0.15em; font-size: clamp(22px, 8vw, 34px); font-size: clamp(22px, 8cqw, 34px); overflow-wrap: anywhere; }
+  #rotate .l-panel h1 { letter-spacing: 0.06em; padding-left: 0; }
+}
+@container (max-width: 480px) {
+  .l-panel h1 { white-space: normal; letter-spacing: 0.15em; padding-left: 0.15em; font-size: clamp(22px, 8vw, 34px); font-size: clamp(22px, 8cqw, 34px); overflow-wrap: anywhere; }
   #rotate .l-panel h1 { letter-spacing: 0.06em; padding-left: 0; }
 }
 
@@ -462,10 +500,17 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
   .t-sharpL { right: calc(296px + var(--sr)); bottom: calc(24px + var(--sb)); }
   .t-flare { right: calc(294px + var(--sr)); bottom: calc(100px + var(--sb)); }
 }
+@container (max-height: 380px) {
+  .t-sharp, .t-flare { width: 50px; height: 50px; }
+  .t-sharpR { right: calc(240px + var(--sr)); bottom: calc(24px + var(--sb)); }
+  .t-sharpL { right: calc(296px + var(--sr)); bottom: calc(24px + var(--sb)); }
+  .t-flare { right: calc(294px + var(--sr)); bottom: calc(100px + var(--sb)); }
+}
 /* Touch: radar sits between the suit panel and the compass; on narrow
    screens there is no room, so it hides. */
 html.touch .h-radar { width: 70px; height: 70px; left: calc(166px + var(--sl)); top: calc(8px + var(--st)); }
 @media (max-width: 740px) { html.touch .h-radar { display: none; } }
+@container (max-width: 740px) { html.touch .h-radar { display: none; } }
 /* Every touch button gives a little press feedback. */
 .t-btn { transition: transform 0.12s ease-out, background-color 0.15s, box-shadow 0.2s; }
 .t-btn.on { box-shadow: 0 0 18px rgba(107, 233, 255, 0.55); }
@@ -506,3 +551,24 @@ html.touch .h-radar { width: 70px; height: 70px; left: calc(166px + var(--sl)); 
 .d-xp i { display: block; height: 100%; background: var(--amber); transform-origin: left; transition: transform 0.4s ease-out; }
 .v-rank { color: var(--amber) !important; }
 .v-rank.pulse { animation: modePulse 0.6s ease-out; }
+
+/* Drawn sideways: the notch (screen top) is on the stage's left and the home
+   indicator (screen bottom) on its right. */
+html.rotated {
+  --sl: env(safe-area-inset-top, 0px);
+  --sr: env(safe-area-inset-bottom, 0px);
+  --st: env(safe-area-inset-right, 0px);
+  --sb: env(safe-area-inset-left, 0px);
+}
+
+/* Boss health bar under the compass. */
+.h-boss {
+  position: absolute; left: 50%; top: calc(78px * var(--s) + var(--st)); transform: translate(-50%, -8px);
+  width: min(46cqw, 460px); text-align: center; opacity: 0; transition: opacity 0.35s, transform 0.35s; pointer-events: none;
+}
+.h-boss.on { opacity: 1; transform: translate(-50%, 0); }
+.h-boss small { color: #ff8a80; letter-spacing: 0.35em; }
+.b-bar { position: relative; height: 7px; margin-top: 4px; background: rgba(255, 81, 72, 0.15); border: 1px solid rgba(255, 81, 72, 0.5); overflow: hidden; }
+.b-bar i, .b-bar u { position: absolute; inset: 0; transform-origin: left; }
+.b-bar u { background: rgba(255, 220, 200, 0.55); }
+.b-bar i { background: linear-gradient(90deg, #ff3b30, #ff8a50); z-index: 1; box-shadow: 0 0 8px #ff5148; transition: transform 0.12s; }

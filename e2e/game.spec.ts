@@ -161,6 +161,50 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
+  test("rescue: a civilian falls off a rooftop and you catch them mid-air", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => {
+      const G = g as unknown as { events: { spawnNow(p: unknown, t: string): void }; player: unknown };
+      G.events.spawnNow(G.player, "Civilian falling!");
+    });
+    const w = await until(page, (s) => s.rescue !== null);
+    expect(w.rescue!.state).toBe("waiting");
+    // Fly close: they slip and fall.
+    await game(page, (g) => {
+      const G = g as unknown as { events: { faller: { x: number; y: number; z: number } } };
+      const f = G.events.faller;
+      g.teleport(f.x + 30, f.y - 10, f.z, 0, "hover");
+    });
+    await until(page, (s) => s.rescue?.state === "falling");
+    // Get under them and they're caught.
+    await game(page, (g) => {
+      const G = g as unknown as { events: { faller: { x: number; y: number; z: number } } };
+      const f = G.events.faller;
+      g.teleport(f.x, f.y - 6, f.z, 0, "hover");
+    });
+    await until(page, (s) => s.saved >= 1);
+    await expect(page.locator(".h-alerts")).toContainText(/Civilian safe/);
+    expect(errors).toEqual([]);
+  });
+
+  test("night time, armour schemes, cinematic mode (K) and the boss bar", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => (g as unknown as { settings: { update(p: object): void } }).settings.update({ timeOfDay: "night", suit: "warmachine" }));
+    await until(page, (s) => s.timeOfDay === "night");
+    await page.keyboard.press("KeyK");
+    await until(page, (s) => !s.hudShown);
+    await expect(page.locator("#hud")).toBeHidden();
+    await page.keyboard.press("KeyK");
+    await expect(page.locator("#hud")).toBeVisible();
+    await game(page, (g) => {
+      g.teleport(2.5, 30, -400, 0, "hover");
+      g.spawnEnemy("warbot", 45, -40, 0);
+    });
+    await expect(page.locator(".h-boss")).toHaveClass(/on/, { timeout: 60_000 });
+    await expect(page.locator(".h-boss")).toContainText("WARBOT");
+    expect(errors).toEqual([]);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {
@@ -327,19 +371,61 @@ test("shows a recoverable error when WebGL is unavailable", async ({ page }) => 
   await expect(page.locator("#loading")).toBeHidden();
 });
 
-test("phone: nothing overflows in portrait, and rotating to landscape clears the rotate hint", async ({ browser }) => {
-  const { defaultBrowserType: _d, ...phone } = devices["iPhone SE"];
+test("phone held upright (e.g. rotation lock on): the game is drawn sideways in landscape and touch still works", async ({ browser }) => {
+  const { defaultBrowserType: _d, ...phone } = devices["iPhone 13"];
   const ctx = await browser.newContext(phone);
   const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.locator("#rotate")).toBeVisible();
-  const overflow = await page.evaluate(() =>
-    [...document.querySelectorAll("#rotate *, #loading *")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.tagName),
-  );
-  expect(overflow).toEqual([]);
-  await page.setViewportSize({ width: 667, height: 375 });
-  await expect(page.locator("#rotate")).toBeHidden();
+  // Upright: the stage is rotated so the game is landscape relative to the phone.
+  await expect(page.locator("body")).toHaveClass(/rot/);
+  const dims = await page.evaluate(() => {
+    const c = document.getElementById("game") as HTMLCanvasElement;
+    return { cw: c.clientWidth, ch: c.clientHeight, iw: innerWidth, ih: innerHeight };
+  });
+  expect(dims.cw).toBe(dims.ih);
+  expect(dims.ch).toBe(dims.iw);
+  // Engage is on screen and tappable through the rotation.
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
-  await expect(page.locator("#l-start")).toBeInViewport();
+  const box = (await page.locator("#l-start").boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(dims.ih);
+  await page.locator("#l-start").tap();
+  await page.waitForFunction(() => (window as unknown as { __GAME: { debugState(): { started: boolean } } }).__GAME.debugState().started);
+  // LIFT works through the rotated layout.
+  await page.locator(".t-up").dispatchEvent("pointerdown", { pointerId: 41, pointerType: "touch", isPrimary: true });
+  await page.waitForFunction(() => (window as unknown as { __GAME: { debugState(): { mode: string } } }).__GAME.debugState().mode === "hover", null, { timeout: 60_000 });
+  await page.locator(".t-up").dispatchEvent("pointerup", { pointerId: 41, pointerType: "touch" });
+  // Turning the phone (browser goes landscape) switches back to normal.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator("body")).not.toHaveClass(/rot/);
+  const c2 = await page.evaluate(() => [document.getElementById("game")!.clientWidth, innerWidth]);
+  expect(c2[0]).toBe(c2[1]);
+  expect(errors).toEqual([]);
   await ctx.close();
 });
+
+test("touch look/stick math maps screen to the sideways stage", async ({ browser }) => {
+  const { defaultBrowserType: _d, ...phone } = devices["iPhone 13"];
+  const ctx = await browser.newContext(phone);
+  const page = await ctx.newPage();
+  await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
+  await page.goto("/");
+  await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
+  await page.locator("#l-start").tap();
+  await page.waitForFunction(() => (window as unknown as { __GAME: { debugState(): { started: boolean } } }).__GAME.debugState().started);
+  const yaw0 = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { viewYaw: number } } }).__GAME.debugState().viewYaw);
+  // Drag "right" in game terms = downward on the upright screen.
+  const zone = page.locator(".t-right");
+  const zb = (await zone.boundingBox())!;
+  const x = zb.x + zb.width / 2, y = zb.y + zb.height / 2;
+  await zone.dispatchEvent("pointerdown", { pointerId: 31, pointerType: "touch", clientX: x, clientY: y });
+  for (let k = 1; k <= 6; k++) await page.evaluate(([x, y]) => window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "touch", clientX: x, clientY: y })), [x, y + k * 12]);
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 31, pointerType: "touch" })));
+  await page.waitForTimeout(500);
+  const yaw1 = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { viewYaw: number } } }).__GAME.debugState().viewYaw);
+  expect(Math.atan2(Math.sin(yaw1 - yaw0), Math.cos(yaw1 - yaw0))).toBeGreaterThan(0.05);
+  await ctx.close();
+});
+

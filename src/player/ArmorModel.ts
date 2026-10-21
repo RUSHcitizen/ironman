@@ -48,6 +48,17 @@ export interface AvatarState {
 }
 import { clamp, damp } from "../core/math";
 
+export type SuitScheme = "classic" | "silver" | "warmachine" | "stealth" | "midas";
+
+/** Primary / trim colours (and eye + reactor glow) of each armour scheme. */
+export const SUIT_SCHEMES: Record<SuitScheme, { label: string; primary: Color3; trim: Color3; glow: Color3 }> = {
+  classic: { label: "Classic", primary: new Color3(0.62, 0.05, 0.04), trim: new Color3(0.88, 0.62, 0.22), glow: new Color3(0.7, 0.95, 1) },
+  silver: { label: "Mark II", primary: new Color3(0.6, 0.62, 0.66), trim: new Color3(0.42, 0.44, 0.48), glow: new Color3(0.7, 0.95, 1) },
+  warmachine: { label: "War Machine", primary: new Color3(0.2, 0.21, 0.23), trim: new Color3(0.42, 0.43, 0.45), glow: new Color3(1, 0.85, 0.6) },
+  stealth: { label: "Stealth", primary: new Color3(0.06, 0.06, 0.08), trim: new Color3(0.16, 0.18, 0.22), glow: new Color3(0.45, 0.7, 1) },
+  midas: { label: "Midas", primary: new Color3(0.86, 0.64, 0.18), trim: new Color3(0.98, 0.84, 0.45), glow: new Color3(1, 0.95, 0.75) },
+};
+
 interface Joint {
   node: TransformNode;
   x: number;
@@ -67,6 +78,9 @@ export class ArmorModel {
   private joints = {} as Record<JointName, Joint>;
   private flames: { mesh: Mesh; kind: "boot" | "palm"; seed: number }[] = [];
   private glowMat: StandardMaterial;
+  private primaryMat: StandardMaterial;
+  private trimMat: StandardMaterial;
+  private glowBase = new Color3(0.7, 0.95, 1);
   private parts: { mesh: AbstractMesh; delay: number }[] = [];
   private particles: ParticleSystem[] = [];
   private emitters: Mesh[] = [];
@@ -111,6 +125,8 @@ export class ArmorModel {
     const dark = new StandardMaterial("armorDark", scene);
     dark.diffuseColor = new Color3(0.3, 0.3, 0.34);
     dark.specularColor = new Color3(0.6, 0.6, 0.6);
+    this.primaryMat = red;
+    this.trimMat = gold;
     this.glowMat = new StandardMaterial("armorGlow", scene);
     this.glowMat.disableLighting = true;
     this.glowMat.emissiveColor = new Color3(0.7, 0.95, 1);
@@ -524,6 +540,16 @@ export class ArmorModel {
     });
   }
 
+  /** Repaint the armour in one of the schemes. */
+  setScheme(name: SuitScheme): void {
+    const sc = SUIT_SCHEMES[name] ?? SUIT_SCHEMES.classic;
+    this.primaryMat.diffuseColor = sc.primary.clone();
+    this.trimMat.diffuseColor = sc.trim.clone();
+    this.primaryMat.emissiveFresnelParameters = rim(sc.primary.scale(0.8));
+    this.trimMat.emissiveFresnelParameters = rim(sc.trim.scale(0.55));
+    this.glowBase = sc.glow.clone();
+  }
+
   /** Show / hide the whole character (used for the autonomous suit). */
   setVisible(v: boolean): void {
     this.root.setEnabled(v);
@@ -726,7 +752,9 @@ export class ArmorModel {
     const energy = p.suit.energy / 100;
     const pulse = 0.85 + 0.15 * Math.sin(t * 3);
     const bg = this.beamGlow;
-    this.glowMat.emissiveColor.set(0.45 + 0.3 * energy * pulse + bg * 0.5, 0.75 + 0.2 * energy * pulse + bg * 0.5, 1 + bg * 0.6);
+    const gb = this.glowBase;
+    const lvl = 0.65 + 0.35 * energy * pulse;
+    this.glowMat.emissiveColor.set(gb.r * lvl + bg * 0.5, gb.g * lvl + bg * 0.5, gb.b * lvl + bg * 0.6);
 
     // Blob shadow on the surface below.
     const groundY = p.pos.y - p.agl;

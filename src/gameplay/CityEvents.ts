@@ -2,6 +2,10 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
+import { CreateCapsule } from "@babylonjs/core/Meshes/Builders/capsuleBuilder";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import type { CollisionWorld } from "../world/Collision";
@@ -22,6 +26,25 @@ interface Template {
   squad: EnemyKind[];
   /** Only offered after this many completed incidents. */
   minLevel?: number;
+  /** A civilian falls off this rooftop: catch them mid-air. */
+  rescue?: boolean;
+}
+
+/** Fall speed (m/s) a civilian survives (matches the player's civilian limit). */
+const SAFE_LANDING = 26;
+
+interface Faller {
+  x: number;
+  y: number;
+  z: number;
+  vy: number;
+  /** Street below the fall column. */
+  floor: number;
+  /** Where they step off to (over the street). */
+  dropX: number;
+  dropZ: number;
+  state: "waiting" | "falling" | "caught";
+  t: number;
 }
 
 const TEMPLATES: Template[] = [
@@ -41,6 +64,7 @@ const TEMPLATES: Template[] = [
   { title: "EMP strike", detail: "Jammer drones drain suit power - keep your distance", place: "air", squad: ["jammer", "jammer", "drone", "drone", "drone"], minLevel: 1 },
   { title: "Air superiority", detail: "Jets escorting a gunship", place: "air", squad: ["gunship", "jet", "jet", "shielder", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
   { title: "DREADNOUGHT INBOUND", detail: "Carrier airship launching swarmers - bring rockets", place: "air", squad: ["carrier", "jet", "jet", "jammer"], minLevel: 3 },
+  { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
   { title: "Rooftop distress beacon", detail: "Civilian signal from a rooftop", place: "roof", squad: [] },
 ];
@@ -68,6 +92,11 @@ export class CityEvents {
   private nextGroup = 1;
   completed = 0;
   private time = 0;
+  faller: Faller | null = null;
+  private person: TransformNode;
+  /** Rescues: caught / lost (for the HUD and tests). */
+  saved = 0;
+  lost = 0;
   /** Called when an incident is resolved (for rewards). */
   onComplete: ((combat: boolean) => void) | null = null;
 
@@ -86,6 +115,32 @@ export class CityEvents {
       m.isPickable = false;
       m.setEnabled(false);
     }
+    // The person to rescue: simple figure in a bright jacket so you can spot them.
+    this.person = new TransformNode("faller", scene);
+    const jacket = new StandardMaterial("fallerJacket", scene);
+    jacket.diffuseColor = new Color3(0.95, 0.75, 0.1);
+    jacket.emissiveColor = new Color3(0.25, 0.18, 0);
+    const skin = new StandardMaterial("fallerSkin", scene);
+    skin.diffuseColor = new Color3(0.8, 0.6, 0.47);
+    const body = CreateCapsule("fallerBody", { height: 1.2, radius: 0.22 }, scene);
+    body.material = jacket;
+    body.position.y = 0.9;
+    const head = CreateSphere("fallerHead", { diameter: 0.28, segments: 8 }, scene);
+    head.material = skin;
+    head.position.y = 1.65;
+    const legs = CreateCapsule("fallerLegs", { height: 0.9, radius: 0.14 }, scene);
+    legs.material = jacket;
+    legs.position.y = 0.35;
+    for (const m of [body, head, legs]) {
+      m.parent = this.person;
+      m.isPickable = false;
+    }
+    this.person.setEnabled(false);
+  }
+
+  /** Rescue state for the HUD / tests. */
+  get rescue(): { state: string; y: number; vy: number } | null {
+    return this.faller ? { state: this.faller.state, y: this.faller.y, vy: this.faller.vy } : null;
   }
 
   get markers(): HudMarker[] {
@@ -114,6 +169,8 @@ export class CityEvents {
 
   clear(): void {
     this.current = null;
+    this.faller = null;
+    this.person.setEnabled(false);
     this.beam.setEnabled(false);
     this.ring.setEnabled(false);
   }
@@ -150,6 +207,7 @@ export class CityEvents {
         this.ring.position.set(c.x, c.y + 1.2, c.z);
       }
     }
+    if (c.t.rescue) return this.updateRescue(dt, p, c);
     const done = c.total > 0 ? this.enemies.aliveInGroup(c.group) === 0 : this.distanceTo(p) < 10 && p.suited;
     if (done) {
       this.completed++;
@@ -175,10 +233,25 @@ export class CityEvents {
       const top = this.world.surfaceBelow(x, 1000, z, 0.5, 0);
       if (t.place === "roof" && top < 12) continue;
       if (t.place === "street" && top > 0.5) continue;
+      let drop: { x: number; z: number; dropX: number; dropZ: number; floor: number } | null = null;
+      if (t.rescue) {
+        if (top < 45) continue;
+        drop = this.placeFaller(x, top, z);
+        if (!drop) continue;
+      }
       const group = this.nextGroup++;
       const y = t.place === "air" ? top + this.rng.range(30, 55) : top;
       this.current = { t, x, y, z, group, total: t.squad.length };
       this.placeSquad(t, x, y, z, top, group);
+      if (drop) {
+        this.faller = { x: drop.x, y: top, z: drop.z, vy: 0, floor: drop.floor, dropX: drop.dropX, dropZ: drop.dropZ, state: "waiting", t: 0 };
+        this.person.position.set(drop.x, top, drop.z);
+        this.person.rotation.set(0, 0, 0);
+        this.person.setEnabled(true);
+        this.current!.x = drop.x;
+        this.current!.z = drop.z;
+        this.current!.y = top;
+      }
       this.beam.position.set(x, top + 200, z);
       this.ring.position.set(x, y + 1.2, z);
       this.beam.setEnabled(true);
@@ -187,6 +260,91 @@ export class CityEvents {
       return;
     }
     this.cooldown = 2; // try again shortly
+  }
+
+  /**
+   * Falling civilian: they wait at the roof edge until you get close (or time
+   * runs out), then fall. Fly through them in the suit to catch them; if they
+   * hit the street too fast, they're lost.
+   */
+  private updateRescue(dt: number, p: PlayerController, c: Incident): boolean {
+    const f = this.faller;
+    if (!f) return false;
+    f.t += dt;
+    const near = Math.hypot(f.x - p.pos.x, f.z - p.pos.z) < 220;
+    if (f.state === "waiting") {
+      // Teetering on the edge.
+      this.person.rotation.z = Math.sin(this.time * 6) * 0.25;
+      if (near || f.t > 40) {
+        f.state = "falling";
+        f.t = 0;
+        this.bus.emit("alert", { text: "They're falling! Catch them!", level: "critical", ttl: 3 });
+      }
+    } else if (f.state === "falling") {
+      // Step off the edge, out over the street, then drop.
+      const k = Math.min(1, dt * 5);
+      f.x += (f.dropX - f.x) * k;
+      f.z += (f.dropZ - f.z) * k;
+      f.vy -= 22 * dt;
+      f.vy -= f.vy * Math.min(1, 0.0075 * Math.abs(f.vy) * dt);
+      f.y += f.vy * dt;
+      // Flailing tumble.
+      this.person.rotation.set(Math.sin(this.time * 7) * 0.9, this.time * 2, Math.cos(this.time * 5) * 0.7);
+      const pc = p.center;
+      if (p.suited && Math.hypot(pc.x - f.x, pc.y - (f.y + 0.9), pc.z - f.z) < 4.5) {
+        f.state = "caught";
+        f.t = 0;
+        this.saved++;
+        this.completed++;
+        this.bus.emit("alert", { text: "Gotcha! Civilian safe - nice catch, boss", level: "success" });
+        this.bus.emit("rescue", { saved: true });
+        this.onComplete?.(false);
+      } else if (f.y <= f.floor) {
+        f.y = f.floor;
+        const survived = -f.vy <= SAFE_LANDING;
+        if (!survived) this.lost++;
+        this.bus.emit("alert", { text: survived ? "They landed safely" : "We lost them... we'll do better next time", level: survived ? "info" : "warn" });
+        this.bus.emit("rescue", { saved: survived });
+        this.clear();
+        this.cooldown = this.rng.range(6, 12);
+        return true;
+      }
+    } else {
+      // Caught: carried along for a moment, then set down safely.
+      f.x = p.pos.x + Math.sin(p.bodyYaw) * 0.6;
+      f.y = p.pos.y + 0.2;
+      f.z = p.pos.z + Math.cos(p.bodyYaw) * 0.6;
+      this.person.rotation.set(0.6, p.bodyYaw, 0);
+      if (f.t > 3) {
+        this.clear();
+        this.cooldown = this.rng.range(6, 12);
+        return true;
+      }
+    }
+    this.person.position.set(f.x, f.y, f.z);
+    c.x = f.x;
+    c.y = f.y;
+    c.z = f.z;
+    this.ring.position.set(f.x, f.y + 1.2, f.z);
+    return false;
+  }
+
+  /** Find a roof edge with a clear drop of 25 m+ to the street beside it. */
+  private placeFaller(x: number, top: number, z: number): { x: number; z: number; dropX: number; dropZ: number; floor: number } | null {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      for (let r = 2; r < 40; r += 1) {
+        const floor = this.world.surfaceBelow(x + ca * r, top + 1, z + sa * r, 0.3, 0);
+        if (floor > top - 1.5) continue;
+        if (floor < top - 25 && Math.abs(this.world.surfaceBelow(x + ca * (r - 1.2), top + 1, z + sa * (r - 1.2), 0.2, 0) - top) < 1.5) {
+          const dropFloor = this.world.surfaceBelow(x + ca * (r + 1.5), top + 1, z + sa * (r + 1.5), 0.5, 0);
+          if (dropFloor > top - 25) break;
+          return { x: x + ca * (r - 1.2), z: z + sa * (r - 1.2), dropX: x + ca * (r + 1.5), dropZ: z + sa * (r + 1.5), floor: dropFloor };
+        }
+        break;
+      }
+    }
+    return null;
   }
 
   private placeSquad(t: Template, x: number, y: number, z: number, top: number, group: number): void {

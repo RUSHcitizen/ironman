@@ -21,29 +21,50 @@ const TIPS = [
   "Tip: lower the graphics quality in the menu if things stutter.",
 ];
 
-function setupRotateHint(isMobile: boolean): void {
+/**
+ * Phones: the game is always landscape. If the browser is upright (portrait,
+ * e.g. because the system rotation lock is on, which a web page cannot
+ * override on iPhone), the whole game is drawn sideways - so turning the
+ * phone just works. When the browser itself rotates, it switches back.
+ */
+function setupOrientation(isMobile: boolean): void {
   if (!isMobile) return;
-  const el = $("rotate");
-  let dismissed = false;
-  const landscape = matchMedia("(orientation: landscape)");
+  const root = document.documentElement;
+  let was: boolean | null = null;
   const check = () => {
-    el.hidden = dismissed || landscape.matches || window.innerWidth >= window.innerHeight;
+    const w = window.innerWidth, h = window.innerHeight;
+    const rot = h > w;
+    root.style.setProperty("--rot-w", `${h}px`);
+    root.style.setProperty("--rot-h", `${w}px`);
+    document.body.classList.toggle("rot", rot);
+    root.classList.toggle("rotated", rot);
+    if (rot !== was) {
+      was = rot;
+      // Let the engine and HUD re-measure the (now differently shaped) stage.
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    }
   };
   // Phones report the new size a little after rotating, so check again later.
   const recheck = () => {
     check();
     for (const ms of [100, 300, 700]) setTimeout(check, ms);
   };
-  $("r-continue").addEventListener("click", () => {
-    dismissed = true;
-    check();
-  });
   window.addEventListener("resize", check);
   window.addEventListener("orientationchange", recheck);
-  landscape.addEventListener?.("change", recheck);
   screen.orientation?.addEventListener?.("change", recheck);
   window.visualViewport?.addEventListener("resize", check);
   check();
+}
+
+/** Android: go full-screen and lock to landscape (ignored where unsupported, e.g. iPhone). */
+async function lockLandscape(): Promise<void> {
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    await o.lock?.("landscape");
+  } catch {
+    /* not supported here: the sideways fallback covers it */
+  }
 }
 
 async function boot(): Promise<void> {
@@ -62,7 +83,7 @@ async function boot(): Promise<void> {
   const device = detectDevice();
   document.documentElement.classList.toggle("touch", device.isTouch);
   document.documentElement.classList.toggle("ios", device.isIOS);
-  setupRotateHint(device.isMobile);
+  setupOrientation(device.isMobile);
   $("l-tip").textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
 
   const glError = checkWebGL();
@@ -108,6 +129,7 @@ async function boot(): Promise<void> {
     () => {
       $("loading").classList.add("out");
       setTimeout(() => ($("loading").hidden = true), 600);
+      if (device.isMobile) void lockLandscape();
       game.start();
     },
     { once: true },

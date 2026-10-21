@@ -33,6 +33,17 @@ export class SettingsMenu {
           <label class="m-toggle"><input type="checkbox" data-k="autoQuality"/><span>Auto-reduce quality if FPS drops</span></label>
         </section>
         <section>
+          <label>Armour</label>
+          <div class="m-seg m-wrap" data-k="suit">
+            <button data-v="classic">Classic</button><button data-v="silver">Mark II</button><button data-v="warmachine">War Machine</button><button data-v="stealth">Stealth</button><button data-v="midas">Midas</button>
+          </div>
+          <label>Time of day</label>
+          <div class="m-seg" data-k="timeOfDay">
+            <button data-v="sunset">Sunset</button><button data-v="day">Day</button><button data-v="night">Night</button>
+          </div>
+          <label class="m-toggle"><input type="checkbox" data-k="hud"/><span>Show HUD (K toggles cinematic mode)</span></label>
+        </section>
+        <section>
           <label>Mouse sensitivity <output data-o="lookSensitivity"></output></label>
           <input type="range" min="0.25" max="3" step="0.05" data-k="lookSensitivity"/>
           <label>Touch sensitivity <output data-o="touchSensitivity"></output></label>
@@ -74,8 +85,11 @@ export class SettingsMenu {
       this.actions.onRespawn();
       this.actions.onResume();
     });
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>('[data-k="quality"] button')) {
-      b.addEventListener("click", () => this.settings.update({ quality: b.dataset.v as Quality }));
+    for (const seg of this.el.querySelectorAll<HTMLElement>(".m-seg[data-k]")) {
+      const key = seg.dataset.k as keyof Settings["data"];
+      for (const b of seg.querySelectorAll<HTMLButtonElement>("button")) {
+        b.addEventListener("click", () => this.settings.update({ [key]: b.dataset.v as Quality } as Partial<Settings["data"]>));
+      }
     }
     for (const input of this.el.querySelectorAll<HTMLInputElement>("input[data-k]")) {
       const key = input.dataset.k as keyof Settings["data"];
@@ -104,7 +118,10 @@ export class SettingsMenu {
 
   private sync(): void {
     const d = this.settings.data;
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>('[data-k="quality"] button')) b.classList.toggle("sel", b.dataset.v === d.quality);
+    for (const seg of this.el.querySelectorAll<HTMLElement>(".m-seg[data-k]")) {
+      const v = d[seg.dataset.k as keyof typeof d];
+      for (const b of seg.querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("sel", b.dataset.v === v);
+    }
     for (const input of this.el.querySelectorAll<HTMLInputElement>("input[data-k]")) {
       const v = d[input.dataset.k as keyof typeof d];
       if (input.type === "checkbox") input.checked = Boolean(v);

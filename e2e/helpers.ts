@@ -21,6 +21,10 @@ export interface DebugState {
   space: number;
   stepOut: boolean;
   remote: boolean;
+  rescue: { state: string; y: number; vy: number } | null;
+  saved: number;
+  timeOfDay: string;
+  hudShown: boolean;
   bank: number;
   grounded: boolean;
   bodyPos: { x: number; y: number; z: number };

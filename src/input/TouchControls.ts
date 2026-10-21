@@ -92,6 +92,23 @@ export class TouchControls {
     this.resetStick();
   }
 
+  /**
+   * Screen (client) coordinates -> coordinates in the game stage. When the
+   * game is drawn sideways (phone upright), the stage is rotated 90 degrees.
+   */
+  private local(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    if (!document.body.classList.contains("rot")) return { x: e.clientX, y: e.clientY };
+    return { x: e.clientY, y: window.innerWidth - e.clientX };
+  }
+
+  private get stageW(): number {
+    return document.body.classList.contains("rot") ? window.innerHeight : window.innerWidth;
+  }
+
+  private get stageH(): number {
+    return document.body.classList.contains("rot") ? window.innerWidth : window.innerHeight;
+  }
+
   setVisible(v: boolean): void {
     this.el.style.display = v ? "" : "none";
     if (!v) this.releaseAll();
@@ -173,11 +190,12 @@ export class TouchControls {
     this.onTouchUsed?.();
     if (this.stickId !== null) return;
     this.stickId = e.pointerId;
-    this.radius = Math.max(48, Math.min(75, window.innerHeight * 0.13));
-    this.stickOrigin = { x: e.clientX, y: e.clientY };
+    this.radius = Math.max(48, Math.min(75, this.stageH * 0.13));
+    const l = this.local(e);
+    this.stickOrigin = { x: l.x, y: l.y };
     this.stickBase.classList.add("active");
-    this.stickBase.style.left = `${e.clientX}px`;
-    this.stickBase.style.top = `${e.clientY}px`;
+    this.stickBase.style.left = `${l.x}px`;
+    this.stickBase.style.top = `${l.y}px`;
     this.stickBase.style.bottom = "auto";
     this.setKnob(0, 0);
   }
@@ -186,14 +204,16 @@ export class TouchControls {
     if (e.pointerType === "mouse") return;
     e.preventDefault();
     this.onTouchUsed?.();
-    this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+    const l = this.local(e);
+    this.lookIds.set(e.pointerId, { x: l.x, y: l.y, x0: l.x, y0: l.y, t0: performance.now() });
   }
 
   private onMove(e: PointerEvent): void {
     if (e.pointerId === this.stickId) {
       e.preventDefault();
-      let dx = e.clientX - this.stickOrigin.x;
-      let dy = e.clientY - this.stickOrigin.y;
+      const l = this.local(e);
+      let dx = l.x - this.stickOrigin.x;
+      let dy = l.y - this.stickOrigin.y;
       const d = Math.hypot(dx, dy);
       if (d > this.radius) {
         dx *= this.radius / d;
@@ -212,10 +232,11 @@ export class TouchControls {
     const look = this.lookIds.get(e.pointerId);
     if (look) {
       e.preventDefault();
-      this.lookDX += e.clientX - look.x;
-      this.lookDY += e.clientY - look.y;
-      look.x = e.clientX;
-      look.y = e.clientY;
+      const l = this.local(e);
+      this.lookDX += l.x - look.x;
+      this.lookDY += l.y - look.y;
+      look.x = l.x;
+      look.y = l.y;
     }
   }
 
@@ -229,12 +250,13 @@ export class TouchControls {
     if (look) {
       // Double-tap on the look area = barrel roll toward that side.
       const now = performance.now();
-      const isTap = now - look.t0 < 250 && Math.hypot(e.clientX - look.x0, e.clientY - look.y0) < 14;
+      const l = this.local(e);
+      const isTap = now - look.t0 < 250 && Math.hypot(l.x - look.x0, l.y - look.y0) < 14;
       if (isTap) {
-        if (now - this.lastTap.t < 320 && Math.abs(e.clientX - this.lastTap.x) < 80) {
-          this.roll = e.clientX < window.innerWidth * 0.72 ? -1 : 1;
+        if (now - this.lastTap.t < 320 && Math.abs(l.x - this.lastTap.x) < 80) {
+          this.roll = l.x < this.stageW * 0.72 ? -1 : 1;
           this.lastTap.t = 0;
-        } else this.lastTap = { t: now, x: e.clientX };
+        } else this.lastTap = { t: now, x: l.x };
       }
       this.lookIds.delete(e.pointerId);
     }
