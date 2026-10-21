@@ -2,7 +2,7 @@
 
 An original, browser-native 3D open-world superhero flight game. You pilot a red-and-gold powered-armour suit through a compact New York–inspired district at dusk, guided by **ARIA**, the suit's onboard AI.
 
-Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is generated procedurally at runtime, so there are no downloaded or proprietary assets. It builds to static files for **Cloudflare Pages**, at $0.
+Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is generated procedurally at runtime, so there are no downloaded or proprietary assets. It builds to static files for **Cloudflare** (Workers static assets or Pages), at $0.
 
 | | |
 |---|---|
@@ -61,25 +61,27 @@ npm run typecheck      # app + test TypeScript projects
 
 The e2e tests run the production build through `vite preview`. If Playwright has no browser installed, run `npx playwright install chromium` once.
 
-## Deploying to Cloudflare Pages (free)
+## Deploying to Cloudflare (free)
 
-The game is a fully static site: build command `npm run build`, output directory `dist`.
+The game is a fully static site: build command `npm run build`, output directory `dist`. Both Cloudflare options below are free.
 
-**Option A: Git integration (recommended)**
-1. Push this repository to GitHub.
-2. In the Cloudflare dashboard, go to **Workers & Pages → Create → Pages → Connect to Git** and pick the repository.
-3. Use framework preset **None** (or Vite), build command `npm run build`, build output directory `dist`.
-4. Optionally add the environment variable `NODE_VERSION=22`.
-5. Save and deploy. Every push to the production branch redeploys, and other branches get preview URLs.
+**Option A: Workers with Git integration (Cloudflare's current default flow)**
+1. In the Cloudflare dashboard, go to **Workers & Pages → Create → Import a repository** and pick this repo.
+2. Build command: `npm run build`. Deploy command: `npx wrangler deploy` (the default).
+3. Deploy. `wrangler.jsonc` in the repo tells Wrangler to serve `dist/` as static assets, so it does not try to auto-configure the Vite project. The Worker name in `wrangler.jsonc` (`ironman`) must match the Worker name in the dashboard; change one of them if you renamed the project.
 
-**Option B: Direct upload with Wrangler**
+**Option B: Pages with Git integration**
+1. Go to **Workers & Pages → Create → Pages → Connect to Git** and pick the repo.
+2. Framework preset **None** (or Vite), build command `npm run build`, build output directory `dist`. Optionally set the environment variable `NODE_VERSION=22`.
+
+**Option C: Direct upload from your machine**
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name aegis-skyline
+npx wrangler deploy      # Workers static assets, using wrangler.jsonc
 ```
 (Wrangler asks you to log in to your own Cloudflare account. No credentials are stored in this repo.)
 
-`public/_headers` sets long-lived immutable caching for hashed assets and a few security headers. Paths are relative (`base: "./"`), so the build also works from a sub-path.
+`public/_headers` sets long-lived immutable caching for hashed assets and a few security headers (both Workers static assets and Pages honour it). Paths are relative (`base: "./"`), so the build also works from a sub-path.
 
 ## Architecture
 
@@ -133,7 +135,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
 - **Real iPhone Safari**, a real Chromebook, or any physical device or GPU. Mobile results above come from Chromium emulation, not WebKit.
 - **Real-world frame rates.** SwiftShader renders on the CPU (about 8 fps at 640×360), so performance on real devices is unmeasured. The design targets integrated GPUs, but this needs on-device profiling.
 - Audio output (the WebAudio graph is built, but nobody has listened to it), the pointer-lock experience, gamepads (not supported yet), and WebGL context-loss recovery.
-- Cloudflare Pages deployment. The configuration is ready, but nothing has been deployed from here.
+- A full Cloudflare deployment. `npx wrangler deploy --dry-run` passes locally with `wrangler.jsonc`, but the real deploy has to run in your Cloudflare account.
 
 ## Roadmap (next milestones)
 

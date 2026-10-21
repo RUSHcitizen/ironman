@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers static-assets deployment (used by `npx wrangler deploy`
+  // in Workers Builds). No Worker script: dist/ is served as static files.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ironman",
+  "compatibility_date": "2026-10-19",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
