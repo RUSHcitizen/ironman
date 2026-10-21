@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="AEGIS: Skyline Protocol - an original browser-native powered-armour flight game." />
+    <title>AEGIS: Skyline Protocol</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+  </head>
+  <body>
+    <canvas id="game" aria-label="Game view" touch-action="none"></canvas>
+    <div id="ui"></div>
+
+    <div id="loading" class="overlay">
+      <div class="l-panel">
+        <div class="l-logo" aria-hidden="true"><i></i><i></i><i></i></div>
+        <h1>AEGIS<span>Skyline Protocol</span></h1>
+        <div class="l-bar"><i id="l-progress"></i></div>
+        <p id="l-status">Initialising ARIA…</p>
+        <button id="l-start" class="l-start" disabled>Engage</button>
+        <p class="l-tip" id="l-tip"></p>
+      </div>
+    </div>
+
+    <div id="error" class="overlay" hidden>
+      <div class="l-panel">
+        <h1>Systems offline</h1>
+        <p id="e-message">This device could not start 3D graphics.</p>
+        <ul class="e-help">
+          <li>Make sure hardware acceleration is enabled in your browser settings.</li>
+          <li>Close other tabs or apps using lots of graphics memory, then retry.</li>
+          <li>On iPhone, use an up-to-date Safari (iOS 15 or newer).</li>
+        </ul>
+        <button id="e-retry" class="l-start">Retry</button>
+      </div>
+    </div>
+
+    <div id="rotate" class="overlay" hidden>
+      <div class="l-panel">
+        <div class="r-phone" aria-hidden="true"></div>
+        <h1>Rotate your device</h1>
+        <p>AEGIS plays best in landscape.</p>
+        <button id="r-continue" class="l-ghost">Continue anyway</button>
+      </div>
+    </div>
+    <noscript><p style="color:#fff;padding:2rem">AEGIS needs JavaScript enabled.</p></noscript>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

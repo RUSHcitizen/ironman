@@ -1,0 +1,27 @@
+{
+  "name": "aegis-skyline",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AEGIS: Skyline Protocol - a browser-native 3D powered-armor flight game built with Babylon.js",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host --port 4173",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "screenshots": "SCREENSHOTS=1 playwright test e2e/screenshots.spec.ts --project=desktop-chromium"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.31.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.18.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}

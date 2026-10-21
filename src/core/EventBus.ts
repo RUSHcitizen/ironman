@@ -1,0 +1,30 @@
+type Handler<T> = (payload: T) => void;
+
+/** Minimal typed pub/sub used to decouple gameplay systems from the HUD/audio. */
+export class EventBus<Events extends Record<string, unknown>> {
+  private handlers = new Map<keyof Events, Set<Handler<never>>>();
+
+  on<K extends keyof Events>(type: K, fn: Handler<Events[K]>): () => void {
+    let set = this.handlers.get(type);
+    if (!set) this.handlers.set(type, (set = new Set()));
+    set.add(fn as Handler<never>);
+    return () => set!.delete(fn as Handler<never>);
+  }
+
+  emit<K extends keyof Events>(type: K, payload: Events[K]): void {
+    const set = this.handlers.get(type);
+    if (!set) return;
+    for (const fn of set) (fn as Handler<Events[K]>)(payload);
+  }
+}
+
+export type AlertLevel = "info" | "warn" | "critical" | "success";
+
+export interface GameEvents extends Record<string, unknown> {
+  alert: { text: string; level: AlertLevel; ttl?: number };
+  modeChanged: { mode: string };
+  impact: { speed: number };
+  landed: { hard: boolean };
+  areaChanged: { name: string };
+  qualityChanged: { quality: string };
+}
