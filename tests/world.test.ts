@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateChunk, generateBlock } from "../src/world/CityGenerator";
+import { generateChunk, generateBlock, chunkColliders } from "../src/world/CityGenerator";
 import { CollisionWorld, rayBox } from "../src/world/Collision";
-import { DISTRICT, WATER_Y, ISLAND_MAX } from "../src/world/WorldConfig";
+import { DISTRICT, WATER_Y, ISLAND_MAX, SIDEWALK_HEIGHT, DISTRICT_MAX, DISTRICT_MIN } from "../src/world/WorldConfig";
 
 describe("CityGenerator", () => {
   it("is deterministic per chunk", () => {
@@ -28,6 +28,13 @@ describe("CityGenerator", () => {
     }
   });
 
+  it("registers the landing pad and rooftop props as colliders", () => {
+    const w = new CollisionWorld();
+    for (const b of chunkColliders(generateChunk(0, 0))) w.add(b);
+    // Standing on the Apex Tower pad (block 0,0 centre is 40,40).
+    expect(w.surfaceBelow(36, 200, 34, 0.45)).toBeCloseTo(147.2);
+  });
+
   it("places the hero tower with a landing pad", () => {
     const hero = generateBlock(0, 0);
     expect(hero.kind).toBe("hero");
@@ -41,7 +48,7 @@ describe("CollisionWorld", () => {
 
   it("finds rooftop surfaces below a point", () => {
     expect(w.surfaceBelow(15, 60, 15)).toBe(50);
-    expect(w.surfaceBelow(15, 40, 15)).toBe(0); // inside: roof is above us
+    expect(w.surfaceBelow(15, 40, 15)).toBe(SIDEWALK_HEIGHT); // roof is above us; block sidewalk below
     expect(w.surfaceBelow(0, 10, 0)).toBe(0);
   });
 
@@ -55,6 +62,17 @@ describe("CollisionWorld", () => {
     expect(w.raycast(0, 10, 0, 0, -1, 0, 100)).toBeCloseTo(10);
     expect(w.raycast(0, 60, 15, 1, 0, 0, 100)).toBe(Infinity);
     expect(rayBox(0, 25, 15, -1, 0, 0, { minX: 10, minY: 0, minZ: 10, maxX: 20, maxY: 50, maxZ: 20 })).toBe(-1);
+  });
+
+  it("knows roads from sidewalks analytically", () => {
+    expect(w.terrainHeight(0, 40)).toBe(0); // avenue at x = 0
+    expect(w.terrainHeight(40, 40)).toBe(SIDEWALK_HEIGHT); // inside block 0,0
+    expect(w.terrainHeight(-960, 40)).toBe(0); // avenue far away (roads every 80 m)
+    expect(w.terrainHeight(-1000, -1000)).toBe(SIDEWALK_HEIGHT);
+  });
+
+  it("covers a much bigger city (3.2 km square)", () => {
+    expect(DISTRICT_MAX - DISTRICT_MIN).toBeGreaterThanOrEqual(3200);
   });
 
   it("detects overlaps", () => {

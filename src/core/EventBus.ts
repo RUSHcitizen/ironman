@@ -27,4 +27,17 @@ export interface GameEvents extends Record<string, unknown> {
   landed: { hard: boolean };
   areaChanged: { name: string };
   qualityChanged: { quality: string };
+  /** Suit transformation started (toSuited) / finished (suited). */
+  suitTransform: { toSuited: boolean };
+  suitChanged: { suited: boolean };
+  boost: Record<string, never>;
+  sonicBoom: { x: number; y: number; z: number };
+  roll: { dir: number };
+  nearMiss: { streak: number };
+  playerHit: { damage: number };
+  evaded: Record<string, never>;
+  suitFailure: Record<string, never>;
+  weapon: { kind: "repulsor" | "rocket" | "enemyBolt" | "missile" | "laser"; x: number; y: number; z: number };
+  explosion: { x: number; y: number; z: number; size: number };
+  kill: { kind: string; total: number };
 }

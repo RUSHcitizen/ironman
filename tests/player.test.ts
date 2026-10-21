@@ -101,4 +101,64 @@ describe("PlayerController", () => {
       expect(p.pos.x).toBeLessThan(20);
     }
   });
+
+  it("takes the suit off and walks as a civilian, then suits up again", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, 0);
+    expect(p.requestSuitToggle()).toBe(true);
+    expect(p.suited).toBe(false);
+    sim(p, 1.4); // frozen while the armour peels away
+    sim(p, 1.5, { moveY: 1 });
+    const walked = p.pos.z;
+    expect(walked).toBeGreaterThan(2);
+    expect(walked).toBeLessThan(8); // slower than the armour
+    sim(p, 1, { moveY: 1, sprint: true });
+    expect(p.pos.z - walked).toBeGreaterThan(4);
+    // Civilians can jump but not fly.
+    sim(p, 0.5, {}, { toggleFlight: true });
+    expect(p.mode).toBe("ground");
+    sim(p, 0.1, {}, { toggleSuit: true });
+    expect(p.transformTimer).toBeGreaterThan(0);
+    sim(p, 1.5);
+    expect(p.suited).toBe(true);
+  });
+
+  it("refuses to remove the suit mid-air", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, 0);
+    sim(p, 1, { ascend: true }, { takeoff: true });
+    expect(p.requestSuitToggle()).toBe(false);
+    expect(p.suited).toBe(true);
+  });
+
+  it("barrel rolls dash sideways and grant brief invulnerability", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, Math.PI);
+    sim(p, 0.5, {}, { toggleFlight: true });
+    const x0 = p.pos.x;
+    sim(p, 0.1, {}, { roll: 1 });
+    expect(p.evading).toBe(true);
+    expect(p.takeHit(20)).toBe(false);
+    sim(p, 0.4);
+    expect(Math.abs(p.pos.x - x0)).toBeGreaterThan(3);
+    sim(p, 1);
+    expect(p.evading).toBe(false);
+    expect(p.takeHit(5)).toBe(true);
+  });
+
+  it("dives build more speed than level flight", () => {
+    const level = new PlayerController(makeWorld());
+    level.spawn(0, 400, -600, 0);
+    level.mode = "flight";
+    level.flightSpeed = 60;
+    level.viewPitch = 0;
+    sim(level, 3);
+    const dive = new PlayerController(makeWorld());
+    dive.spawn(0, 400, -600, 0);
+    dive.mode = "flight";
+    dive.flightSpeed = 60;
+    dive.viewPitch = -0.7;
+    sim(dive, 3);
+    expect(dive.flightSpeed).toBeGreaterThan(level.flightSpeed + 15);
+  });
 });

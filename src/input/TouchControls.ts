@@ -1,7 +1,10 @@
+type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit";
+
 /**
  * On-screen touch controls built from DOM elements and Pointer Events
  * (supported by iOS Safari 13+). Multi-touch aware: each pointer is routed to
- * the stick, a button, or the camera look area.
+ * the stick, a button, or the camera look area. Mouse pointers pass through
+ * so hybrid laptops (touchscreen Chromebooks) can still use mouse look.
  */
 export class TouchControls {
   readonly el: HTMLElement;
@@ -11,14 +14,19 @@ export class TouchControls {
   lookDY = 0;
   ascend = false;
   descend = false;
-  private flyPressed = false;
+  fire = false;
+  private edges = new Set<ButtonName>();
+  private roll = 0;
   private stickBase: HTMLElement;
   private stickKnob: HTMLElement;
   private stickId: number | null = null;
   private stickOrigin = { x: 0, y: 0 };
-  private lookIds = new Map<number, { x: number; y: number }>();
+  private lookIds = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
+  private lastTap = { t: 0, x: 0 };
   private radius = 60;
-  private buttons: Record<string, HTMLElement> = {};
+  private buttons = {} as Record<ButtonName, HTMLElement>;
+  /** Fires when a touch is used, so the UI can switch from mouse to touch mode. */
+  onTouchUsed: (() => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.el = document.createElement("div");
@@ -30,11 +38,14 @@ export class TouchControls {
       <button class="t-btn t-up" data-b="up" aria-label="Ascend / take off"><span>▲</span><small>UP</small></button>
       <button class="t-btn t-down" data-b="down" aria-label="Descend"><span>▼</span><small>DOWN</small></button>
       <button class="t-btn t-fly" data-b="fly" aria-label="Toggle flight"><span>✈</span><small>FLY</small></button>
+      <button class="t-btn t-fire" data-b="fire" aria-label="Repulsor blast (hold)"><span>✺</span><small>BLAST</small></button>
+      <button class="t-btn t-msl" data-b="msl" aria-label="Fire micro-rockets"><span>➶</span><small>MSL</small></button>
+      <button class="t-btn t-suit" data-b="suit" aria-label="Toggle suit"><span>⛨</span><small>SUIT</small></button>
     `;
     parent.appendChild(this.el);
     this.stickBase = this.el.querySelector(".t-stick")!;
     this.stickKnob = this.el.querySelector(".t-knob")!;
-    for (const b of this.el.querySelectorAll<HTMLElement>(".t-btn")) this.buttons[b.dataset.b!] = b;
+    for (const b of this.el.querySelectorAll<HTMLElement>(".t-btn")) this.buttons[b.dataset.b as ButtonName] = b;
 
     const left = this.el.querySelector<HTMLElement>(".t-left")!;
     const right = this.el.querySelector<HTMLElement>(".t-right")!;
@@ -44,10 +55,11 @@ export class TouchControls {
     window.addEventListener("pointerup", (e) => this.onUp(e));
     window.addEventListener("pointercancel", (e) => this.onUp(e));
 
-    for (const [name, b] of Object.entries(this.buttons)) {
+    for (const [name, b] of Object.entries(this.buttons) as [ButtonName, HTMLElement][]) {
       b.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        this.onTouchUsed?.();
         try {
           b.setPointerCapture(e.pointerId);
         } catch {
@@ -55,13 +67,15 @@ export class TouchControls {
         }
         b.classList.add("on");
         if (name === "up") this.ascend = true;
-        if (name === "down") this.descend = true;
-        if (name === "fly") this.flyPressed = true;
+        else if (name === "down") this.descend = true;
+        else if (name === "fire") this.fire = true;
+        else this.edges.add(name);
       });
       const release = () => {
         b.classList.remove("on");
         if (name === "up") this.ascend = false;
         if (name === "down") this.descend = false;
+        if (name === "fire") this.fire = false;
       };
       b.addEventListener("pointerup", release);
       b.addEventListener("pointercancel", release);
@@ -73,23 +87,37 @@ export class TouchControls {
 
   setVisible(v: boolean): void {
     this.el.style.display = v ? "" : "none";
+    if (!v) this.releaseAll();
   }
 
-  /** Update button labels to match the current flight mode. */
-  setMode(mode: string): void {
-    const up = this.buttons.up.querySelector("small")!;
-    const down = this.buttons.down.querySelector("small")!;
-    const fly = this.buttons.fly.querySelector("small")!;
-    up.textContent = mode === "ground" ? "LIFT" : mode === "flight" ? "CLIMB" : "UP";
-    down.textContent = mode === "flight" ? "DIVE" : mode === "ground" ? "—" : "DOWN";
-    fly.textContent = mode === "flight" ? "HOVER" : "FLY";
+  get visible(): boolean {
+    return this.el.style.display !== "none";
+  }
+
+  /** Update buttons to match the current flight mode / identity. */
+  setMode(mode: string, suited = true): void {
+    const label = (b: ButtonName, t: string) => (this.buttons[b].querySelector("small")!.textContent = t);
+    label("up", !suited ? "JUMP" : mode === "ground" ? "LIFT" : mode === "flight" ? "CLIMB" : "UP");
+    label("down", mode === "flight" ? "DIVE" : "DOWN");
+    label("fly", mode === "flight" ? "HOVER" : "FLY");
+    label("suit", suited ? "SUIT OFF" : "SUIT UP");
     this.buttons.fly.classList.toggle("active", mode === "flight");
+    this.el.classList.toggle("civ", !suited);
+    this.el.dataset.mode = mode;
   }
 
-  consumeFly(): boolean {
-    const v = this.flyPressed;
-    this.flyPressed = false;
-    return v;
+  setRockets(n: number): void {
+    this.buttons.msl.querySelector("small")!.textContent = `MSL ${n}`;
+  }
+
+  consume(name: ButtonName): boolean {
+    return this.edges.delete(name);
+  }
+
+  consumeRoll(): number {
+    const r = this.roll;
+    this.roll = 0;
+    return r;
   }
 
   consumeLook(): [number, number] {
@@ -101,13 +129,17 @@ export class TouchControls {
   releaseAll(): void {
     this.stickId = null;
     this.lookIds.clear();
-    this.ascend = this.descend = false;
+    this.ascend = this.descend = this.fire = false;
+    this.moveX = this.moveY = 0;
+    this.edges.clear();
     for (const b of Object.values(this.buttons)) b.classList.remove("on");
     this.resetStick();
   }
 
   private stickStart(e: PointerEvent): void {
+    if (e.pointerType === "mouse") return;
     e.preventDefault();
+    this.onTouchUsed?.();
     if (this.stickId !== null) return;
     this.stickId = e.pointerId;
     this.radius = Math.max(48, Math.min(75, window.innerHeight * 0.13));
@@ -120,8 +152,10 @@ export class TouchControls {
   }
 
   private lookStart(e: PointerEvent): void {
+    if (e.pointerType === "mouse") return;
     e.preventDefault();
-    this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    this.onTouchUsed?.();
+    this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
   }
 
   private onMove(e: PointerEvent): void {
@@ -160,7 +194,19 @@ export class TouchControls {
       this.moveX = this.moveY = 0;
       this.resetStick();
     }
-    this.lookIds.delete(e.pointerId);
+    const look = this.lookIds.get(e.pointerId);
+    if (look) {
+      // Double-tap on the look area = barrel roll toward that side.
+      const now = performance.now();
+      const isTap = now - look.t0 < 250 && Math.hypot(e.clientX - look.x0, e.clientY - look.y0) < 14;
+      if (isTap) {
+        if (now - this.lastTap.t < 320 && Math.abs(e.clientX - this.lastTap.x) < 80) {
+          this.roll = e.clientX < window.innerWidth * 0.72 ? -1 : 1;
+          this.lastTap.t = 0;
+        } else this.lastTap = { t: now, x: e.clientX };
+      }
+      this.lookIds.delete(e.pointerId);
+    }
   }
 
   private setKnob(dx: number, dy: number): void {

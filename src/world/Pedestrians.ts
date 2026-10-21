@@ -6,7 +6,8 @@ import { ProcGeo } from "./ProcGeo";
 import type { WorldMaterials } from "./Materials";
 import type { RGB } from "./CityGenerator";
 import { Rng } from "../core/math";
-import { BLOCK_SIZE, BLOCK_MIN_INDEX, BLOCK_MAX_INDEX, SIDEWALK_HEIGHT, blockOrigin } from "./WorldConfig";
+import { BLOCK_SIZE, BLOCK_PITCH, BLOCK_MIN_INDEX, BLOCK_MAX_INDEX, SIDEWALK_HEIGHT, blockOrigin } from "./WorldConfig";
+import { setInstanceCount } from "./instancing";
 
 interface Ped {
   x0: number;
@@ -39,6 +40,7 @@ export class PedestrianSystem {
   private legRM: Float32Array;
   readonly max: number;
   private active = 0;
+  private rng = new Rng(1234);
 
   constructor(scene: Scene, mats: WorldMaterials, max = 80) {
     this.max = max;
@@ -64,8 +66,8 @@ export class PedestrianSystem {
     legR.thinInstanceSetBuffer("matrix", this.legRM, 16, false);
     const colors = new Float32Array(max * 4);
     for (let k = 0; k < max; k++) {
-      const i = rng.int(BLOCK_MIN_INDEX, BLOCK_MAX_INDEX);
-      const j = rng.int(BLOCK_MIN_INDEX, BLOCK_MAX_INDEX);
+      const i = rng.int(-4, 4);
+      const j = rng.int(-4, 4);
       this.peds.push({ x0: blockOrigin(i) + INSET, z0: blockOrigin(j) + INSET, t: rng.range(0, PERIM), speed: rng.range(1.1, 1.7) * (rng.chance(0.5) ? 1 : -1), phase: rng.range(0, 6) });
       colors.set([...rng.pick(SHIRTS), 1], k * 4);
     }
@@ -75,10 +77,22 @@ export class PedestrianSystem {
 
   setCount(n: number): void {
     this.active = Math.max(0, Math.min(this.max, n));
-    for (const p of this.parts) p.thinInstanceCount = this.active;
+    for (const p of this.parts) setInstanceCount(p, this.active);
   }
 
-  update(dt: number): void {
+  update(dt: number, px = 0, pz = 0): void {
+    // Keep pedestrians on blocks around the player.
+    for (let k = 0; k < this.active; k++) {
+      const p = this.peds[k];
+      if (Math.max(Math.abs(p.x0 - px), Math.abs(p.z0 - pz)) > 360) {
+        const bi = Math.floor(px / BLOCK_PITCH) + this.rng.int(-4, 4);
+        const bj = Math.floor(pz / BLOCK_PITCH) + this.rng.int(-4, 4);
+        const i = Math.max(BLOCK_MIN_INDEX, Math.min(BLOCK_MAX_INDEX, bi));
+        const j = Math.max(BLOCK_MIN_INDEX, Math.min(BLOCK_MAX_INDEX, bj));
+        p.x0 = blockOrigin(i) + INSET;
+        p.z0 = blockOrigin(j) + INSET;
+      }
+    }
     const q = new Quaternion();
     const m = new Matrix();
     const s = new Vector3(1, 1, 1);

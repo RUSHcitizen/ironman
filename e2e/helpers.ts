@@ -2,6 +2,16 @@ import type { Page } from "@playwright/test";
 
 export interface DebugState {
   mode: string;
+  suited: boolean;
+  transforming: boolean;
+  integrity: number;
+  viewYaw: number;
+  viewPitch: number;
+  enemies: number;
+  kills: number;
+  rockets: number;
+  mouseMode: boolean;
+  pointerLocked: boolean;
   pos: { x: number; y: number; z: number };
   speed: number;
   energy: number;
@@ -14,17 +24,44 @@ export interface DebugState {
   props: number;
 }
 
-type GameHandle = { debugState(): DebugState };
+export type GameHandle = {
+  debugState(): DebugState;
+  teleport(x: number, y: number, z: number, yaw: number, mode?: string, speed?: number): void;
+  spawnEnemy(kind: string, forward: number, up: number, right?: number): void;
+  player: { viewPitch: number };
+};
+
+/** Run a function against the game object in the page. */
+export async function game<A>(page: Page, fn: (g: GameHandle, arg: A) => void, arg?: A): Promise<void> {
+  await page.evaluate(
+    ([src, a]) => {
+      const f = new Function("g", "arg", `return (${src})(g, arg);`);
+      f((window as unknown as { __AEGIS: unknown }).__AEGIS, a);
+    },
+    [fn.toString(), arg] as const,
+  );
+}
 
 export async function state(page: Page): Promise<DebugState> {
   return page.evaluate(() => (window as unknown as { __AEGIS: GameHandle }).__AEGIS.debugState());
 }
 
-/** Load the game, collect errors, and press Engage. */
-export async function boot(page: Page): Promise<string[]> {
+/**
+ * Load the game, collect errors, and press Engage. By default forces the Low
+ * preset (software rendering in CI is slow); pass keepSettings to test defaults.
+ */
+export async function boot(page: Page, opts: { keepSettings?: boolean } = {}): Promise<string[]> {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  if (!opts.keepSettings) {
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem("e2e-init")) {
+        sessionStorage.setItem("e2e-init", "1");
+        localStorage.setItem("aegis.settings.v1", JSON.stringify({ quality: "low", autoQuality: false }));
+      }
+    });
+  }
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
   await page.locator("#l-start").click();

@@ -183,7 +183,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Touch layout: keep the bottom corners clear for thumbs. */
 html.touch .h-diag { bottom: auto; top: calc(10px + var(--st)); left: calc(12px + var(--sl)); }
-html.touch .h-gauge { top: 40%; }
+html.touch .h-gauge { top: 40%; padding: 4px 8px; }
+html.touch .h-gauge .h-bar { display: none; }
 html.touch .h-left { left: calc(2vw + var(--sl)); }
 html.touch .h-right { right: calc(2vw + var(--sr)); }
 html.touch .h-mode { bottom: calc(8px + var(--sb)); }
@@ -310,4 +311,81 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
   .l-start { min-height: 48px; }
   .l-tip { display: none; }
   .r-phone { display: none; }
+}
+
+/* ---------------- Combat HUD ---------------- */
+.h-targets { position: absolute; inset: 0; pointer-events: none; }
+.h-target {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform;
+}
+.h-target i {
+  position: absolute; left: -16px; top: -16px; width: 32px; height: 32px;
+  border: 2px solid rgba(255, 90, 70, 0.85); border-radius: 2px;
+  -webkit-mask: linear-gradient(#000 0 0) top left / 9px 9px no-repeat, linear-gradient(#000 0 0) top right / 9px 9px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 9px 9px no-repeat, linear-gradient(#000 0 0) bottom right / 9px 9px no-repeat;
+  mask: linear-gradient(#000 0 0) top left / 9px 9px no-repeat, linear-gradient(#000 0 0) top right / 9px 9px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 9px 9px no-repeat, linear-gradient(#000 0 0) bottom right / 9px 9px no-repeat;
+}
+.h-target b { position: absolute; left: -16px; top: -24px; width: 32px; height: 3px; background: rgba(255, 80, 60, 0.25); }
+.h-target b u { display: block; height: 100%; background: #ff5a46; transform-origin: left; }
+.h-target.k-warbot i { left: -28px; top: -28px; width: 56px; height: 56px; }
+.h-target.k-warbot b { left: -28px; top: -38px; width: 56px; height: 4px; }
+.h-target.assist i { border-color: #fff; }
+.h-target.locked i {
+  -webkit-mask: none; mask: none; border-color: var(--amber); transform: rotate(45deg) scale(0.85);
+  box-shadow: 0 0 10px rgba(255, 181, 71, 0.7); animation: lockpulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes lockpulse { to { transform: rotate(45deg) scale(1.05); } }
+.h-reticle.hit svg { animation: hitm 0.18s ease-out; }
+@keyframes hitm { 0% { transform: scale(1.35); stroke: #fff; } 100% { transform: scale(1); } }
+.h-dmg {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(255, 40, 30, 0.55) 100%);
+}
+.h-weap {
+  position: absolute; right: calc(14px + var(--sr)); bottom: calc(14px + var(--sb)); text-align: right;
+  display: grid; gap: 1px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--cyan-3); border-radius: 4px;
+}
+.h-weap b { font-size: calc(13px * var(--s)); color: #fff; }
+.v-pips { display: flex; gap: 3px; justify-content: flex-end; margin: 2px 0 3px; }
+.v-pips i { width: 7px; height: 12px; border: 1px solid var(--amber); opacity: 0.35; }
+.v-pips i.on { background: var(--amber); opacity: 1; box-shadow: 0 0 5px var(--amber); }
+.h-popup {
+  position: absolute; left: 50%; top: 36%; transform: translate(-50%, 0) scale(0.9); opacity: 0;
+  font-size: calc(18px * var(--s)); letter-spacing: 0.3em; color: #fff; text-shadow: 0 0 10px var(--amber);
+  transition: opacity 0.25s, transform 0.25s; white-space: nowrap;
+}
+.h-popup.on { opacity: 1; transform: translate(-50%, -12px) scale(1); }
+.h-capture {
+  position: absolute; left: 50%; top: 74%; transform: translateX(-50%);
+  padding: 4px 12px; opacity: 0.85; border: 1px solid var(--cyan-2); background: var(--panel); font-size: 12px; letter-spacing: 0.2em;
+  display: none; font-size: 11px;
+}
+#hud.capture .h-capture { display: block; }
+.h-civ { position: absolute; left: calc(14px + var(--sl)); bottom: calc(14px + var(--sb)); display: none; padding: 8px 12px; background: var(--panel); border-left: 2px solid var(--amber); }
+.h-civ b { font-size: calc(13px * var(--s)); color: #fff; font-weight: 400; }
+/* Civilian: no helmet HUD, just compass, objective and phone-style alerts. */
+#hud.civ .h-gauge, #hud.civ .h-diag, #hud.civ .h-reticle, #hud.civ .h-weap, #hud.civ .h-targets, #hud.civ .h-vignette { display: none; }
+#hud.civ .h-civ { display: block; }
+#hud.civ { color: #e9f3ff; text-shadow: none; }
+html.touch .h-weap { display: none; }
+html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
+
+/* ---------------- Touch: combat & suit buttons ---------------- */
+.t-fly { right: calc(116px + var(--sr)); bottom: calc(26px + var(--sb)); width: 80px; height: 80px; }
+.t-fire {
+  right: calc(110px + var(--sr)); bottom: calc(116px + var(--sb)); width: 86px; height: 86px;
+  border-color: #ff7a5c; color: #ffb39e; background: rgba(60, 10, 4, 0.4);
+}
+.t-fire.on { background: rgba(255, 110, 80, 0.45); color: #fff; }
+.t-msl { right: calc(204px + var(--sr)); bottom: calc(30px + var(--sb)); width: 70px; height: 70px; border-color: var(--amber); color: var(--amber); }
+.t-suit { right: calc(68px + var(--sr)); top: calc(8px + var(--st)); width: 52px; height: 52px; }
+.t-suit span { font-size: 18px; }
+.t-suit small { font-size: 8px; letter-spacing: 0.05em; }
+#touch.civ .t-fly, #touch.civ .t-fire, #touch.civ .t-msl, #touch.civ .t-down { display: none; }
+#touch.civ .t-suit { border-color: var(--amber); color: var(--amber); }
+@media (max-height: 380px) {
+  .t-fire { width: 72px; height: 72px; bottom: calc(96px + var(--sb)); right: calc(96px + var(--sr)); }
+  .t-msl { width: 60px; height: 60px; right: calc(176px + var(--sr)); }
+  .t-fly { width: 66px; height: 66px; right: calc(98px + var(--sr)); bottom: calc(22px + var(--sb)); }
 }

@@ -7,6 +7,7 @@ import type { WorldMaterials } from "./Materials";
 import { roadLines, type RGB } from "./CityGenerator";
 import { Rng } from "../core/math";
 import { BLOCK_MIN_INDEX, BLOCK_MAX_INDEX, DISTRICT_MIN, DISTRICT_MAX, ROAD_WIDTH } from "./WorldConfig";
+import { setInstanceCount } from "./instancing";
 
 interface Car {
   /** 0: travels along Z (road at x = line), 1: travels along X. */
@@ -33,6 +34,8 @@ const CAR_COLORS: RGB[] = [
 ];
 
 export const SIGNAL_PERIOD = 9;
+/** Cars further than this (m, per axis) from the player respawn near them. */
+const RECYCLE_RADIUS = 420;
 
 /** Lightweight lane-following traffic with signal phases and car spacing. */
 export class TrafficSystem {
@@ -99,11 +102,34 @@ export class TrafficSystem {
 
   setCount(n: number): void {
     this.active = Math.max(0, Math.min(this.max, n));
-    for (const p of this.parts) p.thinInstanceCount = this.active;
+    for (const p of this.parts) setInstanceCount(p, this.active);
   }
 
-  update(dt: number): void {
+  /** Move a car that drifted far from the player onto a lane near them. */
+  private recycle(c: Car, px: number, pz: number): void {
+    const r = this.rng;
+    const along = c.axis === 0 ? pz : px;
+    const across = c.axis === 0 ? px : pz;
+    const near = this.lines.filter((L) => Math.abs(L - across) < RECYCLE_RADIUS * 0.8);
+    if (near.length === 0) return;
+    const line = r.pick(near);
+    c.line = line;
+    // Appear ahead/behind at a distance so cars do not pop in next to you.
+    const sign = r.chance(0.5) ? 1 : -1;
+    c.s = Math.max(DISTRICT_MIN, Math.min(DISTRICT_MAX, along + sign * r.range(120, RECYCLE_RADIUS * 0.8)));
+    c.speed = c.cruise;
+    const laneIdx = Math.abs(c.laneOffset) > 3 ? 1 : 0;
+    c.lane = (this.lines.indexOf(line) * 2 + c.axis) * 4 + (c.dir > 0 ? 0 : 2) + laneIdx;
+  }
+
+  update(dt: number, px = 0, pz = 0): void {
     this.time += dt;
+    for (let i = 0; i < this.active; i++) {
+      const c = this.cars[i];
+      const cx = c.axis === 0 ? c.line + c.laneOffset : c.s;
+      const cz = c.axis === 0 ? c.s : c.line + c.laneOffset;
+      if (Math.max(Math.abs(cx - px), Math.abs(cz - pz)) > RECYCLE_RADIUS) this.recycle(c, px, pz);
+    }
     this.phase = Math.floor(this.time / SIGNAL_PERIOD) % 2;
     const half = ROAD_WIDTH / 2;
     const lo = DISTRICT_MIN - half, hi = DISTRICT_MAX + half;

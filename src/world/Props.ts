@@ -6,6 +6,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { ProcGeo } from "./ProcGeo";
 import type { PropPlacement, PropType } from "./CityGenerator";
 import type { WorldMaterials } from "./Materials";
+import { setInstanceCount } from "./instancing";
 
 interface PropDef {
   parts: Mesh[];
@@ -86,16 +87,16 @@ export class PropSystem {
           g.box(0.25, 4, 0.25, DARK, 1.7, 2, -1.7),
           g.box(0.25, 4, 0.25, DARK, -1.7, 2, 1.7),
           g.box(0.25, 4, 0.25, DARK, 1.7, 2, 1.7),
-          g.cyl(2.7, 2.7, 0.25, DARK, 0, 4.1, 0, 12),
-          g.cyl(2.45, 2.5, 4.6, tank, 0, 6.5, 0, 14),
-          g.cyl(2.52, 2.52, 0.12, DARK, 0, 5.4, 0, 14),
-          g.cyl(2.52, 2.52, 0.12, DARK, 0, 7.6, 0, 14),
-          g.cyl(0, 2.7, 1.6, [0.27, 0.23, 0.21], 0, 9.6, 0, 14),
+          g.cyl(2.7, 2.7, 0.25, DARK, 0, 4.1, 0, 8),
+          g.cyl(2.45, 2.5, 4.6, tank, 0, 6.5, 0, 10),
+          g.cyl(2.52, 2.52, 0.12, DARK, 0, 5.4, 0, 10),
+          g.cyl(2.52, 2.52, 0.12, DARK, 0, 7.6, 0, 10),
+          g.cyl(0, 2.7, 1.6, [0.27, 0.23, 0.21], 0, 9.6, 0, 10),
         ]),
       ],
     });
     this.defs.set("acUnit", {
-      far: true,
+      far: false,
       parts: [lit("acUnit", [g.box(2.4, 1.3, 1.6, [0.6, 0.61, 0.63], 0, 0.65, 0), g.cyl(0.5, 0.5, 0.1, DARK, 0, 1.33, 0, 10)])],
     });
     const tip = glow("antennaTip", [g.sphere(0.4, [1, 1, 1], 0, 14.2, 0, 4)], mats.beacon);
@@ -119,7 +120,7 @@ export class PropSystem {
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.doNotSyncBoundingInfo = true;
     mesh.thinInstanceSetBuffer("matrix", new Float32Array(16), 16, false);
-    mesh.thinInstanceCount = 0;
+    setInstanceCount(mesh, 0);
     return mesh;
   }
 
@@ -168,7 +169,8 @@ export class PropSystem {
     this.lastZ = camZ;
     const half = chunkSize / 2;
     for (const [type, def] of this.defs) {
-      const limit = (def.far ? farDist : nearDist) + half * 1.42;
+      // Rooftop silhouettes fade into fog anyway past ~500 m.
+      const limit = (def.far ? Math.min(farDist, 500) : nearDist) + half * 1.42;
       const lists: Float32Array[] = [];
       let total = 0;
       for (const c of this.chunks.values()) {
@@ -186,7 +188,7 @@ export class PropSystem {
       }
       for (const mesh of def.parts) {
         mesh.thinInstanceSetBuffer("matrix", buf, 16, false);
-        mesh.thinInstanceCount = total / 16;
+        setInstanceCount(mesh, total / 16);
       }
       if (def.signal) {
         this.signalAxes = new Uint8Array(total / 16);

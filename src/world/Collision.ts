@@ -1,5 +1,15 @@
 import type { Box } from "./CityGenerator";
-import { ISLAND_MIN, ISLAND_MAX, WATER_Y, SIDEWALK_HEIGHT } from "./WorldConfig";
+import {
+  ISLAND_MIN,
+  ISLAND_MAX,
+  WATER_Y,
+  SIDEWALK_HEIGHT,
+  BLOCK_PITCH,
+  BLOCK_SIZE,
+  ROAD_WIDTH,
+  DISTRICT_MIN,
+  DISTRICT_MAX,
+} from "./WorldConfig";
 
 const CELL = 32;
 
@@ -10,7 +20,6 @@ const CELL = 32;
  */
 export class CollisionWorld {
   private cells = new Map<number, Box[]>();
-  private slabs: Box[] = [];
   private stamp = 0;
   private marks = new WeakMap<Box, number>();
   readonly boxes: Box[] = [];
@@ -31,11 +40,6 @@ export class CollisionWorld {
         list.push(b);
       }
     }
-  }
-
-  /** Raised sidewalk slabs - used only by the ground height function. */
-  addSlab(b: Box): void {
-    this.slabs.push(b);
   }
 
   /** Visit each box overlapping the XZ rectangle exactly once. */
@@ -64,10 +68,13 @@ export class CollisionWorld {
   /** Height of the terrain (street, sidewalk or water surface) at x,z. */
   terrainHeight(x: number, z: number): number {
     if (this.isOverWater(x, z)) return WATER_Y;
-    for (const s of this.slabs) {
-      if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) return SIDEWALK_HEIGHT;
-    }
-    return 0;
+    const half = ROAD_WIDTH / 2;
+    // Waterfront promenade outside the outermost roads.
+    if (x < DISTRICT_MIN - half || x > DISTRICT_MAX + half || z < DISTRICT_MIN - half || z > DISTRICT_MAX + half) return SIDEWALK_HEIGHT;
+    // Inside a block (sidewalk ring, lots, parks) vs. on a road: analytic grid test.
+    const lx = (((x - half) % BLOCK_PITCH) + BLOCK_PITCH) % BLOCK_PITCH;
+    const lz = (((z - half) % BLOCK_PITCH) + BLOCK_PITCH) % BLOCK_PITCH;
+    return lx <= BLOCK_SIZE && lz <= BLOCK_SIZE ? SIDEWALK_HEIGHT : 0;
   }
 
   /**

@@ -30,6 +30,16 @@ export class SuitSystems {
     this.repairDelay = 5;
   }
 
+  repair(amount: number): void {
+    for (const p of SUIT_PARTS) this.integrity[p] = clamp(this.integrity[p] + amount, 0, 100);
+  }
+
+  restore(): void {
+    this.energy = 100;
+    this.repair(100);
+    this.repairDelay = 0;
+  }
+
   update(dt: number): void {
     if (this.repairDelay > 0) {
       this.repairDelay -= dt;

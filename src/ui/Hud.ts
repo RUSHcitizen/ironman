@@ -3,6 +3,17 @@ import type { PlayerController } from "../player/PlayerController";
 import { SUIT_PARTS } from "../player/SuitSystems";
 import { wrapAngle } from "../core/math";
 
+export interface HudTarget {
+  x: number;
+  y: number;
+  z: number;
+  hp: number;
+  locked: boolean;
+  assist: boolean;
+  kind: string;
+  scale: number;
+}
+
 export interface HudMarker {
   id: string;
   label: string;
@@ -39,6 +50,9 @@ export class Hud {
   private fpsTime = 0;
   fps = 60;
   onMenu: (() => void) | null = null;
+  private targetEls: HTMLElement[] = [];
+  private pipCount = -1;
+  private popupTimer: number | undefined;
 
   constructor(parent: HTMLElement, bus: EventBus<GameEvents>) {
     this.el = document.createElement("div");
@@ -85,6 +99,16 @@ export class Hud {
           <b class="v-energy-t">100%</b>
         </div>
       </div>
+      <div class="h-targets"></div>
+      <div class="h-dmg"></div>
+      <div class="h-weap">
+        <small>REPULSORS</small><b class="v-rpl">READY</b>
+        <small>MICRO-ROCKETS</small><div class="v-pips"></div>
+        <small>THREATS NEUTRALISED</small><b class="v-kills">0</b>
+      </div>
+      <div class="h-popup"></div>
+      <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
+      <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Press G to suit up</b></div>
       <div class="h-mode"><b class="v-mode">GROUND</b><span class="v-hint"></span></div>
       <div class="h-objective"><small class="v-obj-t"></small><b class="v-obj"></b></div>
       <div class="h-alerts"></div>
@@ -114,6 +138,75 @@ export class Hud {
 
   setHint(text: string): void {
     this.q(".v-hint").textContent = text;
+  }
+
+  /** Enemy brackets with health bars; red diamond = rocket lock. */
+  updateTargets(items: HudTarget[], project: (x: number, y: number, z: number) => { x: number; y: number; ok: boolean }): void {
+    const root = this.q(".h-targets");
+    let n = 0;
+    for (const it of items) {
+      const p = project(it.x, it.y, it.z);
+      if (!p.ok) continue;
+      let el = this.targetEls[n];
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "h-target";
+        el.innerHTML = "<i></i><b><u></u></b>";
+        root.appendChild(el);
+        this.targetEls.push(el);
+      }
+      el.style.display = "";
+      el.style.transform = `translate3d(${p.x}px,${p.y}px,0) scale(${it.scale})`;
+      el.className = `h-target k-${it.kind}${it.locked ? " locked" : ""}${it.assist ? " assist" : ""}`;
+      (el.querySelector("u") as HTMLElement).style.transform = `scaleX(${Math.max(0, it.hp)})`;
+      n++;
+    }
+    for (let k = n; k < this.targetEls.length; k++) this.targetEls[k].style.display = "none";
+  }
+
+  setWeapons(rockets: number, max: number, kills: number, repulsorReady: boolean): void {
+    if (this.pipCount !== max) {
+      this.pipCount = max;
+      this.q(".v-pips").innerHTML = "<i></i>".repeat(max);
+    }
+    const pips = this.q(".v-pips").children;
+    for (let k = 0; k < pips.length; k++) pips[k].classList.toggle("on", k < rockets);
+    this.q(".v-kills").textContent = String(kills);
+    this.q(".v-rpl").textContent = repulsorReady ? "READY" : "LOW POWER";
+  }
+
+  damageFlash(amount: number): void {
+    const el = this.q(".h-dmg");
+    el.style.transition = "none";
+    el.style.opacity = String(Math.min(0.85, 0.25 + amount / 25));
+    void el.offsetWidth;
+    el.style.transition = "opacity 0.6s";
+    el.style.opacity = "0";
+  }
+
+  hitMarker(): void {
+    const r = this.q(".h-reticle");
+    r.classList.remove("hit");
+    void r.offsetWidth;
+    r.classList.add("hit");
+  }
+
+  popup(text: string): void {
+    const el = this.q(".h-popup");
+    el.textContent = text;
+    el.classList.remove("on");
+    void el.offsetWidth;
+    el.classList.add("on");
+    window.clearTimeout(this.popupTimer);
+    this.popupTimer = window.setTimeout(() => el.classList.remove("on"), 1300);
+  }
+
+  setCapturePrompt(show: boolean): void {
+    this.el.classList.toggle("capture", show);
+  }
+
+  setCivilianHint(text: string): void {
+    this.q(".v-civ").textContent = text;
   }
 
   setMarkers(markers: HudMarker[]): void {
@@ -234,9 +327,10 @@ export class Hud {
       for (const n of this.el.querySelectorAll(`[data-p="${part}"]`)) n.setAttribute("class", cls);
     }
 
-    const modeText = p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
+    const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? "ON FOOT" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
     this.q(".v-mode").textContent = modeText;
     this.el.dataset.mode = p.mode;
+    this.el.classList.toggle("civ", !p.suited);
     this.el.classList.toggle("burn", p.afterburner);
     (this.q(".h-vignette") as HTMLElement).style.opacity = String(Math.min(1, Math.max(0, (p.speed - 50) / 80)));
   }

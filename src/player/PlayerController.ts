@@ -1,25 +1,31 @@
 import type { InputState } from "../input/InputState";
 import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
-import { SuitSystems } from "./SuitSystems";
+import { SuitSystems, SUIT_PARTS } from "./SuitSystems";
 import { clamp, damp, dampAngle, moveTowards, wrapAngle, DEG } from "../core/math";
-import { WORLD_LIMIT, ALTITUDE_CEILING } from "../world/WorldConfig";
+import { WORLD_LIMIT, ALTITUDE_CEILING, ISLAND_MIN, ISLAND_MAX } from "../world/WorldConfig";
 
 export type FlightMode = "ground" | "hover" | "flight";
 
 export const TUNING = {
   walkSpeed: 8,
-  hoverSpeed: 17,
-  hoverVertical: 10,
-  cruiseSpeed: 55,
-  afterburnerSpeed: 125,
+  civilianWalk: 3.4,
+  civilianSprint: 7,
+  hoverSpeed: 18,
+  hoverVertical: 11,
+  cruiseSpeed: 62,
+  afterburnerSpeed: 165,
+  sonicSpeed: 150,
   minFlightSpeed: 18,
   gravity: 22,
-  turnRate: 1.6,
-  pitchRate: 1.15,
+  turnRate: 1.9,
+  pitchRate: 1.3,
   radius: 0.45,
   height: 1.95,
   stepUp: 0.4,
+  rollTime: 0.55,
+  rollCooldown: 0.75,
+  transformTime: 1.3,
 };
 
 /**
@@ -31,6 +37,11 @@ export class PlayerController {
   readonly vel = { x: 0, y: 0, z: 0 };
   mode: FlightMode = "ground";
   grounded = true;
+  /** Wearing the armour? False = civilian alter ego on foot. */
+  suited = true;
+  /** Seconds left in a suit-up / suit-off transformation (0 = none). */
+  transformTimer = 0;
+  transformToSuited = true;
   /** Camera/aim angles. viewPitch > 0 looks up. */
   viewYaw = 0;
   viewPitch = -0.15;
@@ -38,20 +49,34 @@ export class PlayerController {
   bodyYaw = 0;
   bodyPitch = 0;
   bodyRoll = 0;
+  /** Extra roll from barrel rolls (radians, visual only). */
+  rollSpin = 0;
+  rollTimer = 0;
+  rollDir = 0;
+  private rollCooldown = 0;
   flightSpeed = 0;
   /** 0..1 thruster output, drives VFX and audio. */
   thrust = 0;
   afterburner = false;
+  private wasAfterburner = false;
+  private sonicDone = false;
   walkPhase = 0;
   /** Seconds remaining in the landing crouch. */
   landingTimer = 0;
   airTime = 0;
   /** Height above the surface directly below. */
   agl = 0;
+  /** Seconds the firing pose stays raised (set by the combat system). */
+  aimTimer = 0;
+  rocketTimer = 0;
+  nearMissStreak = 0;
+  private nearMissTimer = 0;
+  private nearMissCooldown = 0;
   readonly suit = new SuitSystems();
   private lowEnergyWarned = false;
   private boundaryWarned = 0;
   private ceilingWarned = 0;
+  private failed = false;
 
   constructor(
     private world: CollisionWorld,
@@ -66,17 +91,30 @@ export class PlayerController {
     this.viewYaw = this.bodyYaw = yaw;
     this.viewPitch = -0.15;
     this.bodyPitch = this.bodyRoll = 0;
+    this.rollSpin = this.rollTimer = 0;
     this.flightSpeed = 0;
     this.afterburner = false;
     this.landingTimer = 0;
     this.airTime = 0;
     this.grounded = true;
     this.agl = 0;
+    this.transformTimer = 0;
+    this.failed = false;
     this.setMode("ground");
   }
 
   get speed(): number {
     return Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+  }
+
+  /** Invulnerable while barrel-rolling or out of the suit (enemies ignore civilians). */
+  get evading(): boolean {
+    return this.rollTimer > 0;
+  }
+
+  /** Centre of mass, used as the target for enemy fire. */
+  get center(): { x: number; y: number; z: number } {
+    return { x: this.pos.x, y: this.pos.y + (this.mode === "flight" ? 1.0 : 1.1), z: this.pos.z };
   }
 
   private setMode(m: FlightMode): void {
@@ -89,6 +127,47 @@ export class PlayerController {
     this.bus?.emit("alert", { text, level });
   }
 
+  /** Enemy hit. Returns false if evaded. */
+  takeHit(damage: number): boolean {
+    if (!this.suited || this.failed) return false;
+    if (this.evading) {
+      this.bus?.emit("evaded", {});
+      return false;
+    }
+    const part = SUIT_PARTS[Math.floor(Math.random() * SUIT_PARTS.length)];
+    this.suit.damage(damage, [part, "chest"]);
+    this.bus?.emit("playerHit", { damage });
+    if (this.suit.overallIntegrity < 15) {
+      this.failed = true;
+      this.bus?.emit("suitFailure", {});
+    }
+    return true;
+  }
+
+  /** Request suit-up / suit-off. Returns false (with an ARIA hint) if not possible now. */
+  requestSuitToggle(): boolean {
+    if (this.transformTimer > 0) return false;
+    if (this.suited && (this.mode !== "ground" || !this.grounded || this.landingTimer > 0)) {
+      this.alert("Land first to exit the suit", "warn");
+      return false;
+    }
+    this.transformToSuited = !this.suited;
+    this.transformTimer = TUNING.transformTime;
+    this.vel.x = this.vel.z = 0;
+    this.bus?.emit("suitTransform", { toSuited: this.transformToSuited });
+    // Suit-off completes instantly for gameplay (armour animates away); suit-up at the end.
+    if (!this.transformToSuited) this.finishTransform();
+    return true;
+  }
+
+  private finishTransform(): void {
+    this.suited = this.transformToSuited;
+    this.afterburner = false;
+    this.thrust = 0;
+    if (this.suited) this.suit.charge(100);
+    this.bus?.emit("suitChanged", { suited: this.suited });
+  }
+
   update(dt: number, input: InputState): void {
     dt = Math.min(dt, 0.05);
     // View angles from look input.
@@ -96,15 +175,28 @@ export class PlayerController {
     const pitchLimit = this.mode === "flight" ? 85 * DEG : 70 * DEG;
     this.viewPitch = clamp(this.viewPitch + input.lookY, -pitchLimit, this.mode === "flight" ? pitchLimit : 55 * DEG);
 
+    if (input.toggleSuit) this.requestSuitToggle();
+    if (this.transformTimer > 0) {
+      this.transformTimer -= dt;
+      if (this.transformTimer <= 0) {
+        this.transformTimer = 0;
+        if (this.transformToSuited) this.finishTransform();
+      }
+    }
+
     if (this.mode === "ground") this.updateGround(dt, input);
     else if (this.mode === "hover") this.updateHover(dt, input);
     else this.updateFlight(dt, input);
+    this.updateRoll(dt, input);
 
     this.integrate(dt);
     this.updateBoundaries(dt);
     this.updateEnergy(dt);
+    this.updateNearMiss(dt);
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
+    if (this.aimTimer > 0) this.aimTimer -= dt;
+    if (this.rocketTimer > 0) this.rocketTimer -= dt;
   }
 
   private planarInput(input: InputState): { x: number; z: number; mag: number } {
@@ -122,16 +214,18 @@ export class PlayerController {
 
   private updateGround(dt: number, input: InputState): void {
     const move = this.planarInput(input);
-    const landing = this.landingTimer > 0;
-    const speed = landing ? 0 : TUNING.walkSpeed;
+    const locked = this.landingTimer > 0 || this.transformTimer > 0;
+    let speed = this.suited ? TUNING.walkSpeed : input.sprint ? TUNING.civilianSprint : TUNING.civilianWalk;
+    if (locked) speed = 0;
     const k = damp(this.grounded ? 12 : 2, dt);
     this.vel.x += (move.x * speed - this.vel.x) * k;
     this.vel.z += (move.z * speed - this.vel.z) * k;
     this.vel.y -= TUNING.gravity * dt;
 
     const planar = Math.hypot(this.vel.x, this.vel.z);
-    if (planar > 0.4) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
-    this.walkPhase += planar * dt * 1.25;
+    if (this.aimTimer > 0 && this.suited) this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 14, dt);
+    else if (planar > 0.4) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
+    this.walkPhase += planar * dt * (this.suited ? 1.25 : 1.9);
     this.bodyPitch += (0 - this.bodyPitch) * damp(10, dt);
     this.bodyRoll += (0 - this.bodyRoll) * damp(10, dt);
     this.thrust = moveTowards(this.thrust, 0, dt * 3);
@@ -139,22 +233,30 @@ export class PlayerController {
 
     if (!this.grounded) {
       this.airTime += dt;
-      if (this.airTime > 0.55 && this.vel.y < -6) {
+      if (this.suited && this.airTime > 0.55 && this.vel.y < -6) {
         this.setMode("hover");
         this.alert("Stabilisers engaged");
       }
     }
-    if (landing) return;
+    if (locked) return;
+    if (!this.suited) {
+      if (input.takeoff && this.grounded) {
+        this.vel.y = 5.5;
+        this.grounded = false;
+      }
+      return;
+    }
     if (input.takeoff || input.ascend) {
       this.vel.y = 9;
       this.grounded = false;
       this.setMode("hover");
     } else if (input.toggleFlight) {
-      this.vel.y = 18;
+      this.vel.y = 20;
       this.grounded = false;
       this.viewPitch = Math.max(this.viewPitch, 30 * DEG);
-      this.flightSpeed = 30;
+      this.flightSpeed = 40;
       this.setMode("flight");
+      this.bus?.emit("boost", {});
       this.alert("Flight mode: launch");
     }
   }
@@ -166,7 +268,7 @@ export class PlayerController {
     const tx = move.x * TUNING.hoverSpeed;
     const tz = move.z * TUNING.hoverSpeed;
     const ty = hasEnergy ? vy * TUNING.hoverVertical : vy > 0 ? 1 : -3;
-    const k = damp(3.2, dt);
+    const k = damp(3.5, dt);
     this.vel.x += (tx - this.vel.x) * k;
     this.vel.z += (tz - this.vel.z) * k;
     this.vel.y += (ty - this.vel.y) * damp(4, dt);
@@ -182,47 +284,110 @@ export class PlayerController {
     this.afterburner = false;
 
     if (input.toggleFlight) {
-      this.flightSpeed = Math.max(this.flightSpeed, 32);
+      // Punch out of the hover with a forward burst.
+      this.flightSpeed = Math.max(this.flightSpeed, 45);
       this.setMode("flight");
+      this.bus?.emit("boost", {});
     }
   }
 
   private updateFlight(dt: number, input: InputState): void {
-    this.viewYaw = wrapAngle(this.viewYaw + input.moveX * TUNING.turnRate * dt);
+    // Tighter turns at lower speed, wider arcs when screaming along.
+    const turnRate = TUNING.turnRate * (1.25 - Math.min(0.55, this.flightSpeed / 300));
+    this.viewYaw = wrapAngle(this.viewYaw + input.moveX * turnRate * dt);
     const pitchIn = (input.ascend ? 1 : 0) - (input.descend ? 1 : 0);
     this.viewPitch = clamp(this.viewPitch + pitchIn * TUNING.pitchRate * dt, -85 * DEG, 85 * DEG);
 
     const braking = input.moveY < -0.25;
     this.afterburner = input.moveY > 0.25 && this.suit.energy > 0;
+    if (this.afterburner && !this.wasAfterburner) {
+      // Afterburner kick.
+      this.flightSpeed += 18;
+      this.bus?.emit("boost", {});
+    }
+    this.wasAfterburner = this.afterburner;
     let target = TUNING.cruiseSpeed;
     if (this.afterburner) target = TUNING.afterburnerSpeed;
+    // Gravity assist: dives build speed, climbs bleed it.
+    const sp = Math.sin(this.viewPitch);
+    target += sp < 0 ? -sp * 55 : -sp * (this.afterburner ? 10 : 25);
     if (braking) target = 0;
-    const accel = this.afterburner ? 45 : braking ? 55 : 28;
+    const accel = this.afterburner ? 70 : braking ? 60 : sp < -0.2 ? 40 : 28;
     this.flightSpeed = moveTowards(this.flightSpeed, target, accel * dt);
 
+    if (this.flightSpeed > TUNING.sonicSpeed && !this.sonicDone) {
+      this.sonicDone = true;
+      this.bus?.emit("sonicBoom", { ...this.pos });
+      this.alert("Sound barrier: sonic boom", "success");
+    } else if (this.flightSpeed < TUNING.sonicSpeed - 30) this.sonicDone = false;
+
     const cp = Math.cos(this.viewPitch);
-    const dx = Math.sin(this.viewYaw) * cp, dy = Math.sin(this.viewPitch), dz = Math.cos(this.viewYaw) * cp;
-    const k = damp(3.5, dt);
+    const dx = Math.sin(this.viewYaw) * cp, dy = sp, dz = Math.cos(this.viewYaw) * cp;
+    const k = damp(4, dt);
     this.vel.x += (dx * this.flightSpeed - this.vel.x) * k;
     this.vel.y += (dy * this.flightSpeed - this.vel.y) * k;
     this.vel.z += (dz * this.flightSpeed - this.vel.z) * k;
 
-    // Body lies along the flight path; bank into turns.
-    const turn = input.moveX * TUNING.turnRate + input.lookX / Math.max(dt, 1e-3) * 0.25;
-    this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 8, dt);
-    this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(6, dt);
-    this.bodyRoll += (clamp(-turn * 0.5, -1.1, 1.1) - this.bodyRoll) * damp(4, dt);
-    this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 2.5);
+    // Body lies along the flight path; bank hard into turns.
+    const turn = input.moveX * turnRate + (input.lookX / Math.max(dt, 1e-3)) * 0.3;
+    this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 9, dt);
+    this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(7, dt);
+    this.bodyRoll += (clamp(-turn * 0.6, -1.35, 1.35) - this.bodyRoll) * damp(5, dt);
+    this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 3);
 
     if (input.toggleFlight || (braking && this.flightSpeed < TUNING.minFlightSpeed)) {
       this.afterburner = false;
+      this.wasAfterburner = false;
       this.setMode("hover");
+    }
+  }
+
+  /** Barrel roll / dodge: lateral burst with brief invulnerability. */
+  private updateRoll(dt: number, input: InputState): void {
+    if (this.rollCooldown > 0) this.rollCooldown -= dt;
+    if (input.roll !== 0 && this.suited && this.mode !== "ground" && this.rollCooldown <= 0 && this.suit.energy > 3) {
+      this.rollDir = Math.sign(input.roll);
+      this.rollTimer = TUNING.rollTime;
+      this.rollCooldown = TUNING.rollCooldown;
+      this.suit.drain(3);
+      const s = Math.sin(this.viewYaw), c = Math.cos(this.viewYaw);
+      const impulse = this.mode === "flight" ? 34 : 20;
+      this.vel.x += c * this.rollDir * impulse;
+      this.vel.z += -s * this.rollDir * impulse;
+      this.bus?.emit("roll", { dir: this.rollDir });
+    }
+    if (this.rollTimer > 0) {
+      this.rollTimer = Math.max(0, this.rollTimer - dt);
+      const t = 1 - this.rollTimer / TUNING.rollTime;
+      const ease = t * t * (3 - 2 * t);
+      this.rollSpin = -this.rollDir * ease * Math.PI * 2;
+    } else this.rollSpin = 0;
+  }
+
+  /** Reward flying fast and close to buildings. */
+  private updateNearMiss(dt: number): void {
+    if (this.nearMissCooldown > 0) this.nearMissCooldown -= dt;
+    this.nearMissTimer -= dt;
+    if (this.nearMissTimer > 0) return;
+    this.nearMissTimer = 0.12;
+    if (this.mode !== "flight" || this.flightSpeed < 60) {
+      if (this.nearMissCooldown <= 0) this.nearMissStreak = 0;
+      return;
+    }
+    const c = this.center;
+    const s = Math.sin(this.viewYaw), co = Math.cos(this.viewYaw);
+    const close = (dx: number, dy: number, dz: number) => this.world.raycast(c.x, c.y, c.z, dx, dy, dz, 7) < 7;
+    if ((close(co, 0, -s) || close(-co, 0, s) || close(0, -1, 0)) && this.nearMissCooldown <= 0) {
+      this.nearMissStreak++;
+      this.nearMissCooldown = 0.9;
+      this.suit.charge(5);
+      this.bus?.emit("nearMiss", { streak: this.nearMissStreak });
     }
   }
 
   private integrate(dt: number): void {
     const dist = Math.hypot(this.vel.x, this.vel.y, this.vel.z) * dt;
-    const steps = Math.min(10, Math.max(1, Math.ceil(dist / 1.2)));
+    const steps = Math.min(12, Math.max(1, Math.ceil(dist / 1.2)));
     const h = dt / steps;
     let contactDown = false;
     let impactSpeed = 0;
@@ -235,6 +400,7 @@ export class PlayerController {
     const surface = this.world.surfaceBelow(this.pos.x, this.pos.y + 0.05, this.pos.z, TUNING.radius);
     this.agl = this.pos.y - surface;
     const supported = this.agl < 0.06 && this.vel.y <= 0.01;
+    const overWater = this.world.isOverWater(this.pos.x, this.pos.z);
 
     if (this.mode === "ground") {
       if (supported) {
@@ -243,9 +409,13 @@ export class PlayerController {
         this.airTime = 0;
         this.vel.y = 0;
       } else this.grounded = false;
+      if (overWater && this.suited) {
+        this.vel.y = 3;
+        this.setMode("hover");
+        this.alert("Water below - hover engaged");
+      }
     } else if (contactDown) {
       const steep = this.mode === "hover" || this.viewPitch < -25 * DEG;
-      const overWater = this.world.isOverWater(this.pos.x, this.pos.z);
       if (overWater) {
         this.vel.y = Math.max(this.vel.y, 2);
         if (this.mode === "flight") this.viewPitch = Math.max(this.viewPitch, 0);
@@ -265,8 +435,8 @@ export class PlayerController {
 
     if (impactSpeed > 22 && this.mode !== "ground") {
       this.bus?.emit("impact", { speed: impactSpeed });
-      this.suit.damage(impactSpeed * 0.18, impactSpeed > 60 ? undefined : ["chest", "arms", "helmet"]);
-      this.alert(impactSpeed > 60 ? "Severe impact - armour compromised" : "Impact detected", impactSpeed > 60 ? "critical" : "warn");
+      this.suit.damage(impactSpeed * 0.15, impactSpeed > 70 ? undefined : ["chest", "arms", "helmet"]);
+      this.alert(impactSpeed > 70 ? "Severe impact - armour compromised" : "Impact detected", impactSpeed > 70 ? "critical" : "warn");
       if (this.mode === "flight") {
         this.flightSpeed = 0;
         this.setMode("hover");
@@ -276,7 +446,7 @@ export class PlayerController {
 
   private landed(hard: boolean): void {
     this.landingTimer = hard ? 0.75 : 0.25;
-    if (hard) this.suit.damage(1.5, ["legs"]);
+    if (hard && this.suited) this.suit.damage(1.5, ["legs"]);
     this.bus?.emit("landed", { hard });
   }
 
@@ -287,6 +457,8 @@ export class PlayerController {
     const p = this.pos;
     const nx = axis === 0 ? p.x + delta : p.x;
     const nz = axis === 2 ? p.z + delta : p.z;
+    // Civilians stay on the island (no swimming).
+    if (!this.suited && (nx < ISLAND_MIN + 1 || nx > ISLAND_MAX - 1 || nz < ISLAND_MIN + 1 || nz > ISLAND_MAX - 1)) return 0;
     const hit = this.world.overlaps(nx - r, p.y + TUNING.stepUp, nz - r, nx + r, p.y + TUNING.height, nz + r);
     if (!hit) {
       p.x = nx;
@@ -331,13 +503,15 @@ export class PlayerController {
   }
 
   private updateBoundaries(dt: number): void {
-    const d = Math.hypot(this.pos.x, this.pos.z);
     this.boundaryWarned -= dt;
     this.ceilingWarned -= dt;
-    if (d > WORLD_LIMIT) {
-      const push = (d - WORLD_LIMIT) * 2;
+    const over = Math.max(Math.abs(this.pos.x), Math.abs(this.pos.z)) - WORLD_LIMIT;
+    if (over > 0) {
+      const d = Math.hypot(this.pos.x, this.pos.z);
+      const push = over * 2;
       this.vel.x -= (this.pos.x / d) * push * dt * 10;
       this.vel.z -= (this.pos.z / d) * push * dt * 10;
+      if (this.mode === "flight") this.viewYaw = dampAngle(this.viewYaw, Math.atan2(-this.pos.x, -this.pos.z), 1.5, dt);
       if (this.boundaryWarned <= 0) {
         this.alert("Leaving operational airspace - turning back", "warn");
         this.boundaryWarned = 6;
@@ -355,9 +529,9 @@ export class PlayerController {
 
   private updateEnergy(dt: number): void {
     const s = this.suit;
-    if (this.mode === "ground") s.charge(14 * dt);
-    else if (this.mode === "hover") s.charge(1.5 * dt);
-    else s.drain((this.afterburner ? 11 : 0.6) * dt);
+    if (!this.suited || this.mode === "ground") s.charge(14 * dt);
+    else if (this.mode === "hover") s.charge(2 * dt);
+    else s.drain((this.afterburner ? 9 : 0.4) * dt);
 
     if (s.energy < 20 && !this.lowEnergyWarned) {
       this.lowEnergyWarned = true;

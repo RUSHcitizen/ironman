@@ -5,6 +5,9 @@ import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { Camera } from "@babylonjs/core/Cameras/camera";
 import { RenderingGroup } from "@babylonjs/core/Rendering/renderingGroup";
 import type { SubMesh } from "@babylonjs/core/Meshes/subMesh";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { setInstanceCount } from "../world/instancing";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { EventBus, type GameEvents } from "./EventBus";
 import { Settings, QUALITY_PRESETS, type Quality } from "./Settings";
 import type { DeviceInfo } from "./device";
@@ -18,12 +21,18 @@ import { PedestrianSystem } from "../world/Pedestrians";
 import { CHUNK_SIZE, HERO_BLOCK, BLOCK_SIZE, blockOrigin } from "../world/WorldConfig";
 import { PlayerController } from "../player/PlayerController";
 import { ArmorModel } from "../player/ArmorModel";
+import { SpeedFx } from "../player/SpeedFx";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
 import { InputManager } from "../input/InputManager";
-import { Hud, type HudMarker } from "../ui/Hud";
+import { Hud, type HudMarker, type HudTarget } from "../ui/Hud";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SuitAudio } from "../audio/SuitAudio";
 import { CityEvents } from "../gameplay/CityEvents";
+import { EnemyManager, ENEMY_STATS, type EnemyKind } from "../combat/Enemies";
+import { ProjectileSystem } from "../combat/Projectiles";
+import { Combat, MAX_ROCKETS, aimDirection } from "../combat/Combat";
+import { EnemyRenderer } from "../combat/EnemyRenderer";
+import { ProjectileRenderer } from "../combat/ProjectileRenderer";
 import { DEG } from "./math";
 
 export type Progress = (fraction: number, label: string) => Promise<void>;
@@ -52,6 +61,12 @@ export class Game {
   menu!: SettingsMenu;
   audio!: SuitAudio;
   events!: CityEvents;
+  enemies!: EnemyManager;
+  projectiles!: ProjectileSystem;
+  combat!: Combat;
+  private enemyRenderer!: EnemyRenderer;
+  private projRenderer!: ProjectileRenderer;
+  private speedFx!: SpeedFx;
   private shadowGen: ShadowGenerator | null = null;
   private paused = true;
   private started = false;
@@ -63,6 +78,9 @@ export class Game {
   private lowPerfStrikes = 0;
   private runTime = 0;
   private time = 0;
+  private failTimer = 0;
+  private projectM = Matrix.Identity();
+  private projectV = new Vector3();
 
   constructor(
     readonly engine: Engine,
@@ -83,40 +101,45 @@ export class Game {
     const scene = this.scene;
     await progress(0.05, "Generating materials");
     this.mats = new WorldMaterials(scene);
-    await progress(0.12, "Building skyline and harbour");
-    this.env = new Environment(scene, this.mats, this.world);
+    await progress(0.1, "Building skyline and harbour");
+    this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
-    const list = this.chunks.districtChunks();
-    for (let k = 0; k < list.length; k++) {
-      this.chunks.load(list[k][0], list[k][1]);
-      if (k % 3 === 2) await progress(0.15 + (0.45 * k) / list.length, `Constructing district ${k + 1}/${list.length}`);
-    }
-    await progress(0.62, "Populating streets");
+    await progress(0.15, "Surveying 10 km² of city");
+    this.chunks.registerWorld();
+    await progress(0.3, "Constructing nearby districts");
+    this.chunks.loadAround(SPAWN.x, SPAWN.z, this.settings.preset.viewDistance);
+    await progress(0.6, "Populating streets");
     this.traffic = new TrafficSystem(scene, this.mats, QUALITY_PRESETS.high.cars);
     this.peds = new PedestrianSystem(scene, this.mats, QUALITY_PRESETS.high.pedestrians);
 
-    await progress(0.7, "Calibrating armour");
+    await progress(0.68, "Calibrating armour and weapons");
     this.player = new PlayerController(this.world, this.bus);
     this.player.spawn(SPAWN.x, SPAWN.y, SPAWN.z, SPAWN.yaw);
     this.avatar = new ArmorModel(scene);
     this.cam = new ThirdPersonCamera(scene);
-    this.events = new CityEvents(scene, this.mats, this.world, this.bus);
+    this.enemies = new EnemyManager(this.world, this.bus);
+    this.projectiles = new ProjectileSystem(this.world, this.enemies, this.player, this.bus);
+    this.combat = new Combat(this.world, this.enemies, this.projectiles, this.bus);
+    this.enemyRenderer = new EnemyRenderer(scene, this.mats);
+    this.projRenderer = new ProjectileRenderer(scene, this.mats);
+    this.speedFx = new SpeedFx(scene, this.mats);
+    this.events = new CityEvents(scene, this.mats, this.world, this.bus, this.enemies);
+    this.events.onComplete = (combat) => {
+      this.player.suit.repair(combat ? 40 : 15);
+      this.player.suit.charge(50);
+      this.combat.refill();
+    };
 
     this.input = new InputManager(this.canvas, this.uiRoot, this.settings, this.device.isTouch);
+    this.input.onModeChange = () => this.updateHint();
     this.hud = new Hud(this.uiRoot, this.bus);
     this.hud.onMenu = () => this.setPaused(true);
     this.menu = new SettingsMenu(this.uiRoot, this.settings, { onResume: () => this.setPaused(false), onRespawn: () => this.respawn() }, this.device.isTouch);
     this.audio = new SuitAudio(this.bus);
     this.hud.setVisible(false);
     this.input.touch.setVisible(false);
-
-    this.bus.on("modeChanged", (m) => {
-      this.input.touch.setMode(m.mode);
-      this.updateHint();
-    });
-    this.bus.on("impact", (e) => this.cam.addShake(Math.min(1, e.speed / 60)));
-    this.bus.on("landed", (e) => this.cam.addShake(e.hard ? 0.7 : 0.15));
+    this.wireEvents();
     this.settings.onChange(() => this.applySettings());
     this.applySettings();
     this.updateHint();
@@ -128,7 +151,7 @@ export class Game {
     this.props.update(this.cam.position.x, this.cam.position.z, this.settings.preset.propDistance, this.settings.preset.viewDistance, CHUNK_SIZE);
 
     await progress(0.8, "Compiling shaders");
-    await scene.whenReadyAsync();
+    await this.prewarmShaders();
     await progress(1, "Systems online");
 
     window.addEventListener("resize", () => this.resize());
@@ -141,17 +164,84 @@ export class Game {
     this.engine.runRenderLoop(() => this.frame());
   }
 
+  /**
+   * Compile every shader variant up front (civilian, enemies, projectiles,
+   * effects) so nothing hitches the first time it appears mid-game.
+   */
+  private async prewarmShaders(): Promise<void> {
+    const restore: (() => void)[] = [];
+    for (const m of this.scene.meshes) {
+      if (!m.isEnabled()) {
+        m.setEnabled(true);
+        restore.push(() => m.setEnabled(false));
+      }
+      const mesh = m as unknown as { thinInstanceCount?: number; hasThinInstances?: boolean };
+      if (mesh.hasThinInstances === false && typeof mesh.thinInstanceCount === "number" && (m as unknown as { _thinInstanceDataStorage?: { matrixData?: unknown } })._thinInstanceDataStorage?.matrixData) {
+        mesh.thinInstanceCount = 1;
+        restore.push(() => setInstanceCount(m as Mesh, 0));
+      }
+    }
+    await this.scene.whenReadyAsync();
+    this.scene.render();
+    for (const r of restore) r();
+  }
+
+  private wireEvents(): void {
+    const bus = this.bus;
+    bus.on("modeChanged", () => this.syncTouchMode());
+    bus.on("impact", (e) => this.cam.addShake(Math.min(1, e.speed / 60)));
+    bus.on("landed", (e) => this.cam.addShake(e.hard ? 0.7 : 0.15));
+    bus.on("suitTransform", (e) => {
+      this.avatar.startTransform(e.toSuited);
+      bus.emit("alert", { text: e.toSuited ? "Deploying armour" : "Armour disengaged · walking civilian", level: "info", ttl: 3 });
+      this.syncTouchMode(e.toSuited);
+    });
+    bus.on("suitChanged", () => this.syncTouchMode());
+    bus.on("playerHit", (e) => {
+      this.hud.damageFlash(e.damage);
+      this.cam.addShake(Math.min(0.6, e.damage / 25));
+    });
+    bus.on("evaded", () => this.hud.popup("EVADED"));
+    bus.on("boost", () => this.cam.addKick(0.1));
+    bus.on("sonicBoom", (e) => {
+      const p = this.player;
+      this.projectiles.sonicBoom(e, p.viewYaw, p.viewPitch);
+      this.cam.addShake(0.6);
+      this.cam.addKick(0.2);
+      this.hud.popup("SONIC BOOM");
+    });
+    bus.on("nearMiss", (e) => this.hud.popup(e.streak > 1 ? `CLOSE CALL ×${e.streak}` : "CLOSE CALL"));
+    bus.on("kill", (e) => this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${ENEMY_STATS[e.kind as EnemyKind].score}`));
+    bus.on("explosion", (e) => {
+      const d = Math.hypot(e.x - this.player.pos.x, e.y - this.player.pos.y, e.z - this.player.pos.z);
+      if (d < 60) this.cam.addShake(Math.min(0.8, (e.size / 10) * (1 - d / 60)));
+    });
+    bus.on("suitFailure", () => {
+      bus.emit("alert", { text: "SUIT FAILURE - emergency return to Apex Tower", level: "critical", ttl: 4 });
+      this.failTimer = 1.6;
+    });
+  }
+
+  private syncTouchMode(suited = this.player.suited): void {
+    this.input.touch.setMode(this.player.mode, suited);
+    this.updateHint();
+  }
+
   /** Called from the "Engage" user gesture. */
   start(): void {
     this.started = true;
     this.audio.unlock();
     this.audio.setVolume(this.settings.data.volume);
     this.hud.setVisible(true);
-    this.input.touch.setVisible(this.device.isTouch);
+    this.input.touch.setVisible(!this.input.mouseMode);
     this.avatar.playSuitUp();
     this.setPaused(false);
     this.bus.emit("alert", { text: "Good evening. All suit systems nominal.", level: "info", ttl: 5 });
-    this.bus.emit("alert", { text: this.device.isTouch ? "Tap LIFT to take off, FLY for high-speed flight" : "Space to take off · Shift for flight · W afterburner", level: "info", ttl: 7 });
+    this.bus.emit("alert", {
+      text: this.input.mouseMode ? "Click to capture the mouse · LMB repulsors · RMB rockets · G suit off" : "LIFT to take off · BLAST / MSL to fight · SUIT to walk as a civilian",
+      level: "info",
+      ttl: 8,
+    });
   }
 
   setPaused(p: boolean): void {
@@ -173,8 +263,9 @@ export class Game {
       p.flightSpeed = speed;
       p.vel.x = Math.sin(yaw) * speed;
       p.vel.z = Math.cos(yaw) * speed;
-      this.input.touch.setMode(mode);
     }
+    this.syncTouchMode();
+    this.chunks.loadAround(x, z, Math.min(400, this.settings.preset.viewDistance));
     this.cam.snap();
     this.cam.update(0.016, p, this.world);
   }
@@ -184,11 +275,30 @@ export class Game {
     this.bus.emit("alert", { text: "Returned to Apex Tower landing pad", level: "info" });
   }
 
+  /** Debug/test helper: spawn an enemy relative to the player's facing. */
+  spawnEnemy(kind: EnemyKind, forward: number, up: number, right = 0): void {
+    const p = this.player;
+    const s = Math.sin(p.viewYaw), c = Math.cos(p.viewYaw);
+    const x = p.pos.x + s * forward + c * right, z = p.pos.z + c * forward - s * right;
+    const y = kind === "trooper" || kind === "warbot" ? this.world.surfaceBelow(x, p.pos.y + up + 1, z, 0.4) : p.pos.y + up;
+    this.enemies.spawn(kind, x, y, z, 0);
+  }
+
   private updateHint(): void {
-    if (this.device.isTouch) return this.hud.setHint("");
-    const m = this.player.mode;
+    const p = this.player;
+    if (!p.suited) {
+      this.hud.setHint(this.input.mouseMode ? "WASD walk · SHIFT sprint · SPACE jump · G suit up" : "");
+      this.hud.setCivilianHint(this.input.mouseMode ? "Press G to suit up" : "Tap SUIT UP to armour up");
+      return;
+    }
+    if (!this.input.mouseMode) return this.hud.setHint("");
+    const m = p.mode;
     this.hud.setHint(
-      m === "ground" ? "SPACE lift-off · SHIFT launch" : m === "hover" ? "SPACE/C altitude · SHIFT flight" : "W afterburner · S brake · SHIFT hover",
+      m === "ground"
+        ? "SPACE lift-off · SHIFT launch · LMB blast · RMB rockets · G suit off"
+        : m === "hover"
+          ? "SPACE/C altitude · SHIFT flight · Q/E dodge · LMB/RMB fire"
+          : "W afterburner · S brake · Q/E barrel roll · dive for speed",
     );
   }
 
@@ -198,7 +308,7 @@ export class Game {
     const ratio = Math.min(this.device.dpr, q.pixelRatio);
     this.engine.setHardwareScalingLevel(1 / ratio);
     this.env.setViewDistance(q.viewDistance);
-    this.cam.camera.maxZ = Math.max(q.viewDistance + 200, 2200);
+    this.cam.camera.maxZ = 5200;
     this.traffic.setCount(q.cars);
     this.peds.setCount(q.pedestrians);
     this.avatar.setParticles(q.particles);
@@ -251,41 +361,98 @@ export class Game {
       this.setPaused(!this.paused);
       return;
     }
-    this.player.update(dt, input);
-    this.avatar.update(dt, this.player);
-    this.cam.update(dt, this.player, this.world);
+    const p = this.player;
+    p.update(dt, input);
+    this.avatar.update(dt, p);
+    this.cam.update(dt, p, this.world);
+    const camPos = this.cam.position;
+
+    // Combat.
+    this.combat.aimAssist = this.input.mouseMode ? 0.06 : 0.16;
+    this.combat.update(dt, input, p, camPos);
+    this.enemies.update(dt, p);
+    this.projectiles.update(dt);
+    if (this.projectiles.hitsThisFrame > 0) this.hud.hitMarker();
+    this.enemyRenderer.update(this.enemies);
+    this.projRenderer.update(this.projectiles, camPos);
+    this.speedFx.update(camPos, p);
+    if (this.failTimer > 0) {
+      this.failTimer -= dt;
+      if (this.failTimer <= 0) {
+        this.projectiles.clearHostile();
+        p.suit.restore();
+        this.respawn();
+      }
+    }
+
+    // World.
     this.env.update(this.time);
-    this.traffic.update(dt);
+    this.traffic.update(dt, p.pos.x, p.pos.z);
     this.props.setSignalPhase(this.traffic.phase);
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
-    this.peds.update(dt);
-
-    const camPos = this.cam.position;
+    this.peds.update(dt, p.pos.x, p.pos.z);
+    const q = this.settings.preset;
+    this.chunks.stream(camPos.x, camPos.z, q.viewDistance, p.mode === "flight" ? 2 : 1);
     this.visTimer -= dt;
     if (this.visTimer <= 0) {
       this.visTimer = 0.25;
-      const q = this.settings.preset;
       this.chunks.updateVisibility(camPos.x, camPos.z, q.viewDistance);
       this.props.update(camPos.x, camPos.z, q.propDistance, q.viewDistance, CHUNK_SIZE);
     }
     this.areaTimer -= dt;
     if (this.areaTimer <= 0) {
       this.areaTimer = 0.5;
-      const a = this.chunks.areaAt(this.player.pos.x, this.player.pos.z);
+      const a = this.chunks.areaAt(p.pos.x, p.pos.z);
       if (a !== this.area) {
         this.area = a;
         this.bus.emit("areaChanged", { name: a });
       }
     }
-    if (this.events.update(dt, this.player)) this.refreshMarkers();
+    if (this.events.update(dt, p)) this.refreshMarkers();
     const [title, detail] = this.events.objective;
-    const d = this.events.distanceTo(this.player);
+    const d = this.events.distanceTo(p);
     this.hud.setObjective(title, title ? `${detail} · ${Math.round(d)} m` : "");
-    if (this.shadowGen) this.env.sun.position.set(this.player.pos.x + 60, this.player.pos.y + 25, this.player.pos.z + 20);
+    if (this.shadowGen) this.env.sun.position.set(p.pos.x + 60, p.pos.y + 25, p.pos.z + 20);
 
-    this.hud.update(dt, this.player);
-    this.audio.update(this.player);
+    // HUD.
+    this.hud.update(dt, p);
+    this.updateTargetsHud(camPos);
+    this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 1);
+    this.input.touch.setRockets(this.combat.rockets);
+    this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
+    this.audio.update(p);
     this.autoQuality(dt);
+  }
+
+  private updateTargetsHud(camPos: Vector3): void {
+    const items: HudTarget[] = [];
+    const locks = new Set(this.combat.locks);
+    const aim = aimDirection(this.player);
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      const c = this.enemies.center(e);
+      const dx = c.x - camPos.x, dy = c.y - camPos.y, dz = c.z - camPos.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > 420 || dx * aim.x + dy * aim.y + dz * aim.z < 1) continue;
+      items.push({
+        x: c.x,
+        y: c.y,
+        z: c.z,
+        hp: e.hp / e.maxHp,
+        locked: locks.has(e),
+        assist: e === this.combat.assistTarget,
+        kind: e.kind,
+        scale: Math.max(0.6, Math.min(1.3, 60 / d + 0.5)),
+      });
+    }
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    const viewport = this.cam.camera.viewport.toGlobal(w, h);
+    const tm = this.scene.getTransformMatrix();
+    this.hud.updateTargets(items, (x, y, z) => {
+      this.projectV.set(x, y, z);
+      const v = Vector3.Project(this.projectV, this.projectM, tm, viewport);
+      return { x: v.x, y: v.y, ok: v.z > 0 && v.z < 1 && v.x > -50 && v.x < w + 50 && v.y > -50 && v.y < h + 50 };
+    });
   }
 
   private refreshMarkers(): void {
@@ -317,9 +484,14 @@ export class Game {
     const p = this.player;
     return {
       mode: p.mode,
+      suited: p.suited,
+      transforming: p.transformTimer > 0,
       pos: { ...p.pos },
       speed: p.speed,
       energy: p.suit.energy,
+      integrity: p.suit.overallIntegrity,
+      viewYaw: p.viewYaw,
+      viewPitch: p.viewPitch,
       fps: this.hud.fps,
       paused: this.paused,
       started: this.started,
@@ -327,6 +499,11 @@ export class Game {
       activeMeshes: this.scene.getActiveMeshes().length,
       chunks: this.chunks.count,
       props: this.props.scenePropCount,
+      enemies: this.enemies.alive.length,
+      kills: this.enemies.kills,
+      rockets: this.combat.rockets,
+      mouseMode: this.input.mouseMode,
+      pointerLocked: this.input.isPointerLocked,
     };
   }
 }

@@ -8,12 +8,35 @@ export interface InputState {
   lookY: number;
   ascend: boolean;
   descend: boolean;
+  /** Held: repulsor fire. */
+  fire: boolean;
+  /** Held: sprint (civilian). */
+  sprint: boolean;
   /** Edge-triggered actions (true for exactly one frame). */
   takeoff: boolean;
   toggleFlight: boolean;
+  rockets: boolean;
+  toggleSuit: boolean;
+  /** -1 roll left, +1 roll right, 0 none. */
+  roll: number;
   menu: boolean;
 }
 
 export function emptyInput(): InputState {
-  return { moveX: 0, moveY: 0, lookX: 0, lookY: 0, ascend: false, descend: false, takeoff: false, toggleFlight: false, menu: false };
+  return {
+    moveX: 0,
+    moveY: 0,
+    lookX: 0,
+    lookY: 0,
+    ascend: false,
+    descend: false,
+    fire: false,
+    sprint: false,
+    takeoff: false,
+    toggleFlight: false,
+    rockets: false,
+    toggleSuit: false,
+    roll: 0,
+    menu: false,
+  };
 }

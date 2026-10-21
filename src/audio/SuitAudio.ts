@@ -13,11 +13,33 @@ export class SuitAudio {
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private volume = 0.6;
+  private listener = { x: 0, y: 0, z: 0 };
+  private noiseBuf: AudioBuffer | null = null;
 
   constructor(bus: EventBus<GameEvents>) {
     bus.on("alert", (a) => this.blip(a.level === "critical" ? 330 : a.level === "warn" ? 520 : a.level === "success" ? 880 : 700));
     bus.on("impact", (e) => this.thud(Math.min(1, e.speed / 80)));
     bus.on("landed", (e) => this.thud(e.hard ? 0.8 : 0.3));
+    bus.on("weapon", (w) => {
+      const v = this.atten(w);
+      if (w.kind === "repulsor") this.zap(1400, 380, 0.16, "sawtooth", 0.09);
+      else if (w.kind === "rocket") this.noiseBurst(0.35, 2200, 0.25, false);
+      else if (w.kind === "enemyBolt") this.zap(520, 180, 0.12, "square", 0.05 * v);
+      else if (w.kind === "missile") this.noiseBurst(0.5, 900, 0.2 * v, false);
+      else if (w.kind === "laser") this.zap(2400, 90, 0.5, "sawtooth", 0.3 * v);
+    });
+    bus.on("explosion", (e) => this.noiseBurst(0.5 + e.size * 0.08, 500 + e.size * 40, Math.min(0.9, 0.25 + e.size * 0.06) * this.atten(e), true));
+    bus.on("playerHit", () => this.thud(0.45));
+    bus.on("sonicBoom", () => {
+      this.thud(1);
+      this.noiseBurst(0.9, 300, 0.7, true);
+    });
+    bus.on("boost", () => this.noiseBurst(0.45, 1500, 0.3, false));
+    bus.on("roll", () => this.zap(300, 900, 0.3, "sine", 0.06));
+    bus.on("nearMiss", () => this.blip(1100));
+    bus.on("suitTransform", () => {
+      for (let k = 0; k < 6; k++) setTimeout(() => this.zap(800 + k * 120, 400, 0.08, "square", 0.04), k * 140);
+    });
     document.addEventListener("visibilitychange", () => {
       if (!this.ctx) return;
       if (document.hidden) void this.ctx.suspend();
@@ -58,6 +80,7 @@ export class SuitAudio {
       last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
       data[k] = last * 3.5;
     }
+    this.noiseBuf = buf;
     const mkNoise = () => {
       const src = ctx.createBufferSource();
       src.buffer = buf;
@@ -81,11 +104,20 @@ export class SuitAudio {
     mkNoise().connect(this.windFilter).connect(this.windGain).connect(this.master);
   }
 
+  /** Distance attenuation relative to the player. */
+  private atten(at: { x: number; y: number; z: number }): number {
+    const d = Math.hypot(at.x - this.listener.x, at.y - this.listener.y, at.z - this.listener.z);
+    return 1 / (1 + (d / 60) * (d / 60));
+  }
+
   update(p: PlayerController): void {
+    this.listener.x = p.pos.x;
+    this.listener.y = p.pos.y;
+    this.listener.z = p.pos.z;
     const ctx = this.ctx;
     if (!ctx || !this.thrustGain || !this.thrustFilter || !this.windGain || !this.windFilter) return;
     const t = ctx.currentTime;
-    const thrust = p.mode === "ground" ? 0 : p.thrust;
+    const thrust = p.mode === "ground" || !p.suited ? 0 : p.thrust;
     this.thrustGain.gain.setTargetAtTime(thrust * 0.55, t, 0.08);
     this.thrustFilter.frequency.setTargetAtTime(220 + thrust * 900 + (p.afterburner ? 900 : 0), t, 0.1);
     const s = Math.min(1, p.speed / 125);
@@ -107,6 +139,43 @@ export class SuitAudio {
     o.connect(g).connect(this.master);
     o.start();
     o.stop(ctx.currentTime + 0.2);
+  }
+
+  private zap(f0: number, f1: number, dur: number, type: OscillatorType, gain: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || ctx.state !== "running" || gain < 0.002) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start();
+    o.stop(t + dur + 0.02);
+  }
+
+  /** Filtered noise burst: explosions (lowpass, falling) or whooshes (bandpass). */
+  private noiseBurst(dur: number, freq: number, gain: number, boom: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noiseBuf || ctx.state !== "running" || gain < 0.003) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = boom ? "lowpass" : "bandpass";
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(boom ? 60 : freq * 0.3, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain * 2.5, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + dur + 0.05);
   }
 
   private thud(strength: number): void {

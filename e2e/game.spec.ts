@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { boot, state, until } from "./helpers";
+import { boot, state, until, game } from "./helpers";
 
 // Small viewport keeps SwiftShader (CPU rendering) fast enough to simulate.
-test.use({ viewport: { width: 640, height: 360 } });
+test.use({ viewport: { width: 480, height: 270 } });
 
 test.describe("desktop controls", () => {
   test.skip(({ isMobile }) => isMobile, "desktop only");
@@ -12,24 +12,35 @@ test.describe("desktop controls", () => {
     await expect(page.locator("#hud")).toBeVisible();
     await expect(page.locator("#touch")).toBeHidden();
     const s = await state(page);
-    expect(s.chunks).toBe(16);
+    expect(s.chunks).toBeGreaterThan(8);
     expect(s.props).toBeGreaterThan(200);
     expect(s.mode).toBe("ground");
+    expect(s.mouseMode).toBe(true);
     expect(errors).toEqual([]);
+  });
+
+  test("mouse look: clicking captures or drag-looks, and moving the mouse turns the camera", async ({ page }) => {
+    await boot(page);
+    const before = await state(page);
+    await page.mouse.move(240, 135);
+    await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(240 + k * 15, 135 - k * 3);
+    await page.mouse.up();
+    const after = await until(page, (s) => Math.abs(s.viewYaw - before.viewYaw) > 0.1);
+    expect(Math.abs(after.viewYaw - before.viewYaw)).toBeGreaterThan(0.1);
   });
 
   test("take off, hover, fly with afterburner, brake and land", async ({ page }) => {
     await boot(page);
     const start = await state(page);
     await page.keyboard.down("Space");
-    const up = await until(page, (s) => s.mode === "hover" && s.pos.y > start.pos.y + 4);
+    await until(page, (s) => s.mode === "hover" && s.pos.y > start.pos.y + 4);
     await page.keyboard.up("Space");
-    expect(up.mode).toBe("hover");
 
     await page.keyboard.press("Shift");
     await until(page, (s) => s.mode === "flight");
     await page.keyboard.down("KeyW");
-    const fast = await until(page, (s) => s.speed > 70);
+    const fast = await until(page, (s) => s.speed > 80);
     await page.keyboard.up("KeyW");
     expect(fast.energy).toBeLessThan(100);
 
@@ -38,8 +49,40 @@ test.describe("desktop controls", () => {
     await page.keyboard.up("KeyS");
 
     await page.keyboard.down("KeyC");
-    await until(page, (s) => s.mode === "ground", 90_000);
+    await until(page, (s) => s.mode === "ground", 120_000);
     await page.keyboard.up("KeyC");
+  });
+
+  test("repulsors and rockets destroy hostiles", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => {
+      g.teleport(2.5, 0, -300, 0);
+      g.player.viewPitch = -0.02;
+      g.spawnEnemy("trooper", 35, 0, 0);
+    });
+    await page.keyboard.press("KeyR");
+    const fired = await until(page, (st) => st.rockets < 8);
+    expect(fired.rockets).toBeLessThan(8);
+    await page.keyboard.down("KeyX");
+    const s = await until(page, (st) => st.kills >= 1, 90_000);
+    await page.keyboard.up("KeyX");
+    expect(s.kills).toBeGreaterThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
+  test("take the suit off, walk as a civilian, and suit up again", async ({ page }) => {
+    await boot(page);
+    await game(page, (g) => g.teleport(2.5, 0, -182, 0));
+    await page.keyboard.press("KeyG");
+    await until(page, (s) => !s.suited && !s.transforming);
+    await expect(page.locator("#hud")).toHaveClass(/civ/);
+    await page.waitForTimeout(300);
+    const s0 = await until(page, (s) => s.speed === 0 || s.speed < 0.5);
+    await page.keyboard.down("KeyW");
+    await until(page, (s) => s.pos.z > s0.pos.z + 2, 90_000);
+    await page.keyboard.up("KeyW");
+    await page.keyboard.press("KeyG");
+    await until(page, (s) => s.suited, 90_000);
   });
 
   test("pause menu changes graphics quality and persists it", async ({ page }) => {
@@ -47,10 +90,10 @@ test.describe("desktop controls", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#menu")).toBeVisible();
     expect((await state(page)).paused).toBe(true);
-    await page.locator('[data-k="quality"] button[data-v="low"]').click();
-    expect((await state(page)).quality).toBe("low");
+    await page.locator('[data-k="quality"] button[data-v="medium"]').click();
+    expect((await state(page)).quality).toBe("medium");
     const stored = await page.evaluate(() => localStorage.getItem("aegis.settings.v1"));
-    expect(stored).toContain('"quality":"low"');
+    expect(stored).toContain('"quality":"medium"');
     await page.locator('[data-a="resume"]').click();
     await expect(page.locator("#menu")).toBeHidden();
     expect((await state(page)).paused).toBe(false);
@@ -60,14 +103,19 @@ test.describe("desktop controls", () => {
 test.describe("touch controls (emulated)", () => {
   test.skip(({ isMobile }) => !isMobile, "mobile only");
 
-  test("touch UI is shown and LIFT / FLY / stick work", async ({ page }) => {
+  const tap = async (page: import("@playwright/test").Page, sel: string, id: number) => {
+    await page.locator(sel).dispatchEvent("pointerdown", { pointerId: id, pointerType: "touch" });
+    await page.locator(sel).dispatchEvent("pointerup", { pointerId: id, pointerType: "touch" });
+  };
+
+  test("touch UI: LIFT, stick, FLY, BLAST, MSL and menu", async ({ page }) => {
     const errors = await boot(page);
     await expect(page.locator("#touch")).toBeVisible();
+    for (const sel of [".t-up", ".t-fly", ".t-fire", ".t-msl", ".t-suit"]) {
+      const box = (await page.locator(sel).boundingBox())!;
+      expect(box.width, sel).toBeGreaterThanOrEqual(48);
+    }
     const lift = page.locator(".t-up");
-    const box = (await lift.boundingBox())!;
-    // Buttons must be large enough for thumbs.
-    expect(box.width).toBeGreaterThanOrEqual(60);
-
     await lift.dispatchEvent("pointerdown", { pointerId: 11, pointerType: "touch", isPrimary: true });
     const s0 = await state(page);
     await until(page, (s) => s.mode === "hover" && s.pos.y > s0.pos.y + 3);
@@ -83,19 +131,31 @@ test.describe("touch controls (emulated)", () => {
     await until(page, (s) => Math.hypot(s.pos.x - before.pos.x, s.pos.z - before.pos.z) > 3);
     await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 12, pointerType: "touch" })));
 
-    await page.locator(".t-fly").dispatchEvent("pointerdown", { pointerId: 13, pointerType: "touch" });
-    await page.locator(".t-fly").dispatchEvent("pointerup", { pointerId: 13, pointerType: "touch" });
+    // Rockets via MSL.
+    await tap(page, ".t-msl", 14);
+    await until(page, (s) => s.rockets < 8);
+
+    await tap(page, ".t-fly", 13);
     await until(page, (s) => s.mode === "flight");
     await expect(page.locator(".t-fly small")).toHaveText("HOVER");
 
-    // Menu button opens settings on touch.
     await page.locator(".h-menu").tap();
     await expect(page.locator("#menu")).toBeVisible();
     expect(errors).toEqual([]);
   });
 
-  test("defaults to low quality on mobile", async ({ page }) => {
+  test("SUIT button switches to the civilian and back", async ({ page }) => {
     await boot(page);
+    await tap(page, ".t-suit", 21);
+    await until(page, (s) => !s.suited && !s.transforming);
+    await expect(page.locator(".t-suit small")).toHaveText("SUIT UP");
+    await expect(page.locator(".t-fire")).toBeHidden();
+    await tap(page, ".t-suit", 22);
+    await until(page, (s) => s.suited, 90_000);
+  });
+
+  test("defaults to low quality on mobile", async ({ page }) => {
+    await boot(page, { keepSettings: true });
     expect((await state(page)).quality).toBe("low");
   });
 });

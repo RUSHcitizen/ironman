@@ -8,22 +8,22 @@ export const ROAD_WIDTH = 16;
 export const SIDEWALK_WIDTH = 4;
 export const SIDEWALK_HEIGHT = 0.15;
 export const BLOCK_SIZE = BLOCK_PITCH - ROAD_WIDTH; // 64, includes sidewalk ring
-export const CHUNK_BLOCKS = 2;
-export const CHUNK_SIZE = BLOCK_PITCH * CHUNK_BLOCKS; // 160
+export const CHUNK_BLOCKS = 4;
+export const CHUNK_SIZE = BLOCK_PITCH * CHUNK_BLOCKS; // 320
 
-/** Inclusive chunk range of the playable district. Expand to grow the city. */
-export const DISTRICT = { minChunk: -2, maxChunk: 1 };
+/** Inclusive chunk range of the playable city (10x10 chunks = 3.2 km square). */
+export const DISTRICT = { minChunk: -5, maxChunk: 4 };
 
-export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -320
-export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 320
+export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -1600
+export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 1600
 /** Promenade margin outside the outermost roads before the shoreline. */
 export const ISLAND_MARGIN = ROAD_WIDTH / 2 + 14;
 export const ISLAND_MIN = DISTRICT_MIN - ISLAND_MARGIN;
 export const ISLAND_MAX = DISTRICT_MAX + ISLAND_MARGIN;
 export const WATER_Y = -1.2;
-/** Soft boundary - ARIA steers the player back beyond this. */
-export const WORLD_LIMIT = 900;
-export const ALTITUDE_CEILING = 650;
+/** Soft boundary (square, beyond the shoreline) - ARIA steers the player back. */
+export const WORLD_LIMIT = ISLAND_MAX + 260;
+export const ALTITUDE_CEILING = 900;
 
 export const WORLD_SEED = 1939;
 

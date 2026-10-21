@@ -41,7 +41,12 @@ export class ArmorModel {
   private emitters: Mesh[] = [];
   private shadow: Mesh;
   private time = 0;
-  private suitUpT = -1;
+  /** Armour assemble/disassemble animation: progress seconds, -1 = idle. */
+  private armorT = -1;
+  private armorIn = true;
+  private armorShown = true;
+  private civ: AbstractMesh[] = [];
+  private civShown = false;
   private crouch = 0;
   readonly meshes: AbstractMesh[] = [];
 
@@ -157,6 +162,8 @@ export class ArmorModel {
       this.emitters.push(emitter);
     }
 
+    this.buildCivilian();
+
     // Blob shadow (cheap on every quality level).
     const st = new DynamicTexture("blob", { width: 64, height: 64 }, scene, false);
     const ctx = st.getContext() as unknown as CanvasRenderingContext2D;
@@ -243,19 +250,95 @@ export class ArmorModel {
     }
   }
 
-  playSuitUp(): void {
-    this.suitUpT = 0;
+  /** Civilian alter ego, rigged to the same joints so it shares the walk cycle. */
+  private buildCivilian(): void {
+    const scene = this.scene;
+    const mat = (name: string, c: Color3, spec = 0.1) => {
+      const m = new StandardMaterial(name, scene);
+      m.diffuseColor = c;
+      m.specularColor = new Color3(spec, spec, spec);
+      return m;
+    };
+    const skin = mat("civSkin", new Color3(0.8, 0.6, 0.47), 0.15);
+    const jacket = mat("civJacket", new Color3(0.13, 0.14, 0.18), 0.2);
+    const shirt = mat("civShirt", new Color3(0.55, 0.57, 0.6));
+    const jeans = mat("civJeans", new Color3(0.17, 0.23, 0.36));
+    const dark = mat("civDark", new Color3(0.06, 0.05, 0.05), 0.4);
+    const hair = mat("civHair", new Color3(0.12, 0.08, 0.06));
+    const J = (n: JointName) => this.joints[n].node;
+    const put = (m: Mesh, parent: TransformNode, material: StandardMaterial, x: number, y: number, z: number) => {
+      m.parent = parent;
+      m.position.set(x, y, z);
+      m.material = material;
+      m.isPickable = false;
+      m.setEnabled(false);
+      this.civ.push(m);
+      return m;
+    };
+    const cap = (len: number, r: number) => CreateCapsule("civ", { height: len, radius: r, tessellation: 10, subdivisions: 1 }, scene);
+    const box = (w: number, h: number, d: number) => CreateBox("civ", { width: w, height: h, depth: d }, scene);
+    const sph = (r: number, sx = 1, sy = 1, sz = 1) => {
+      const m = CreateSphere("civ", { diameter: r * 2, segments: 10 }, scene);
+      m.scaling.set(sx, sy, sz);
+      return m;
+    };
+    put(box(0.32, 0.18, 0.2), this.pivot, jeans, 0, 0.02, 0);
+    put(box(0.4, 0.5, 0.22), J("spine"), jacket, 0, 0.36, 0);
+    put(box(0.15, 0.42, 0.02), J("spine"), shirt, 0, 0.36, 0.112);
+    put(cap(0.12, 0.05), J("neck"), skin, 0, 0.02, 0);
+    put(sph(0.105, 1, 1.18, 1.05), J("neck"), skin, 0, 0.15, 0);
+    put(sph(0.11, 1.02, 0.6, 1.08), J("neck"), hair, 0, 0.215, -0.012);
+    put(box(0.12, 0.05, 0.05), J("neck"), hair, 0, 0.065, 0.085);
+    put(box(0.17, 0.035, 0.02), J("neck"), dark, 0, 0.165, 0.105);
+    for (const side of [-1, 1] as const) {
+      const sh = J(side < 0 ? "shL" : "shR");
+      const el = J(side < 0 ? "elL" : "elR");
+      // Civilian shoulders are narrower than the armour's.
+      put(cap(0.32, 0.055), sh, jacket, -side * 0.1, -0.15, 0);
+      put(cap(0.28, 0.048), el, jacket, -side * 0.1, -0.12, 0);
+      put(sph(0.045, 1, 1.3, 0.8), el, skin, -side * 0.1, -0.3, 0);
+      put(cap(0.46, 0.068), J(side < 0 ? "hipL" : "hipR"), jeans, 0, -0.22, 0);
+      put(cap(0.42, 0.06), J(side < 0 ? "knL" : "knR"), jeans, 0, -0.21, 0);
+      put(box(0.11, 0.08, 0.26), J(side < 0 ? "knL" : "knR"), dark, 0, -0.47, 0.04);
+    }
   }
 
-  get suitingUp(): boolean {
-    return this.suitUpT >= 0;
+  playSuitUp(): void {
+    this.startTransform(true);
+  }
+
+  /** Animate the armour on (assemble) or off (peel away). */
+  startTransform(toSuited: boolean): void {
+    this.armorIn = toSuited;
+    this.armorT = 0;
+    this.setCivilian(true);
+  }
+
+  get transforming(): boolean {
+    return this.armorT >= 0;
+  }
+
+  private setCivilian(on: boolean): void {
+    if (on === this.civShown) return;
+    this.civShown = on;
+    for (const m of this.civ) m.setEnabled(on);
+  }
+
+  private setArmorVisible(on: boolean): void {
+    this.armorShown = on;
+    for (const part of this.parts) part.mesh.setEnabled(on);
   }
 
   update(dt: number, p: PlayerController): void {
     this.time += dt;
     const t = this.time;
     this.root.position.set(p.pos.x, p.pos.y, p.pos.z);
-    Quaternion.RotationYawPitchRollToRef(p.bodyYaw, p.bodyPitch, p.bodyRoll, this.pivot.rotationQuaternion!);
+    Quaternion.RotationYawPitchRollToRef(p.bodyYaw, p.bodyPitch, p.bodyRoll + p.rollSpin, this.pivot.rotationQuaternion!);
+    // Keep visuals consistent if state changed without an animation (respawn etc.).
+    if (this.armorT < 0) {
+      if (this.armorShown !== p.suited) this.setArmorVisible(p.suited);
+      this.setCivilian(!p.suited);
+    }
 
     // Pose selection.
     const planar = Math.hypot(p.vel.x, p.vel.z);
@@ -332,6 +415,20 @@ export class ArmorModel {
         elR: [-0.06, 0],
       };
     }
+    // Firing poses: repulsor palm out, both forearms up for rockets.
+    if (p.suited) {
+      const up = p.mode === "flight" ? 0 : p.viewPitch;
+      if (p.rocketTimer > 0) {
+        const a = p.mode === "flight" ? -2.7 : -1.3 - up;
+        pose.shL = [a, -0.28];
+        pose.shR = [a, 0.28];
+        pose.elL = [-0.35, 0];
+        pose.elR = [-0.35, 0];
+      } else if (p.aimTimer > 0) {
+        pose.shR = [p.mode === "flight" ? -2.95 : -1.5 - up, 0.12];
+        pose.elR = [-0.05, 0];
+      }
+    }
     if (p.mode !== "ground") this.crouch = 0;
     this.pivot.position.y += (pivotY - this.pivot.position.y) * damp(12, dt);
 
@@ -346,7 +443,7 @@ export class ArmorModel {
     }
 
     // Thrusters.
-    const airborne = p.mode !== "ground";
+    const airborne = p.mode !== "ground" && p.suited && this.armorShown;
     const boot = airborne ? 0.25 + p.thrust * (p.afterburner ? 1.9 : 1.1) : 0;
     const palm = p.mode === "hover" ? 0.25 + p.thrust * 0.45 : p.mode === "flight" ? 0.12 + (p.afterburner ? 0.35 : 0) : 0;
     for (const f of this.flames) {
@@ -371,29 +468,39 @@ export class ArmorModel {
     this.shadow.scaling.set(sz, sz, sz);
     this.shadow.visibility = sh;
 
-    this.updateSuitUp(dt);
+    this.updateArmorAnim(dt);
   }
 
-  private updateSuitUp(dt: number): void {
-    if (this.suitUpT < 0) return;
-    this.suitUpT += dt;
-    const total = 1.9;
+  private updateArmorAnim(dt: number): void {
+    if (this.armorT < 0) return;
+    this.armorT += dt;
+    const total = 1.3;
     for (const part of this.parts) {
-      const local = clamp((this.suitUpT - part.delay * 1.2) / 0.35, 0, 1);
-      const e = 1 - Math.pow(1 - local, 3);
       const m = part.mesh;
-      m.setEnabled(local > 0);
-      if (!part.mesh.metadata) part.mesh.metadata = { s: m.scaling.clone() };
-      const s0 = part.mesh.metadata.s as Vector3;
+      if (!m.metadata) m.metadata = { s: m.scaling.clone(), p: m.position.clone() };
+      const s0 = m.metadata.s as Vector3;
+      const p0 = m.metadata.p as Vector3;
+      // Assemble from the feet up; peel away from the head down.
+      const delay = this.armorIn ? part.delay : 1 - part.delay;
+      const local = clamp((this.armorT - delay * 0.8) / 0.35, 0, 1);
+      const e = this.armorIn ? 1 - Math.pow(1 - local, 3) : 1 - local * local;
+      m.setEnabled(e > 0.01);
       m.scaling.set(s0.x * e, s0.y * e, s0.z * e);
+      const spread = 1 + (1 - e) * 2.2;
+      m.position.set(p0.x * spread, p0.y + (1 - e) * (this.armorIn ? -0.3 : 0.4), p0.z * spread + (1 - e) * 0.15);
     }
-    if (this.suitUpT > total) {
+    if (this.armorIn && this.armorT > total * 0.75) this.setCivilian(false);
+    if (this.armorT > total) {
       for (const part of this.parts) {
-        const s0 = part.mesh.metadata?.s as Vector3 | undefined;
-        if (s0) part.mesh.scaling.copyFrom(s0);
-        part.mesh.setEnabled(true);
+        const md = part.mesh.metadata as { s: Vector3; p: Vector3 } | undefined;
+        if (md) {
+          part.mesh.scaling.copyFrom(md.s);
+          part.mesh.position.copyFrom(md.p);
+        }
       }
-      this.suitUpT = -1;
+      this.setArmorVisible(this.armorIn);
+      this.setCivilian(!this.armorIn);
+      this.armorT = -1;
     }
   }
 }

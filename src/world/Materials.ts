@@ -211,6 +211,9 @@ export class WorldMaterials {
     m.emissiveColor = color;
     m.alpha = alpha;
     m.alphaMode = Constants.ALPHA_ADD;
+    // Force blending even at alpha 1 (otherwise the material renders opaque).
+    m.transparencyMode = 2; // Material.MATERIAL_ALPHABLEND
+    m.disableDepthWrite = true;
     m.backFaceCulling = false;
     m.fogEnabled = false;
     return m;

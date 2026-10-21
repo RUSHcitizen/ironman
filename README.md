@@ -6,14 +6,38 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
-| ![Apex Tower pad](docs/screenshots/02-apex-tower-pad.png) | ![Street level](docs/screenshots/03-street-level.png) |
-| ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Mobile touch controls](docs/screenshots/07-mobile-touch-controls.png) |
+| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Warbot](docs/screenshots/04-warbot.png) |
+| ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Civilian on foot](docs/screenshots/07-civilian.png) |
+| ![City from 420 m](docs/screenshots/06-city-overview.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
-## Milestone 1 – playable prototype
+## Milestone 2 – combat, a much bigger city, civilian mode
 
-- **City district**: 4×4 chunks (8×8 blocks, about 680 m square) on an island, with avenues, lane markings, crosswalks, raised sidewalks, modular skyscrapers with setbacks and cornices, glass towers, NYC-style rooftop water towers, AC units, antennas, a park, a plaza with a fountain, and the hero landmark **Apex Tower** with its landing pad. A distant skyline and harbour water surround it.
+- **A 3.2 km × 3.2 km city.** That's about 10 km² and 25× the first district: 1,600 blocks across 25 named districts, a midtown skyscraper core plus a taller financial-district core, low-rise neighbourhoods, a large central park, pocket parks and plazas, all on an island with a distant skyline across the water. Layout and collision exist for the whole city from the start, while meshes and props **stream in and out around the camera** (two chunks per frame in fast flight), so memory and draw calls stay bounded. Traffic and pedestrians follow you around.
+- **Mouse look that just works.** Click the game to capture the mouse, then move it to look around (Esc releases it). If pointer lock is unavailable, dragging still looks around. Touchscreen laptops such as Chromebooks switch automatically between mouse and touch layouts depending on what you last used. Previously, on a touch-capable laptop the touch layer swallowed mouse clicks.
+- **Weapons:**
+  - **Repulsors** (hold left mouse / `X` / BLAST): rapid palm blasts with aim assist that leads moving targets.
+  - **Arm micro-rockets** (right mouse / `R` / MSL): up to 4 rockets at once that lock onto separate targets in the reticle cone, home in, and explode with splash damage. 8 rockets that regenerate.
+  - You can shoot down incoming missiles.
+- **Bad guys with real moves:**
+  - **Attack drones:** orbit-strafe around you, flip direction, fire 3-round bursts, **dodge** when you aim at them, and retreat to regroup when badly damaged.
+  - **Kamikaze drones:** weaving dives that explode on contact. Shoot them first or roll away.
+  - **Jet-pack troopers:** strafe along rooftops and streets without falling off, **jet-hop** to new positions (sometimes to dodge your fire), fire bursts, and launch **homing missiles**.
+  - **Warbot** (unlocks after three incidents): a walking assault mech that stomps toward you firing bursts, launches 4-missile salvos, charges a **telegraphed laser** (the red aiming line lags behind you, so keep moving), and **ground-slams a shockwave** if you get close at street level.
+- **Incidents.** ARIA dispatches combat incidents (drone swarms, rooftop gangs, street robberies, kamikaze waves, missile nests, Warbot rampages) plus occasional rescue calls. Each is marked by a beam, a ring and a compass marker, and progress shows as "Hostiles 2/5". Clearing one repairs the suit, recharges power and reloads rockets. If integrity falls below 15%, the suit fails and ARIA flies you back to Apex Tower.
+- **More fun flying:**
+  - **Barrel rolls** (`Q`/`E`, double-tap `A`/`D`, or double-tap the right side of the touchscreen): a sideways dash with brief invulnerability that also **breaks missile locks**.
+  - **Dives build speed and climbs bleed it.** The afterburner now has a kick and a higher top speed (about 590 km/h).
+  - **Sonic boom** ring and shake when you pass about 540 km/h.
+  - **Close-call bonuses** for skimming buildings at speed (power refill and streak counter).
+  - Speed streaks, FOV punch, harder banking, and tighter low-speed turns.
+- **Take off the suit.** Press `G` (or SUIT) while landed: the armour peels away piece by piece and you walk the streets as a civilian (jacket, jeans, sunglasses). Walk, sprint with `Shift`, jump with `Space`. The helmet HUD switches to a minimal on-foot view, and enemies ignore civilians. Press `G` again and the armour assembles around you.
+- **Combat HUD:** target brackets with health bars, amber lock-on diamonds, a hit marker, damage flash, a weapons panel (rocket pips, kill count), and pop-ups for kills, close calls, evasions and sonic booms. All sounds are synthesised (repulsor zaps, rocket whooshes, explosions, laser).
+
+## Milestone 1 – playable prototype (foundation)
+
+- **City** (now expanded, see Milestone 2): an island grid with avenues, lane markings, crosswalks, raised sidewalks, modular skyscrapers with setbacks and cornices, glass towers, NYC-style rooftop water towers, AC units, antennas, a park, a plaza with a fountain, and the hero landmark **Apex Tower** with its landing pad. A distant skyline and harbour water surround it.
 - **Street life**: traffic that follows lanes, keeps its distance and stops at signals (the signals change colour), plus pedestrians walking the sidewalks.
 - **Armoured hero**: a procedurally modelled suit with a joint hierarchy. Poses blend between walk, hover, flight and a "superhero landing" crouch, with boot and palm thruster flames, an arc reactor glow, a suit-up assembly animation on start, and a blob shadow.
 - **Movement**: walking in armour, takeoff, hover (strafe, ascend, descend, hold altitude), high-speed flight with banking, an afterburner, braking back into hover, and landing on streets or rooftops (hard landings at speed). Wall impacts damage the suit. Stabilisers catch you if you walk off a roof, hover engages automatically over water, and soft limits apply to the airspace boundary and altitude ceiling.
@@ -29,12 +53,17 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | Action | Keyboard / mouse | Touch |
 |---|---|---|
+| Look / steer | **Click to capture the mouse**, then move it (`Esc` releases) | Drag on the right side |
 | Move / strafe | `W A S D` / arrows | Left-thumb stick |
-| Look / steer | Mouse (click to lock, `Esc` to release) | Drag on the right side |
-| Take off / ascend (climb in flight) | `Space` (or `E`) | ▲ |
-| Descend (dive in flight) | `C` (or `Q`, `Ctrl`) | ▼ |
+| Take off / ascend (climb in flight) | `Space` | ▲ |
+| Descend (dive in flight) | `C` or `Ctrl` | ▼ |
 | Toggle flight / hover | `Shift` or `F` | FLY |
 | Afterburner / brake (in flight) | `W` / `S` | Stick up / down |
+| Barrel roll / dodge | `Q` / `E`, or double-tap `A` / `D` | Double-tap the right side |
+| Repulsors (hold) | Left mouse or `X` | BLAST |
+| Micro-rockets (lock-on) | Right mouse or `R` | MSL |
+| Suit off / on (when landed) | `G` | SUIT |
+| Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
 ## Getting started
@@ -92,18 +121,22 @@ src/
   world/
     WorldConfig.ts        grid/chunk constants (grow the city by widening DISTRICT)
     CityGenerator.ts      pure, deterministic per-chunk layout data (buildings, props, colliders)
-    ChunkManager.ts       turns chunk data into merged meshes, colliders, props; distance culling
+    ChunkManager.ts       registers colliders for the whole city; streams chunk meshes/props around the camera
+    RoadMarkings.ts       per-chunk lane lines, stop lines and crosswalks
     GeometryBatch.ts      merges boxes into one vertex buffer per material per chunk
     Materials.ts          shared materials with canvas-generated textures
     Props.ts              thin-instanced street furniture, rebuilt for chunks near the camera
     Traffic.ts / Pedestrians.ts   thin-instanced ambient life
     Environment.ts        lights, sky dome, fog, island, water, road markings, skyline
     Collision.ts          AABB spatial hash, ground heights, ray casts
-  player/                 PlayerController (pure flight physics), ArmorModel (visuals/animation), SuitSystems
+  player/                 PlayerController (pure flight/walk physics, suit toggle, rolls), ArmorModel (armour +
+                          civilian rig, poses, transformation), SuitSystems, SpeedFx
   camera/                 ThirdPersonCamera
   input/                  InputManager (keyboard/mouse/touch → InputState), TouchControls
   ui/                     Hud (ARIA HUD), SettingsMenu
-  gameplay/               CityEvents (optional incidents / markers)
+  combat/                 Enemies (AI), Projectiles (bolts, rockets, missiles, explosions), Combat (player weapons,
+                          lock-on, aim assist) - all pure logic, unit-tested - plus EnemyRenderer/ProjectileRenderer
+  gameplay/               CityEvents (combat incidents, rescue calls, markers)
   audio/                  SuitAudio (synthesised)
 ```
 
@@ -124,27 +157,35 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. 15 unit tests pass.
-- The game boots with no console errors and loads all 16 chunks. Keyboard takeoff → hover → flight → afterburner → brake → landing works end to end.
-- The pause menu changes quality, the change persists, and resume works.
-- With Chromium's iPhone 13 landscape emulation (touch events): the touch UI appears, LIFT, the virtual stick and FLY work, the menu button opens settings, and Low quality is the default.
-- The WebGL-unavailable error screen appears with Retry.
-- The Engage button stays reachable on a 320×180 viewport.
+- Production build and TypeScript strict checks pass. **28 unit tests** pass, covering:
+  - City generation and collision: the analytic sidewalk/road heights and the landing-pad collider.
+  - Flight physics: civilian walk/sprint, the suit toggle, barrel-roll invulnerability, and dive speed.
+  - Combat: repulsors kill a trooper; rockets lock on and kill an off-centre drone; drones damage a suited player but ignore a civilian; a roll breaks missile lock; kamikazes dive in and explode; the Warbot laser only fires after its telegraph.
+- **Browser tests** (11 pass on the desktop and emulated-mobile projects):
+  - The game boots with no console errors.
+  - **Mouse drag-look turns the camera.**
+  - The full takeoff → hover → flight → afterburner → brake → landing sequence works.
+  - **Rockets fire and repulsors kill a trooper.**
+  - **Suit off → walk as a civilian → suit on** works.
+  - The settings menu works.
+  - Touch (Chromium iPhone emulation): LIFT, stick, MSL, FLY, menu, and the SUIT button to civilian and back. Low quality is the default on mobile.
+  - The WebGL-unavailable error screen appears.
+- Shaders for all enemies, effects and the civilian are compiled during loading, so nothing hitches when they first appear.
 
 **Not yet tested:**
-- **Real iPhone Safari**, a real Chromebook, or any physical device or GPU. Mobile results above come from Chromium emulation, not WebKit.
-- **Real-world frame rates.** SwiftShader renders on the CPU (about 8 fps at 640×360), so performance on real devices is unmeasured. The design targets integrated GPUs, but this needs on-device profiling.
-- Audio output (the WebAudio graph is built, but nobody has listened to it), the pointer-lock experience, gamepads (not supported yet), and WebGL context-loss recovery.
-- A full Cloudflare deployment. `npx wrangler deploy --dry-run` passes locally with `wrangler.jsonc`, but the real deploy has to run in your Cloudflare account.
+- **Real iPhone Safari**, a real Chromebook, or any physical GPU.
+- **Real frame rates.** SwiftShader renders on the CPU, so on-screen frame rates here are meaningless. Measured in the browser, the game's own JavaScript costs about 1 ms per frame and render submission about 4 ms. The scene draws about 350k triangles in about 120 draw calls at Medium. This should be comfortable on integrated GPUs and modern iPhones, but it needs on-device profiling.
+- **Real pointer-lock behaviour.** It wasn't observed in headless Chromium; the drag-look fallback was what got tested.
+- Audio output (nobody has listened to it), gamepads (not supported), and WebGL context-loss recovery.
+- Cloudflare deployment from this repo. `wrangler deploy --dry-run` passes; the real deploy runs in your account.
 
 ## Roadmap (next milestones)
 
 1. On-device profiling (iPhone Safari, Chromebook) and tuning of the quality presets.
-2. Chunk streaming for a larger city with more district themes, bridges and landmarks.
-3. Civilian alter ego with walking controls, plus the animated armour transformation between identities.
-4. Abilities (repulsor blast, unibeam, scanner mode) with VFX and interactions.
-5. Mission and event framework: chases, rescues, and timed flight challenges built on `CityEvents` and the `EventBus`.
-6. Minimap, gamepad support, PWA offline caching.
+2. More abilities: a charged chest beam, scanner mode that highlights hostiles through walls, and flares.
+3. Civilian life: enter buildings, NPC reactions to combat (pedestrians flee), police and traffic responding to incidents.
+4. Story missions and boss fights built on the incident system, with a minimap and mission log.
+5. Gamepad support, PWA offline caching, and save data for progress and unlocks.
 
 ## License
 

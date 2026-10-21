@@ -16,6 +16,7 @@ export class ThirdPersonCamera {
   private fov = 0.95;
   private shake = 0;
   private roll = 0;
+  private fovKick = 0;
   private initialised = false;
 
   constructor(scene: Scene) {
@@ -34,6 +35,11 @@ export class ThirdPersonCamera {
     this.dist = 6;
   }
 
+  /** Momentary FOV punch (boosts, sonic boom). */
+  addKick(amount: number): void {
+    this.fovKick = Math.min(0.3, this.fovKick + amount);
+  }
+
   addShake(amount: number): void {
     this.shake = Math.min(1.2, this.shake + amount);
   }
@@ -45,7 +51,7 @@ export class ThirdPersonCamera {
   update(dt: number, p: PlayerController, world: CollisionWorld): void {
     const speed = p.speed;
     const flight = p.mode === "flight";
-    const headY = flight ? 0.9 : p.mode === "hover" ? 1.75 : 1.65;
+    const headY = !p.suited ? 1.55 : flight ? 0.9 : p.mode === "hover" ? 1.75 : 1.65;
     const tx = p.pos.x, ty = p.pos.y + headY, tz = p.pos.z;
     if (!this.initialised) {
       this.pivot.set(tx, ty, tz);
@@ -62,11 +68,12 @@ export class ThirdPersonCamera {
     const cp = Math.cos(pitch);
     const dx = Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = Math.cos(yaw) * cp;
 
-    let want = p.mode === "ground" ? 5.2 : p.mode === "hover" ? 7 : 6.2 + clamp(speed / 125, 0, 1) * 3;
+    let want = !p.suited ? 3.6 : p.mode === "ground" ? 5.2 : p.mode === "hover" ? 7 : 5.4 + clamp(speed / 165, 0, 1) * 2.4;
     // Raise the camera a little in flight so the horizon stays readable.
     const lift = flight ? 1.0 : 0.45;
     // Shoulder offset on foot / hover.
-    const shoulder = flight ? 0 : 0.55;
+    // Over-the-shoulder offset keeps the crosshair clear of the hero for aiming.
+    const shoulder = flight ? 0 : !p.suited ? 0.35 : p.mode === "hover" ? 1.25 : 0.9;
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
 
     const ox = this.pivot.x + rx * shoulder;
@@ -97,7 +104,8 @@ export class ThirdPersonCamera {
     this.roll += ((flight ? p.bodyRoll * 0.18 : 0) - this.roll) * damp(4, dt);
     this.camera.rotation.z = this.roll;
 
-    const targetFov = 0.92 + clamp((speed - 15) / 110, 0, 1) * 0.28;
+    this.fovKick = Math.max(0, this.fovKick - dt * 0.5);
+    const targetFov = 0.92 + clamp((speed - 15) / 150, 0, 1) * 0.26 + this.fovKick;
     this.fov += (targetFov - this.fov) * damp(3, dt);
     this.camera.fov = this.fov;
   }

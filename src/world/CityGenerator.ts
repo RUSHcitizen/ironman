@@ -7,6 +7,7 @@ import {
   SIDEWALK_HEIGHT,
   WORLD_SEED,
   HERO_BLOCK,
+  DISTRICT,
   blockOrigin,
 } from "./WorldConfig";
 
@@ -89,23 +90,44 @@ const GLASS_TINTS: RGB[] = [
 ];
 
 const AREA_NAMES = [
-  ["Hudson Yards", "Hell's Point", "Theatre Row", "Garment Row"],
-  ["Chelsea Steps", "Apex Plaza", "Midtown Core", "Bryant Commons"],
-  ["Flatiron Wedge", "Union Square", "Gramercy Gate", "Murray Rise"],
-  ["Village Bend", "Astor Place", "Bowery Line", "East Docks"],
+  "Inwood Heights", "Harlem Rise", "Morningside", "Yorkville", "Spanish Harbor",
+  "Hudson Yards", "Northpark West", "Northpark", "Lenox Hill", "East River Gate",
+  "Hell's Point", "Theatre Row", "Midtown Core", "Bryant Commons", "Murray Rise",
+  "Chelsea Steps", "Flatiron Wedge", "Union Square", "Gramercy Gate", "Stuy Town",
+  "Village Bend", "SoHo Lofts", "Financial Spire", "Bowery Line", "East Docks",
 ];
 
-/** District-relative area name for a chunk. */
+const REGION_CHUNKS = 2;
+
+/** District name for a chunk (regions of 2x2 chunks, 5x5 regions). */
 export function areaName(cx: number, cz: number): string {
-  const row = AREA_NAMES[((1 - cz) % 4 + 4) % 4];
-  return row[((cx + 2) % 4 + 4) % 4];
+  const n = Math.round(Math.sqrt(AREA_NAMES.length));
+  const rx = clampInt(Math.floor((cx - DISTRICT.minChunk) / REGION_CHUNKS), 0, n - 1);
+  const rz = clampInt(Math.floor((cz - DISTRICT.minChunk) / REGION_CHUNKS), 0, n - 1);
+  return AREA_NAMES[(n - 1 - rz) * n + rx];
+}
+
+function clampInt(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+/** Big central park footprint in block indices (inclusive). */
+export const BIG_PARK = { i0: -9, i1: -6, j0: 4, j1: 10 };
+
+/** Skyscraper density 0..1: a midtown core and a taller downtown core. */
+export function skylineFactor(x: number, z: number): number {
+  const midtown = 1 - Math.hypot(x - 20, z - 150) / 720;
+  const downtown = (1 - Math.hypot(x - 260, z + 1080) / 520) * 1.15;
+  return clamp(Math.max(midtown, downtown, 0), 0, 1.15);
 }
 
 export function blockKind(i: number, j: number): BlockKind {
   if (i === HERO_BLOCK.i && j === HERO_BLOCK.j) return "hero";
   if (i === -1 && j === 0) return "plaza";
-  if ((i === -3 && j === 1) || (i === -3 && j === 2)) return "park";
-  if (i === 2 && j === -3) return "park";
+  if (i >= BIG_PARK.i0 && i <= BIG_PARK.i1 && j >= BIG_PARK.j0 && j <= BIG_PARK.j1) return "park";
+  const r = hashSeed(WORLD_SEED + 7, i, j) / 4294967296;
+  if (r < 0.035) return "park";
+  if (r < 0.06) return "plaza";
   return "buildings";
 }
 
@@ -155,7 +177,7 @@ export function generateBlock(i: number, j: number, name = ""): BlockSpec {
     // Taller buildings towards the district core (midtown feel).
     const cxw = x0 + BLOCK_SIZE / 2;
     const czw = z0 + BLOCK_SIZE / 2;
-    const core = clamp(1 - Math.hypot(cxw - 20, czw - 60) / 380, 0, 1);
+    const core = skylineFactor(cxw, czw);
     for (const p of splitLot(rng, lx0, lz0, lot)) addBuilding(spec, rng, p, core);
   }
   return spec;
@@ -201,7 +223,7 @@ function addBuilding(spec: BlockSpec, rng: Rng, p: Parcel, core: number): void {
   let maxZ = p.z + p.d - inset;
   const footprint = Math.min(maxX - minX, maxZ - minZ);
   const tallness = rng.next() * core;
-  let height = lerp(14, 48, rng.next()) + tallness * tallness * 190 + core * 25;
+  let height = lerp(12, 40, rng.next()) + tallness * tallness * 210 + core * 30;
   if (footprint < 22) height = Math.min(height, 70 + rng.range(0, 30));
   height = Math.round(height / 3.6) * 3.6; // whole floors
 
@@ -345,4 +367,14 @@ export function roadLines(minBlock: number, maxBlock: number): number[] {
   const lines: number[] = [];
   for (let k = minBlock; k <= maxBlock + 1; k++) lines.push(k * BLOCK_PITCH);
   return lines;
+}
+
+/** Every collidable box of a chunk (building tiers + extra colliders). */
+export function chunkColliders(spec: ChunkSpec): Box[] {
+  const out: Box[] = [];
+  for (const block of spec.blocks) {
+    for (const b of block.buildings) out.push(...b.tiers);
+    out.push(...block.colliders);
+  }
+  return out;
 }
