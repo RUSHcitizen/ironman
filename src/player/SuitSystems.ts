@@ -28,7 +28,7 @@ export class SuitSystems {
   }
 
   damage(amount: number, focus: SuitPart[] = SUIT_PARTS): void {
-    for (const p of focus) this.integrity[p] = clamp(this.integrity[p] - amount, 5, 100);
+    for (const p of focus) this.integrity[p] = clamp(this.integrity[p] - amount, 0, 100);
     this.repairDelay = 5;
   }
 

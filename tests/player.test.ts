@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PlayerController } from "../src/player/PlayerController";
+import { PlayerController, TUNING } from "../src/player/PlayerController";
 import { CollisionWorld } from "../src/world/Collision";
 import { emptyInput, type InputState } from "../src/input/InputState";
 
@@ -229,31 +229,78 @@ describe("PlayerController", () => {
     expect(p.dead).toBe(false);
   });
 
-  it("a fall from a great height is fatal, a short drop is not", () => {
+  it("in the suit you survive a fall from any height - the armour takes the damage", () => {
     const short = new PlayerController(makeWorld());
     short.spawn(0, 30, 0, 0);
+    short.mode = "hover";
+    short.grounded = false;
     sim(short, 0.1, {}, { cutThrust: true });
-    short.freefall = true;
     sim(short, 4);
     expect(short.dead).toBe(false);
-    expect(short.pos.y).toBeCloseTo(0, 2);
 
+    for (const h of [400, 3000]) {
+      const events: string[] = [];
+      const bus = { emit: (t: string) => events.push(t) } as never;
+      const p = new PlayerController(makeWorld(), bus);
+      p.spawn(0, h, 0, 0);
+      p.mode = "hover";
+      p.grounded = false;
+      sim(p, 0.1, {}, { cutThrust: true });
+      for (let t = 0; t < 90 && !p.grounded; t += 1 / 60) p.update(1 / 60, emptyInput());
+      expect(p.dead).toBe(false);
+      expect(p.grounded).toBe(true);
+      expect(events).not.toContain("playerDied");
+      expect(p.suit.overallIntegrity).toBeLessThan(100);
+      expect(p.suit.overallIntegrity).toBeGreaterThanOrEqual(55);
+    }
+  });
+
+  it("full damage destroys the suit; repeated hard falls can do it", () => {
     const events: string[] = [];
     const bus = { emit: (t: string) => events.push(t) } as never;
     const p = new PlayerController(makeWorld(), bus);
-    p.spawn(0, 400, 0, 0);
-    p.mode = "hover";
-    p.grounded = false;
-    sim(p, 0.1, {}, { cutThrust: true });
-    sim(p, 15);
-    expect(p.dead).toBe(true);
-    expect(events).toContain("playerDied");
-    // Dead players don't move until the game respawns them.
-    const y = p.pos.y;
-    sim(p, 1, { moveY: 1, ascend: true });
-    expect(p.pos.y).toBe(y);
-    p.spawn(0, 0, 0, 0);
+    for (let k = 0; k < 4 && !events.includes("suitFailure"); k++) {
+      p.pos.y = 600;
+      p.mode = "hover";
+      p.grounded = false;
+      sim(p, 0.1, {}, { cutThrust: true });
+      for (let t = 0; t < 30 && !p.grounded; t += 1 / 60) p.update(1 / 60, emptyInput());
+      p.update(1 / 60, emptyInput());
+    }
+    expect(events).toContain("suitFailure");
     expect(p.dead).toBe(false);
+    // The pilot is left as a civilian; in the air they drift down safely.
+    p.pos.y = 300;
+    p.grounded = false;
+    p.mode = "hover";
+    p.suitDestroyed();
+    expect(p.suited).toBe(false);
+    expect(p.chute).toBe(true);
+    sim(p, 70);
+    expect(p.dead).toBe(false);
+    expect(p.grounded).toBe(true);
+  });
+
+  it("power drains 1% per minute in the air, recharges instantly on the ground, and at 0% you sink", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 200, -400, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.viewPitch = 0;
+    sim(p, 60, { moveY: 1 });
+    expect(p.suit.energy).toBeGreaterThan(98.9);
+    expect(p.suit.energy).toBeLessThan(99.1);
+    p.suit.energy = 0.001;
+    sim(p, 0.5);
+    expect(p.mode).toBe("hover");
+    const y = p.pos.y;
+    sim(p, 3, { ascend: true });
+    expect(p.pos.y).toBeLessThan(y);
+    // Land: instant full recharge.
+    p.pos.y = 1;
+    sim(p, 2);
+    expect(p.grounded).toBe(true);
+    expect(p.suit.energy).toBe(100);
   });
 
   it("civilians die from much shorter falls than the armour", () => {
@@ -397,5 +444,50 @@ describe("PlayerController", () => {
     expect(p.vel.x).toBeLessThan(-35);
     sim(p, 0.1, {}, { sharpTurn: -1 });
     expect(p.bank).toBeGreaterThan(-1.0);
+  });
+
+  it("flight is 150% faster (2.5x): cruise 120 m/s, afterburner 312 m/s", () => {
+    expect(TUNING.cruiseSpeed).toBe(48 * 2.5);
+    expect(TUNING.afterburnerSpeed).toBe(125 * 2.5);
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 200, -400, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.viewPitch = 0;
+    sim(p, 4);
+    expect(p.speed).toBeGreaterThan(110);
+    sim(p, 1.2, { moveY: 1 });
+    expect(p.hypersonic).toBe(false);
+    expect(p.speed).toBeGreaterThan(200);
+  });
+
+  it("holding the afterburner goes hypersonic past Mach 1 (sonic boom)", () => {
+    const events: string[] = [];
+    const bus = { emit: (t: string) => events.push(t) } as never;
+    const p = new PlayerController(makeWorld(), bus);
+    p.spawn(0, 300, -400, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.viewPitch = 0;
+    p.flightSpeed = 120;
+    sim(p, 6, { moveY: 1 });
+    expect(p.hypersonic).toBe(true);
+    expect(p.speed).toBeGreaterThan(343);
+    expect(events).toContain("hypersonic");
+    expect(events).toContain("sonicBoom");
+    expect(p.topSpeed).toBeGreaterThan(343);
+    sim(p, 0.1);
+    expect(p.hypersonic).toBe(false);
+  });
+
+  it("hover is 1.5x faster but still settles precisely", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 50, -400, Math.PI);
+    p.mode = "hover";
+    p.grounded = false;
+    sim(p, 3, { moveY: 1 });
+    expect(Math.hypot(p.vel.x, p.vel.z)).toBeGreaterThan(24);
+    sim(p, 2);
+    expect(Math.hypot(p.vel.x, p.vel.z)).toBeLessThan(1);
   });
 });

@@ -69,9 +69,8 @@ export class Combat {
     this.updateUnibeam(dt, input.beam, p, camPos, aim);
     if (input.flares) this.popFlares(p);
 
-    if (input.fire && this.repulsorCooldown <= 0 && p.suit.energy > 1) {
+    if (input.fire && this.repulsorCooldown <= 0 && p.suit.energy > 0) {
       this.repulsorCooldown = 0.15;
-      p.suit.drain(0.6);
       p.aimTimer = 0.7;
       p.recoil = 1;
       const from = this.muzzle(p, aim, this.side);

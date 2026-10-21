@@ -200,6 +200,17 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.screenshot({ path: `${OUT}/27-titan-sentinels.png` });
   await run(page, `g.enemies.clear();`);
 
+  // Flight challenge ring course, then hypersonic flight.
+  await run(page, `g.enemies.clear(); g.events.spawnNow(g.player, "Flight challenge"); const r = g.events.course.rings[0];
+    g.teleport(r.x - Math.sin(r.yaw) * 70, r.y + 3, r.z - Math.cos(r.yaw) * 70, r.yaw, "hover");`);
+  await frames(page, 40);
+  await page.screenshot({ path: `${OUT}/29-ring-course.png` });
+  await run(page, `g.events.clear(); g.teleport(2.5, 300, -300, 0.3, "flight", 340);`);
+  await page.keyboard.down("KeyW");
+  await frames(page, 50);
+  await page.screenshot({ path: `${OUT}/30-hypersonic.png` });
+  await page.keyboard.up("KeyW");
+
   // Night over the city, then a sunny day in the Midas armour with a boss bar.
   await run(page, `g.settings.update({ timeOfDay: "night" }); g.teleport(2.5, 120, -300, 0.4, "hover"); g.player.viewPitch = -0.12;`);
   await frames(page, 30);

@@ -36,7 +36,7 @@ export class SpeedFx {
 
   update(cam: Vector3, p: PlayerController): void {
     const speed = p.speed;
-    const k = Math.max(0, Math.min(1, (speed - 45) / 90));
+    const k = Math.max(0, Math.min(1, (speed - 60) / 220));
     if (k <= 0 || p.mode !== "flight") {
       setInstanceCount(this.mesh, 0);
       return;
@@ -58,7 +58,7 @@ export class SpeedFx {
         pt.y = cam.y + dy * d + sa;
         pt.z = cam.z + dz * d + (uz / ul) * ca;
       }
-      const len = Math.min(6, 1 + speed * 0.03);
+      const len = Math.min(9, 1 + speed * 0.025);
       Quaternion.RotationYawPitchRollToRef(yaw, pitch, 0, this.q);
       this.s.set(0.02, 0.02, len);
       this.t.set(pt.x, pt.y, pt.z);

@@ -8,6 +8,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
+| ![Flight challenge ring course](docs/screenshots/29-ring-course.png) | ![Hypersonic flight at Mach 1.2](docs/screenshots/30-hypersonic.png) |
 | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) | ![Phone controls faded when idle](docs/screenshots/28-mobile-controls-idle.png) |
 | ![Titan, sentinels and a spider walker](docs/screenshots/27-titan-sentinels.png) | ![Flares](docs/screenshots/24-flares.png) |
 | ![Night over the city](docs/screenshots/25-night.png) | ![Midas armour by day with a boss bar](docs/screenshots/26-day-midas-boss.png) |
@@ -24,6 +25,38 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | ![Title screen](docs/screenshots/01-title.png) | ![Settings menu](docs/screenshots/08-settings-menu.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 11 – 150% faster flight, hypersonic, ring challenges, new suit & power rules
+
+- **Falls in the suit are always survivable.** Hit the ground from any height (even from space) and you walk away. The armour takes the hit instead: damage scales with impact speed, capped at 45% per fall. Unprotected falls (as a civilian, or after ejecting) can still kill you.
+- **Suit destruction.**
+  - When hits, building crashes or hard falls take the armour to 0%, it blows apart into wreckage.
+  - You're left standing as a civilian. If it happens in the air, the suit's last act is an emergency descent, so you drift down safely.
+  - **15 seconds later** a replacement suit is launched from a few hundred metres away, flies in and latches on, fully repaired. The countdown shows on screen, and `G`/`V` are locked until it arrives.
+  - This replaces the old "suit failure → respawn at the tower".
+- **New power rules.**
+  - Power drains only **1% per minute** while the suit is airborne. Flying, afterburner, hypersonic, repulsors, rolls, tricks and sharp turns no longer cost power. The Unibeam (25%) and enemy EMPs still take a chunk.
+  - At 0% the thrusters can't hold you up: you drop out of flight and sink to the ground.
+  - **Touching the ground recharges power to 100% instantly.**
+
+- **Flight is 150% faster (2.5×):**
+  - Cruise goes from 48 to **120 m/s** (430 km/h). The afterburner goes from 125 to **312.5 m/s** (1,125 km/h).
+  - Dives, climbs, acceleration and the afterburner kick all scale up to match, and turning keeps its bite at the new speeds.
+  - In thin air you go faster still (up to about 2.6× more near space).
+  - Hover is 1.5× faster (27 m/s) so it stays precise.
+- **The sound barrier is real now:** the sonic boom fires at Mach 1 (343 m/s), and the HUD shows Mach and your top speed.
+- **Hypersonic stage:**
+  - Hold the afterburner for 1.5 s and you surge to 1.35× top speed (about Mach 1.2, roughly 1,500 km/h).
+  - It brings a "HYPERSONIC" call-out, a sonic ring, a pulsing vapour cone around the suit, extra camera buffeting and a wider field of view. It uses a little more power.
+- **Flight challenges:**
+  - A new mission type, plus a "Start flight challenge" button in the menu. Fly through 10 rings in order against the clock.
+  - The next ring blazes gold and the rest of the course is traced in cyan. Every leg is guaranteed to clear the buildings along it.
+  - Each ring is a boost: +35 m/s, +6% power and a speed kick. The clock starts at ring 1.
+  - You get XP per ring plus 400 for finishing, and your best time is saved.
+- **Built for the speed:**
+  - Collision is checked in finer steps, so hypersonic flight can't tunnel through walls.
+  - City streaming looks ahead along your path and gets more build time when you're fast.
+  - The speed lines, wind sound, camera distance and field of view, and the HUD speed bar are all rescaled for the new range.
 
 ## Milestone 10 – a 5× bigger city, more enemies, cleaner phone controls, animation everywhere, device tuning
 
@@ -62,7 +95,12 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
     - Building a newly visible chunk is now spread over several frames (about 3 ms per frame) instead of done in one go.
     - The HUD caches its element lookups and only writes to the page when a value actually changes.
     - Measured on the emulated iPhone X layout at Low during a flying fight, the simulation's CPU cost is about 2.2 ms per frame on average, with the worst frame down from about 25 ms to 11 ms. At **4× CPU throttling** (to approximate a slow phone or Chromebook CPU) it's about 10 ms on average, with a peak around 38 ms (from 62 ms). The JS heap stays around 60–75 MB.
-    - A new browser test enforces a budget at 4× throttling: under 16 ms average and 80 ms peak, and under 250 MB heap.
+    - A new browser test enforces a budget at 4× throttling: under 16 ms average and 80 ms peak, and under 250 MB heap. After the 2.5× speed-up (Milestone 11) this test flies at about 230 m/s.
+    - Fixes that keep it inside budget:
+      - The target brackets no longer read the canvas size each update, which forced a full page layout. The size is now cached on resize.
+      - HUD animations restart on the next frame instead of with the "read offsetWidth" trick.
+      - Slow-changing HUD values update at 10 Hz, the radar at 10 Hz and sound parameters at 20 Hz.
+      - Result: the HUD's cost dropped from about 3.6 ms to 1.3 ms, and the total is about 9–12 ms per frame at 4× throttling.
     - GPU cost can't be measured here (software rendering), so real-device frame rates still need checking on the hardware.
   - **Checking on your own device:** turn on menu → "Show FPS / performance counter" to see live FPS, per-frame simulation time and the active preset. The menu also shows the GPU, WebGL version and browser the device reports.
 
@@ -263,6 +301,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Unibeam (chest laser) | `Z` | BEAM |
 | Countermeasure flares | `J` | FLARE |
 | Hide / show the HUD (cinematic) | `K` | Menu → Show HUD |
+| Go hypersonic | Hold `W` (afterburner) for 1.5 s | Stick up |
+| Flight challenge (ring course) | Menu → Start flight challenge | Same |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -358,7 +398,9 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **63 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **68 unit tests** pass, covering:
+  - The new suit and power rules: falls from 30 m, 400 m and 3 km are all survived with armour damage; repeated hard falls destroy the suit and the pilot drifts down safely; power drains exactly 1% per minute in the air, at 0% you sink even holding climb, and landing recharges to 100% instantly.
+  - Milestone 11: cruise and afterburner are exactly 2.5× the old values, holding the afterburner goes hypersonic past Mach 1 (with a sonic boom and the top-speed record), and the faster hover still settles precisely.
   - City generation and collision.
   - Flight physics:
     - Civilian movement.
@@ -386,7 +428,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Mouse drag-look, the flight sequence, and weapons.
   - Suit off/on and the full step-out → sentry → call → dock flow (now with the piece-by-piece latch).
   - The touch layout and the WebGL error screen.
-- The 59 km² city loads in about 1.7–4.6 s here (layout data and about 102k colliders up front, which take about 0.25 s to generate; meshes stream in around the camera).
+- The city loads in about 1.7–4.6 s here (layout data and about 102k colliders up front, which take about 0.25 s to generate; meshes stream in around the camera).
 
 **Not yet tested:**
 - **Real iPhone Safari** (iPhone X / iPhone 15), a real Chromebook, or any physical GPU. iPhone and Chromebook support is designed for and tested in Chromium emulation (screen sizes, touch, user agent), not on the devices. Emulation can't reproduce Safari's WebGL quirks, real thermal throttling or real memory limits.

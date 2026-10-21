@@ -137,7 +137,7 @@ export class SuitAudio {
     const thrust = p.mode === "ground" || !p.suited ? 0 : p.thrust;
     this.thrustGain.gain.setTargetAtTime(thrust * 0.55, t, 0.08);
     this.thrustFilter.frequency.setTargetAtTime(220 + thrust * 900 + (p.afterburner ? 900 : 0), t, 0.1);
-    const s = Math.min(1, p.speed / 125);
+    const s = Math.min(1, p.speed / 320);
     this.windGain.gain.setTargetAtTime(s * s * 0.45, t, 0.15);
     this.windFilter.frequency.setTargetAtTime(400 + s * 1400, t, 0.2);
   }

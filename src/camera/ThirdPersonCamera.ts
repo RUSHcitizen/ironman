@@ -89,7 +89,7 @@ export class ThirdPersonCamera {
     const cp = Math.cos(pitch);
     const dx = Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = Math.cos(yaw) * cp;
 
-    let want = !p.suited ? 3.6 : p.mode === "ground" ? 5.2 : p.mode === "hover" ? 7 : 5.4 + clamp(speed / 165, 0, 1) * 2.4;
+    let want = !p.suited ? 3.6 : p.mode === "ground" ? 5.2 : p.mode === "hover" ? 7 : 5.4 + clamp(speed / 400, 0, 1) * 3.2;
     // Raise the camera a little in flight so the horizon stays readable.
     // Over-the-shoulder offset keeps the crosshair clear of the hero for aiming.
     this.liftS += ((flight ? 1.0 : 0.45) - this.liftS) * damp(3, dt);
@@ -127,7 +127,8 @@ export class ThirdPersonCamera {
     this.camera.rotation.z = this.roll;
 
     this.fovKick = Math.max(0, this.fovKick - dt * 0.5);
-    const targetFov = 0.92 + clamp((speed - 15) / 150, 0, 1) * 0.26 + this.fovKick;
+    // FOV widens with speed (more at hypersonic) - the rush of going fast.
+    const targetFov = 0.92 + clamp((speed - 15) / 330, 0, 1) * 0.34 + (p.hypersonic ? 0.06 : 0) + this.fovKick;
     this.fov += (targetFov - this.fov) * damp(3, dt);
     this.camera.fov = this.fov;
   }

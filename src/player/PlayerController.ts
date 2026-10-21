@@ -21,11 +21,16 @@ export const TUNING = {
   walkSpeed: 8,
   civilianWalk: 3.4,
   civilianSprint: 7,
-  hoverSpeed: 18,
-  hoverVertical: 11,
-  cruiseSpeed: 48,
-  afterburnerSpeed: 125,
-  sonicSpeed: 112,
+  // Flight is 2.5x (150% faster) than before; hover 1.5x so it stays precise.
+  hoverSpeed: 27,
+  hoverVertical: 16,
+  cruiseSpeed: 120,
+  afterburnerSpeed: 312.5,
+  /** Real Mach 1 at sea level: the sound barrier is a genuine milestone. */
+  sonicSpeed: 343,
+  /** Hold the afterburner this long to go hypersonic (x1.35 top speed). */
+  hyperDelay: 1.5,
+  hyperBoost: 1.35,
   minFlightSpeed: 18,
   gravity: 22,
   turnRate: 1.5,
@@ -40,9 +45,13 @@ export const TUNING = {
   latchTime: 2.4,
   /** Stepping out of the open armour. */
   stepOutTime: 1.5,
-  /** Impact speeds (m/s) that kill: the armour absorbs a lot, a civilian very little. */
-  lethalFall: 62,
+  /** A civilian dies landing faster than this; the armour always survives a fall (it takes damage instead). */
   civilianLethalFall: 26,
+  /** Suit damage from a hard fall: (speed - 22) * k per part, capped. */
+  fallDamagePerMs: 0.45,
+  fallDamageMax: 45,
+  /** Power drain while airborne, % per minute. */
+  powerPerMinute: 1,
   /** Air drag coefficient (sea-level terminal velocity ~96 m/s, faster in thin air). */
   drag: 0.0024,
   /** A person without armour falls slower (terminal ~54 m/s). */
@@ -112,6 +121,11 @@ export class PlayerController {
   thrust = 0;
   afterburner = false;
   private wasAfterburner = false;
+  /** Seconds the afterburner has been held; past hyperDelay = hypersonic. */
+  private burnTime = 0;
+  hypersonic = false;
+  /** Fastest speed reached this session (m/s). */
+  topSpeed = 0;
   private sonicDone = false;
   walkPhase = 0;
   /** Seconds remaining in the landing crouch. */
@@ -140,6 +154,8 @@ export class PlayerController {
   private boundaryWarned = 0;
   private ceilingWarned = 0;
   private failed = false;
+  /** Suit destroyed in the air: the pilot drifts down safely (emergency descent). */
+  chute = false;
   /** Thrusters cut (H): unpowered free fall until re-engaged. */
   freefall = false;
   /** Passed out from lack of oxygen: thrusters can't be re-engaged. */
@@ -177,7 +193,7 @@ export class PlayerController {
     this.agl = 0;
     this.transformTimer = 0;
     this.failed = false;
-    this.freefall = this.blackout = this.dead = false;
+    this.freefall = this.blackout = this.dead = this.chute = false;
     this.deadTime = 0;
     this.recoil = this.flinch = 0;
     this.suit.oxygen = 100;
@@ -260,10 +276,7 @@ export class PlayerController {
     this.bus?.emit("playerHit", { damage });
     this.flinch = Math.min(1, 0.4 + damage / 20);
     this.flinchSide = Math.random() < 0.5 ? -1 : 1;
-    if (this.suit.overallIntegrity < 15) {
-      this.failed = true;
-      this.bus?.emit("suitFailure", {});
-    }
+
     return true;
   }
 
@@ -296,6 +309,26 @@ export class PlayerController {
     this.bus?.emit("suitTransform", { toSuited: false, airborne: false });
     this.finishTransform();
     return true;
+  }
+
+  /**
+   * The suit has been destroyed: the pilot is left as a civilian. In the air,
+   * the suit's last act is an emergency descent so the pilot lands safely.
+   */
+  suitDestroyed(): void {
+    this.suited = false;
+    this.freefall = this.blackout = false;
+    this.trick = null;
+    this.trickPitch = this.trickYaw = 0;
+    this.afterburner = this.wasAfterburner = this.hypersonic = false;
+    this.transformTimer = 0;
+    this.chute = !this.grounded || this.mode !== "ground";
+    if (this.mode !== "ground") {
+      this.vel.y = Math.max(this.vel.y, -6);
+      this.grounded = false;
+      this.setMode("ground");
+    }
+    this.bus?.emit("suitChanged", { suited: false });
   }
 
   /**
@@ -383,6 +416,11 @@ export class PlayerController {
     this.updateBoundaries(dt);
     this.updateEnergy(dt);
     this.updateOxygen(dt);
+    if (this.suited && !this.failed && this.suit.overallIntegrity <= 1) {
+      // Full damage: the suit is destroyed (from hits, crashes or falls).
+      this.failed = true;
+      this.bus?.emit("suitFailure", {});
+    }
     this.updateNearMiss(dt);
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
@@ -414,7 +452,12 @@ export class PlayerController {
     let speed = this.suited ? TUNING.walkSpeed : input.sprint ? TUNING.civilianSprint : TUNING.civilianWalk;
     if (locked) speed = 0;
     const falling = this.falling;
-    if (this.freefall || falling || (!this.grounded && this.airTime > 0.2)) {
+    if (this.chute && !this.grounded) {
+      // Emergency descent: slow, steady, steerable.
+      this.vel.y = Math.max(this.vel.y - TUNING.gravity * dt, -6);
+      this.vel.x += (move.x * 6 - this.vel.x) * damp(1.5, dt);
+      this.vel.z += (move.z * 6 - this.vel.z) * damp(1.5, dt);
+    } else if (this.freefall || falling || (!this.grounded && this.airTime > 0.2)) {
       // Unpowered fall: keep momentum, steer a little like a skydiver.
       const air = TUNING.gravity * 0.45;
       this.vel.x += move.x * air * dt;
@@ -432,8 +475,8 @@ export class PlayerController {
       this.vel.x += (tx - this.vel.x) * k;
       this.vel.z += (tz - this.vel.z) * k;
     }
-    this.vel.y -= TUNING.gravity * dt;
-    if (!this.grounded) {
+    if (!this.chute) this.vel.y -= TUNING.gravity * dt;
+    if (!this.grounded && !this.chute) {
       // Aerodynamic drag (weaker in thin air, so falls from space get fast).
       const sp = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
       const f = Math.min(1, (this.suited ? TUNING.drag : TUNING.civilianDrag) * airDensity(this.pos.y) * sp * dt);
@@ -527,7 +570,8 @@ export class PlayerController {
     const vy = (input.ascend ? 1 : 0) - (input.descend ? 1 : 0);
     const tx = move.x * TUNING.hoverSpeed;
     const tz = move.z * TUNING.hoverSpeed;
-    const ty = hasEnergy ? vy * TUNING.hoverVertical : vy > 0 ? 1 : -3;
+    // No power: the thrusters can only slow the descent.
+    const ty = hasEnergy ? vy * TUNING.hoverVertical : -4;
     const k = damp(2.8, dt);
     this.vel.x += (tx - this.vel.x) * k;
     this.vel.z += (tz - this.vel.z) * k;
@@ -553,7 +597,7 @@ export class PlayerController {
 
   private updateFlight(dt: number, input: InputState): void {
     // Smoothed steering: rates ease in and out, so turns carve instead of snap.
-    const turnRate = TUNING.turnRate * (1.25 - Math.min(0.5, this.flightSpeed / 250));
+    const turnRate = TUNING.turnRate * (1.25 - Math.min(0.5, this.flightSpeed / 625));
     // Banked turns bite harder: roll into the turn and it tightens.
     const bankGrip = 0.75 + 0.45 * Math.min(1, Math.abs(this.bank) / TUNING.maxBank);
     this.yawRate += (input.moveX * turnRate * bankGrip - this.yawRate) * damp(3.5, dt);
@@ -567,25 +611,35 @@ export class PlayerController {
     this.afterburner = input.moveY > 0.25 && this.suit.energy > 0;
     if (this.afterburner && !this.wasAfterburner) {
       // Afterburner kick.
-      this.flightSpeed += 12;
+      this.flightSpeed += 30;
       this.bus?.emit("boost", {});
     }
     this.wasAfterburner = this.afterburner;
+    // Keep burning and the suit goes hypersonic: an extra surge of speed.
+    this.burnTime = this.afterburner ? this.burnTime + dt : 0;
+    const hyper = this.burnTime > TUNING.hyperDelay && this.suit.energy > 0;
+    if (hyper && !this.hypersonic) {
+      this.flightSpeed += 40;
+      this.bus?.emit("hypersonic", { ...this.pos });
+    }
+    this.hypersonic = hyper;
+
     // Thin air at altitude: less drag, so the suit flies much faster.
     const thin = 1 + clamp((this.pos.y - 400) / 2000, 0, 1) * 1.6;
-    let target = (this.afterburner ? TUNING.afterburnerSpeed : TUNING.cruiseSpeed) * thin;
+    let target = (this.afterburner ? TUNING.afterburnerSpeed * (hyper ? TUNING.hyperBoost : 1) : TUNING.cruiseSpeed) * thin;
     // Gravity assist: dives build speed, climbs bleed it.
     const sp = Math.sin(this.viewPitch);
-    target += sp < 0 ? -sp * 45 : -sp * (this.afterburner ? 8 : 20);
+    target += sp < 0 ? -sp * 112 : -sp * (this.afterburner ? 20 : 50);
     if (braking) target = 0;
-    const accel = this.afterburner ? 45 : braking ? 40 : sp < -0.2 ? 30 : 20;
+    const accel = hyper ? 150 : this.afterburner ? 112 : braking ? 100 : sp < -0.2 ? 75 : 50;
     this.flightSpeed = moveTowards(this.flightSpeed, target, accel * dt);
 
     if (this.flightSpeed > TUNING.sonicSpeed && !this.sonicDone) {
       this.sonicDone = true;
       this.bus?.emit("sonicBoom", { ...this.pos });
       this.alert("Sound barrier: sonic boom", "success");
-    } else if (this.flightSpeed < TUNING.sonicSpeed - 25) this.sonicDone = false;
+    } else if (this.flightSpeed < TUNING.sonicSpeed - 40) this.sonicDone = false;
+    this.topSpeed = Math.max(this.topSpeed, this.speed);
 
     const cp = Math.cos(this.viewPitch);
     let dx = Math.sin(this.viewYaw) * cp, dy = sp, dz = Math.cos(this.viewYaw) * cp;
@@ -635,7 +689,7 @@ export class PlayerController {
       this.styleTimer -= dt;
       if (this.styleTimer <= 0) this.styleCombo = 0;
     }
-    if (req && !this.trick && this.suited && this.mode !== "ground" && this.suit.energy > 4) {
+    if (req && !this.trick && this.suited && this.mode !== "ground" && this.suit.energy > 0) {
       const kind: TrickKind =
         req === "auto" ? (this.mode === "flight" ? "loop" : "flip") : req === "spin" && this.mode === "flight" ? "corkscrew" : req === "flip" && this.mode === "flight" ? "loop" : req;
       const sp = Math.hypot(this.vel.x, this.vel.z) || 1;
@@ -645,7 +699,6 @@ export class PlayerController {
         this.flightSpeed = Math.max(this.flightSpeed, TUNING.cruiseSpeed);
       }
       if (kind === "flip" || kind === "backflip") this.vel.y += 6;
-      this.suit.drain(4);
     }
     const tr = this.trick;
     if (!tr) return;
@@ -680,11 +733,10 @@ export class PlayerController {
    */
   private updateSharpTurn(dt: number, req: number): void {
     if (this.sharpCooldown > 0) this.sharpCooldown -= dt;
-    if (req !== 0 && !this.sharp && this.sharpCooldown <= 0 && this.suited && (this.mode === "flight" || this.mode === "hover") && this.suit.energy > 2 && !this.trick) {
+    if (req !== 0 && !this.sharp && this.sharpCooldown <= 0 && this.suited && (this.mode === "flight" || this.mode === "hover") && this.suit.energy > 0 && !this.trick) {
       const dur = this.mode === "flight" ? TUNING.sharpTurnTime : 0.35;
       this.sharp = { dir: Math.sign(req), t: 0, dur };
       this.sharpCooldown = dur + 0.15;
-      this.suit.drain(2);
       if (this.mode === "flight") this.flightSpeed *= 0.9;
       this.bus?.emit("boost", {});
     }
@@ -704,11 +756,10 @@ export class PlayerController {
   /** Barrel roll / dodge: lateral burst with brief invulnerability. */
   private updateRoll(dt: number, input: InputState): void {
     if (this.rollCooldown > 0) this.rollCooldown -= dt;
-    if (input.roll !== 0 && this.suited && this.mode !== "ground" && this.rollCooldown <= 0 && this.suit.energy > 3) {
+    if (input.roll !== 0 && this.suited && this.mode !== "ground" && this.rollCooldown <= 0 && this.suit.energy > 0) {
       this.rollDir = Math.sign(input.roll);
       this.rollTimer = TUNING.rollTime;
       this.rollCooldown = TUNING.rollCooldown;
-      this.suit.drain(3);
       const s = Math.sin(this.viewYaw), c = Math.cos(this.viewYaw);
       const impulse = this.mode === "flight" ? 34 : 20;
       this.vel.x += c * this.rollDir * impulse;
@@ -746,7 +797,8 @@ export class PlayerController {
 
   private integrate(dt: number): void {
     const dist = Math.hypot(this.vel.x, this.vel.y, this.vel.z) * dt;
-    const steps = Math.min(12, Math.max(1, Math.ceil(dist / 1.2)));
+    // Fine sub-steps so even hypersonic flight can't tunnel through walls.
+    const steps = Math.min(24, Math.max(1, Math.ceil(dist / 1.4)));
     const h = dt / steps;
     let contactDown = false;
     let impactSpeed = 0;
@@ -763,17 +815,20 @@ export class PlayerController {
 
     if (this.mode === "ground") {
       if (supported) {
-        if (!this.grounded && fallSpeed > (this.suited ? TUNING.lethalFall : TUNING.civilianLethalFall)) {
-          if (!this.remote) {
-            this.die(overWater ? "water" : "fall", fallSpeed);
-            return;
-          }
-          // Nobody inside: the empty suit just takes a beating.
-          this.suit.damage(25);
-          this.alert("Empty suit crashed - armour damaged", "warn");
+        if (!this.grounded && !this.suited && !this.chute && fallSpeed > TUNING.civilianLethalFall) {
+          this.die(overWater ? "water" : "fall", fallSpeed);
+          return;
+        }
+        if (!this.grounded && this.suited && fallSpeed > 30) {
+          // The armour always survives a fall - it takes the damage instead.
+          const dmg = Math.min(TUNING.fallDamageMax, (fallSpeed - 22) * TUNING.fallDamagePerMs);
+          this.suit.damage(dmg);
+          this.bus?.emit("impact", { speed: fallSpeed });
+          this.alert(`Hard landing at ${Math.round(fallSpeed * 3.6)} km/h - armour ${Math.round(this.suit.overallIntegrity)}%`, dmg > 25 ? "critical" : "warn");
         }
         if (!this.grounded && fallSpeed > 14) this.landed(fallSpeed > 22);
         this.grounded = true;
+        this.chute = false;
         this.freefall = false;
         this.airTime = 0;
         this.vel.y = 0;
@@ -950,17 +1005,31 @@ export class PlayerController {
     }
   }
 
+  /**
+   * Power: drains 1% per minute while the suit is airborne (flying, hovering,
+   * falling). Touch the ground and it recharges to full instantly. At 0% the
+   * thrusters can't hold you up: you sink to the ground to recharge.
+   */
   private updateEnergy(dt: number): void {
     const s = this.suit;
-    if (!this.suited || (this.mode === "ground" && this.grounded)) s.charge(14 * dt);
-    else if (this.mode === "ground") s.charge(2 * dt);
-    else if (this.mode === "hover") s.charge(2 * dt);
-    else s.drain((this.afterburner ? 9 : 0.4) * dt);
+    if (!this.suited) return;
+    if (this.grounded && this.mode === "ground") {
+      if (s.energy < 100) {
+        if (s.energy <= 0.5) this.alert("Power restored", "success");
+        s.charge(100);
+      }
+    } else s.drain((TUNING.powerPerMinute / 60) * dt);
 
     if (s.energy < 20 && !this.lowEnergyWarned) {
       this.lowEnergyWarned = true;
-      this.alert("Power reserves low", s.energy <= 0 ? "critical" : "warn");
+      this.alert("Power reserves low", "warn");
     } else if (s.energy > 35) this.lowEnergyWarned = false;
+    if (s.energy <= 0 && this.mode === "flight") {
+      // Out of power: drop out of flight and sink to the ground.
+      this.afterburner = this.wasAfterburner = false;
+      this.setMode("hover");
+      this.alert("Power depleted - descending. Land to recharge", "critical");
+    }
   }
 }
 

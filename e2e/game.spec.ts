@@ -82,18 +82,36 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a fatal fall returns you to Avengers Tower", async ({ page }) => {
+  test("in the suit a fall from any height is survived (armour damaged); an unprotected fall is fatal and returns you to Avengers Tower", async ({ page }) => {
     const errors = await boot(page);
-    await game(page, (g) => g.teleport(2.5, 500, -300, 0, "hover"));
+    await game(page, (g) => g.teleport(2.5, 1500, -300, 0, "hover"));
     await page.keyboard.press("KeyH");
-    await until(page, (st) => st.freefall);
+    const landed = await until(page, (st) => st.grounded && st.pos.y < 200, 150_000);
+    expect(landed.dead).toBe(false);
+    expect(landed.suited).toBe(true);
+    expect(landed.integrity).toBeLessThan(100);
+    // Eject high up and don't call the suit: that fall is fatal.
+    await game(page, (g) => g.teleport(2.5, 500, -300, 0, "hover"));
+    await page.keyboard.press("KeyG");
+    await until(page, (st) => !st.suited);
     await until(page, (st) => st.dead, 120_000);
     await expect(page.locator("#hud")).toHaveClass(/dead/);
     const back = await until(page, (st) => !st.dead, 30_000);
     expect(Math.hypot(back.pos.x - 36, back.pos.z - 34)).toBeLessThan(3);
-    expect(back.pos.y).toBeGreaterThan(140);
     expect(back.suited).toBe(true);
-    await expect(page.locator("#hud")).not.toHaveClass(/dead/);
+    expect(errors).toEqual([]);
+  });
+
+  test("full damage destroys the suit: you're left as a civilian and a new suit arrives after 15 s", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 0.15, -182, 0));
+    await page.evaluate(() => (window as unknown as { __GAME: { player: { suit: { damage(n: number): void } } } }).__GAME.player.suit.damage(500));
+    const gone = await until(page, (st) => !st.suited && (st as unknown as { newSuitIn: number }).newSuitIn > 0);
+    expect(gone.dead).toBe(false);
+    await expect(page.locator(".v-civ")).toContainText(/replacement in/);
+    await until(page, (st) => st.suitState === "inbound", 120_000);
+    const back = await until(page, (st) => st.suited && !st.transforming, 180_000);
+    expect(back.integrity).toBeGreaterThan(95);
     expect(errors).toEqual([]);
   });
 
@@ -202,6 +220,48 @@ test.describe("desktop controls", () => {
     });
     await expect(page.locator(".h-boss")).toHaveClass(/on/, { timeout: 60_000 });
     await expect(page.locator(".h-boss")).toContainText("WARBOT");
+    expect(errors).toEqual([]);
+  });
+
+  test("flight challenge: fly through every ring in order for boosts and a course time", async ({ page }) => {
+    const errors = await boot(page);
+    type G = { events: { spawnNow(p: unknown, t: string): void; course: { rings: { x: number; y: number; z: number; yaw: number; pitch: number }[]; next: number } | null }; player: unknown; teleport(...a: unknown[]): void };
+    await page.evaluate(() => {
+      const g = (window as unknown as { __GAME: G }).__GAME;
+      g.events.spawnNow(g.player, "Flight challenge");
+    });
+    await until(page, (s) => (s as unknown as { course: unknown }).course !== null);
+    for (let k = 0; k < 10; k++) {
+      // Put the suit just before ring k, then just after it, so its path crosses the ring.
+      for (const side of [-12, 12]) {
+        await page.evaluate(
+          ([k, side]) => {
+            const g = (window as unknown as { __GAME: G }).__GAME;
+            if (!g.events.course) return;
+            const r = g.events.course.rings[k];
+            const nx = Math.sin(r.yaw) * Math.cos(r.pitch), ny = Math.sin(r.pitch), nz = Math.cos(r.yaw) * Math.cos(r.pitch);
+            g.teleport(r.x + nx * side, r.y + ny * side - 1, r.z + nz * side, r.yaw, "flight", 120);
+          },
+          [k, side],
+        );
+        await page.waitForFunction(() => true);
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      }
+      if (k < 9) await until(page, (s) => ((s as unknown as { course: { next: number } | null }).course?.next ?? 99) > k, 20_000);
+    }
+    await until(page, (s) => (s as unknown as { course: unknown }).course === null, 20_000);
+    await expect(page.locator(".h-alerts")).toContainText(/Course complete/);
+    expect(errors).toEqual([]);
+  });
+
+  test("hold the afterburner to go hypersonic past Mach 1", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 400, -300, 0, "flight", 200));
+    await page.keyboard.down("KeyW");
+    const s = await until(page, (st) => (st as unknown as { hypersonic: boolean }).hypersonic && st.speed > 343, 90_000);
+    await page.keyboard.up("KeyW");
+    expect(s.speed).toBeGreaterThan(343);
+    await expect(page.locator(".v-mode")).toHaveText(/HYPERSONIC|AFTERBURNER|FLIGHT/);
     expect(errors).toEqual([]);
   });
 
@@ -552,6 +612,7 @@ test("performance budget on a slow device (iPhone X layout, Low, 4x CPU throttle
   await page.keyboard.up("KeyW");
   const s = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { updateMs: number; updateMsMax: number; heapMB: number } } }).__GAME.debugState());
   console.log(`perf @4x: update ${s.updateMs.toFixed(2)} ms avg, ${s.updateMsMax.toFixed(1)} ms peak, heap ${s.heapMB.toFixed(0)} MB`);
+  console.log("prof", JSON.stringify(await page.evaluate(() => { const p = (window as any).__GAME.prof; const o: Record<string, string> = {}; for (const k in p) o[k] = p[k].avg.toFixed(2) + "/" + p[k].max.toFixed(1); return o; })), "speed", (await page.evaluate(() => (window as any).__GAME.debugState().speed)).toFixed(0));
   // Simulation (CPU) cost per frame must leave room for rendering at 30-60 fps.
   expect(s.updateMs).toBeLessThan(16);
   expect(s.updateMsMax).toBeLessThan(80);

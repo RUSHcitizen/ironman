@@ -200,7 +200,14 @@ export class Game {
     this.input.onModeChange = () => this.updateHint();
     this.hud = new Hud(this.uiRoot, this.bus);
     this.hud.onMenu = () => this.setPaused(true);
-    this.menu = new SettingsMenu(this.uiRoot, this.settings, { onResume: () => this.setPaused(false), onRespawn: () => this.respawn() }, this.device.isTouch);
+    this.menu = new SettingsMenu(this.uiRoot, this.settings, {
+        onResume: () => this.setPaused(false),
+        onRespawn: () => this.respawn(),
+        onChallenge: () => {
+          this.enemies.clear();
+          this.events.spawnNow(this.player, "Flight challenge");
+        },
+      }, this.device.isTouch);
     this.audio = new SuitAudio(this.bus);
     this.hud.setVisible(false);
     this.input.touch.setVisible(false);
@@ -317,6 +324,22 @@ export class Game {
         this.progress.add(600);
       }
     });
+    bus.on("ringPassed", (e) => {
+      // Every ring is a boost: speed, a sip of power, and a punchy FOV kick.
+      const p = this.player;
+      if (p.mode === "flight") p.flightSpeed += 35;
+      p.suit.charge(6);
+      this.cam.addKick(0.14);
+      this.hud.popup(e.index >= e.total ? "COURSE COMPLETE" : `RING ${e.index}/${e.total}`);
+      this.progress.add(e.index >= e.total ? 400 : 40);
+    });
+    bus.on("hypersonic", () => {
+      this.hud.popup("HYPERSONIC");
+      this.cam.addKick(0.25);
+      this.cam.addShake(0.5);
+      const p = this.player;
+      this.projectiles.sonicBoom(p.pos, p.viewYaw, p.viewPitch);
+    });
     bus.on("rankUp", (e) => {
       this.hud.popup(`RANK UP · ${e.name}`);
       this.cam.addKick(0.12);
@@ -341,16 +364,7 @@ export class Game {
       this.peds.panic(this.player.pos.x, this.player.pos.z, 60);
       this.failTimer = 2.6;
     });
-    bus.on("suitFailure", () => {
-      if (this.remote) {
-        // Nobody inside: the wrecked suit just drops offline.
-        bus.emit("alert", { text: "Sentry suit critical - it's offline. Back to your body", level: "critical", ttl: 4 });
-        this.leaveRemote("parked");
-        return;
-      }
-      bus.emit("alert", { text: "SUIT FAILURE - emergency return to Avengers Tower", level: "critical", ttl: 4 });
-      this.failTimer = 1.6;
-    });
+    bus.on("suitFailure", () => this.destroySuit());
   }
 
   /**
@@ -455,10 +469,59 @@ export class Game {
     this.bus.emit("suitChanged", { suited: false });
   }
 
+  /** Seconds until a replacement suit is sent (0 = none pending). */
+  newSuitTimer = 0;
+  static readonly NEW_SUIT_DELAY = 15;
+
+  /**
+   * Full damage: the armour blows apart. You're left as a civilian where it
+   * happened (drifting down safely if in the air) and a replacement suit is
+   * sent after 15 seconds.
+   */
+  private destroySuit(): void {
+    const p = this.player;
+    if (this.remote) this.leaveRemote("parked");
+    const c = p.center;
+    this.projectiles.explode(c, 7, 0, false);
+    this.projectiles.wreck(c, 7);
+    this.cam.addShake(1);
+    p.suitDestroyed();
+    this.avatar.exitArmor();
+    this.suitUnit.state = "parked";
+    this.suitAvatar.setVisible(false);
+    this.suitUnit.pos.y = -1000; // the wreck is gone
+    this.newSuitTimer = Game.NEW_SUIT_DELAY;
+    this.refreshMarkers();
+    this.syncTouchMode(false);
+    this.bus.emit("alert", { text: `SUIT DESTROYED - replacement inbound in ${Game.NEW_SUIT_DELAY} s`, level: "critical", ttl: 5 });
+  }
+
+  /** Count down to the replacement suit, then fly it in to latch on. */
+  private updateNewSuit(dt: number): void {
+    if (this.newSuitTimer <= 0) return;
+    this.newSuitTimer -= dt;
+    if (this.newSuitTimer > 0) return;
+    this.newSuitTimer = 0;
+    const p = this.player;
+    const u = this.suitUnit;
+    p.suit.restore();
+    // It launches from a few hundred metres away, high above the rooftops.
+    const a = p.bodyYaw + Math.PI;
+    u.park(p.pos.x + Math.sin(a) * 260, Math.max(p.pos.y, 0) + 120, p.pos.z + Math.cos(a) * 260, p.bodyYaw);
+    this.suitAvatar.setVisible(true);
+    u.call();
+    this.refreshMarkers();
+    this.bus.emit("alert", { text: "New suit inbound - hold still, boss", level: "success", ttl: 4 });
+  }
+
   /** G / V routing between the player and the autonomous suit. */
   private handleSuitCommands(input: { toggleSuit: boolean; sentry: boolean }): void {
     const p = this.player;
     const u = this.suitUnit;
+    if (this.newSuitTimer > 0 && (input.toggleSuit || input.sentry)) {
+      this.bus.emit("alert", { text: `Replacement suit in ${Math.ceil(this.newSuitTimer)} s`, level: "info", ttl: 2 });
+      input.toggleSuit = input.sentry = false;
+    }
     if (input.toggleSuit) {
       if (this.remote) this.leaveRemote("inbound");
       else if (p.suited) {
@@ -655,8 +718,13 @@ export class Game {
     this.shadowGen = sg;
   }
 
+  private canvasW = 1;
+  private canvasH = 1;
+
   private resize(): void {
     this.engine.resize();
+    this.canvasW = this.canvas.clientWidth;
+    this.canvasH = this.canvas.clientHeight;
     const aspect = this.engine.getRenderWidth() / Math.max(1, this.engine.getRenderHeight());
     if (this.cam) this.cam.camera.fovMode = aspect < 1 ? Camera.FOVMODE_HORIZONTAL_FIXED : Camera.FOVMODE_VERTICAL_FIXED;
   }
@@ -767,7 +835,10 @@ export class Game {
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
     this.peds.update(dt, p.pos.x, p.pos.z);
     const q = this.settings.preset;
-    this.chunks.stream(camPos.x, camPos.z, q.viewDistance, 1);
+    // Fast flight: stream the city where you're heading, with more build time.
+    const fast = p.speed > 120;
+    const look = fast ? Math.min(2.5, 600 / Math.max(1, p.speed)) * 0.8 : 0;
+    this.chunks.stream(camPos.x + p.vel.x * look, camPos.z + p.vel.z * look, q.viewDistance, 1, fast && q.viewDistance > 600 ? 4 : 3);
     this.visTimer -= dt;
     if (this.visTimer <= 0) {
       this.visTimer = 0.25;
@@ -792,21 +863,38 @@ export class Game {
     this.mark("world");
     // HUD.
     this.hud.update(dt, p);
-    this.updateTargetsHud(camPos);
-    this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 1);
-    this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
+    // Target brackets at 30 Hz (smooth enough, half the DOM work).
+    this.targetsTimer -= dt;
+    if (this.targetsTimer <= 0) {
+      this.targetsTimer = 1 / 30;
+      this.updateTargetsHud(camPos);
+    }
     this.input.touch.setCharging(this.combat.beamCharge >= 0);
     this.updateThrusterWash(dt);
+    this.updateNewSuit(dt);
+    this.updateVapourCone(dt);
     this.evictFar(dt);
     this.updateRadar(dt);
     this.updateBossBar(dt);
-    const rank = this.progress.rank;
-    const lo = rankLow(rank.index);
-    this.hud.perfNote = `sim ${this.updateMs.toFixed(1)} ms · ${this.settings.data.quality.toUpperCase()}`;
-    this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
-    this.input.touch.setRockets(this.combat.rockets);
-    this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
-    this.audio.update(p);
+    // Slow-changing HUD values: 10 Hz is plenty.
+    this.slowHud -= dt;
+    if (this.slowHud <= 0) {
+      this.slowHud = 0.1;
+      this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 0);
+      this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
+      const rank = this.progress.rank;
+      const lo = rankLow(rank.index);
+      this.hud.perfNote = `sim ${this.updateMs.toFixed(1)} ms · ${this.settings.data.quality.toUpperCase()}`;
+      this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
+      this.input.touch.setRockets(this.combat.rockets);
+      this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
+    }
+    // Audio parameters at 20 Hz (they glide smoothly anyway).
+    this.audioTimer -= dt;
+    if (this.audioTimer <= 0) {
+      this.audioTimer = 0.05;
+      this.audio.update(p);
+    }
     this.autoQuality(dt);
     this.mark("hud");
   }
@@ -824,8 +912,16 @@ export class Game {
     this.hud.setBoss(best ? names[best.kind]! : null, best ? Math.max(0, best.hp / best.maxHp) : 0, dt);
   }
 
+  private targetsTimer = 0;
+  private slowHud = 0;
+  private audioTimer = 0;
   private radarBlips: RadarBlip[] = [];
+  private radarTimer = 0;
   private updateRadar(dt: number): void {
+    // Only gather blips when the radar is about to redraw (10 Hz).
+    this.radarTimer -= dt;
+    if (this.radarTimer > 0) return;
+    this.radarTimer = 0.1;
     const b = this.radarBlips;
     b.length = 0;
     for (const e of this.enemies.enemies) {
@@ -833,7 +929,7 @@ export class Game {
       b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "titan" || e.kind === "spider" });
     }
     for (const m of this.hud.markers) b.push({ x: m.x, z: m.z, kind: m.kind === "event" ? "event" : m.kind === "suit" ? "suit" : "poi" });
-    this.hud.updateRadar(dt, this.player, b);
+    this.hud.updateRadar(1, this.player, b);
   }
 
   private evictTimer = 0;
@@ -844,6 +940,18 @@ export class Game {
     this.evictTimer = 5;
     const p = this.player.pos;
     this.chunks.dropSpecs(this.world.evictFar(p.x, p.z, 2600));
+  }
+
+  private coneTimer = 0;
+  /** Hypersonic: a pulsing vapour cone of rings around the suit, plus a little buffeting. */
+  private updateVapourCone(dt: number): void {
+    const p = this.player;
+    if (!p.hypersonic || p.mode !== "flight") return;
+    this.cam.addShake(dt * 0.6);
+    this.coneTimer -= dt;
+    if (this.coneTimer > 0) return;
+    this.coneTimer = 0.22;
+    this.projectiles.fx.push({ kind: "sonic", x: p.pos.x, y: p.pos.y + 1, z: p.pos.z, size: 3.5, t: 0, life: 0.35, yaw: p.viewYaw, pitch: p.viewPitch });
   }
 
   private washTimer = 0;
@@ -877,7 +985,9 @@ export class Game {
         scale: Math.max(0.6, Math.min(1.3, 60 / d + 0.5)),
       });
     }
-    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    // Cached size: reading clientWidth here would force a full page layout
+    // right after the HUD's DOM writes (a big cost on slow phones).
+    const w = this.canvasW, h = this.canvasH;
     const viewport = this.cam.camera.viewport.toGlobal(w, h);
     const tm = this.scene.getTransformMatrix();
     this.hud.updateTargets(items, (x, y, z) => {
@@ -899,6 +1009,10 @@ export class Game {
     this.suitMarker.x = u.pos.x;
     this.suitMarker.z = u.pos.z;
     if (p.suited || p.transformTimer > 0) return;
+    if (this.newSuitTimer > 0) {
+      this.hud.setCivilianHint(`Suit destroyed · replacement in ${Math.ceil(this.newSuitTimer)} s`);
+      return;
+    }
     const d = Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z));
     const integ = Math.round(p.suit.overallIntegrity);
     const keys = this.input.mouseMode;
@@ -916,7 +1030,7 @@ export class Game {
   private refreshMarkers(): void {
     const markers: HudMarker[] = [{ id: "tower", label: "TOWER", x: HERO_X, z: HERO_Z, kind: "poi" }, ...this.events.markers];
     if (this.remote) markers.push(this.bodyMarker);
-    else if (this.suitUnit && this.suitUnit.state !== "worn") markers.push(this.suitMarker);
+    else if (this.suitUnit && this.suitUnit.state !== "worn" && this.newSuitTimer <= 0) markers.push(this.suitMarker);
     this.hud.setMarkers(markers);
   }
 
@@ -975,12 +1089,17 @@ export class Game {
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
+      newSuitIn: this.newSuitTimer,
+      chute: p.chute,
       colliderChunks: this.world.chunksLoaded,
       updateMs: this.updateMs,
       updateMsMax: this.updateMsMax,
       heapMB: ((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576,
       specChunks: this.chunks.specCount,
       rescue: this.events.rescue,
+      course: this.events.courseState,
+      topSpeed: p.topSpeed,
+      hypersonic: p.hypersonic,
       saved: this.events.saved,
       timeOfDay: this.env.time,
       hudShown: this.settings.data.hud,

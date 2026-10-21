@@ -3,6 +3,8 @@ import type { Settings, Quality } from "../core/Settings";
 export interface MenuActions {
   onResume: () => void;
   onRespawn: () => void;
+  /** Start a ring-course flight challenge now. */
+  onChallenge?: () => void;
 }
 
 /** Pause / settings overlay. Large touch targets, no hover-dependent UI. */
@@ -56,6 +58,7 @@ export class SettingsMenu {
           <label class="m-toggle"><input type="checkbox" data-k="showFps"/><span>Show FPS / performance counter</span></label>
           <p class="m-note m-device"></p>
         </section>
+        <button data-a="challenge">Start flight challenge (ring course)</button>
         <button data-a="respawn">Return to Avengers Tower</button>
         <details ${isTouch ? "" : "open"}>
           <summary>Controls</summary>
@@ -82,6 +85,10 @@ export class SettingsMenu {
     parent.appendChild(this.el);
 
     this.el.querySelector('[data-a="resume"]')!.addEventListener("click", () => this.actions.onResume());
+    this.el.querySelector('[data-a="challenge"]')!.addEventListener("click", () => {
+      this.actions.onChallenge?.();
+      this.actions.onResume();
+    });
     this.el.querySelector('[data-a="respawn"]')!.addEventListener("click", () => {
       this.actions.onRespawn();
       this.actions.onResume();

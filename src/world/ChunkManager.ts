@@ -94,9 +94,9 @@ export class ChunkManager {
    * Stream chunks: load at most `budget` missing chunks (nearest first) inside
    * the view distance and unload chunks well outside it.
    */
-  stream(x: number, z: number, viewDistance: number, budget = 1): void {
+  stream(x: number, z: number, viewDistance: number, budget = 1, buildMs = 3): void {
     // Finish the chunk in progress first, a few milliseconds per frame.
-    if (!this.advanceBuild(3)) return;
+    if (!this.advanceBuild(buildMs)) return;
     // Rescan only after moving a bit, or while loads are still pending.
     if (!this.pending && Math.hypot(x - this.scanX, z - this.scanZ) < 24) return;
     this.scanX = x;
@@ -117,7 +117,7 @@ export class ChunkManager {
     if (next) {
       this.building = { cx: next[1], cz: next[2], it: this.builder(next[1], next[2]) };
       this.pending = true;
-      this.advanceBuild(3);
+      this.advanceBuild(buildMs);
     }
   }
 

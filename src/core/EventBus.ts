@@ -42,6 +42,8 @@ export interface GameEvents extends Record<string, unknown> {
   unibeam: { x: number; y: number; z: number; charging: boolean };
   flares: { count: number };
   rankUp: { name: string };
+  hypersonic: { x: number; y: number; z: number };
+  ringPassed: { index: number; total: number };
   rescue: { saved: boolean };
   playerDied: { cause: "fall" | "water"; speed: number };
   weapon: { kind: "repulsor" | "rocket" | "enemyBolt" | "missile" | "laser"; x: number; y: number; z: number };

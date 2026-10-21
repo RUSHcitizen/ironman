@@ -217,9 +217,7 @@ export class Hud {
     const el = this.q(".v-rank");
     if (el.textContent !== name) {
       el.textContent = name;
-      el.classList.remove("pulse");
-      void el.offsetWidth;
-      el.classList.add("pulse");
+      restart(el, "pulse");
     }
     const xp = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(3)})`;
     const xe = this.q(".v-xp");
@@ -276,7 +274,7 @@ export class Hud {
   updateRadar(dt: number, p: { pos: { x: number; z: number }; viewYaw: number }, blips: RadarBlip[]): void {
     this.radarTimer -= dt;
     if (this.radarTimer > 0) return;
-    this.radarTimer = 1 / 15;
+    this.radarTimer = 1 / 10;
     const canvas = this.q<HTMLCanvasElement>(".h-radar canvas") as unknown as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -336,26 +334,19 @@ export class Hud {
 
   damageFlash(amount: number): void {
     const el = this.q(".h-dmg");
-    el.style.transition = "none";
-    el.style.opacity = String(Math.min(0.85, 0.25 + amount / 25));
-    void el.offsetWidth;
-    el.style.transition = "opacity 0.6s";
-    el.style.opacity = "0";
+    // Web Animations: restarts without forcing a layout.
+    el.animate([{ opacity: Math.min(0.85, 0.25 + amount / 25) }, { opacity: 0 }], { duration: 600, easing: "ease-out" });
   }
 
   hitMarker(): void {
     const r = this.q(".h-reticle");
-    r.classList.remove("hit");
-    void r.offsetWidth;
-    r.classList.add("hit");
+    restart(r, "hit");
   }
 
   popup(text: string): void {
     const el = this.q(".h-popup");
     el.textContent = text;
-    el.classList.remove("on");
-    void el.offsetWidth;
-    el.classList.add("on");
+    restart(el, "on");
     window.clearTimeout(this.popupTimer);
     this.popupTimer = window.setTimeout(() => el.classList.remove("on"), 1300);
   }
@@ -467,8 +458,8 @@ export class Hud {
 
     const kmh = p.speed * 3.6;
     this.q(".v-speed").textContent = String(Math.round(kmh));
-    this.q(".v-mach").textContent = `MACH ${(p.speed / 343).toFixed(2)}`;
-    this.q(".v-speedbar").style.transform = `scaleY(${Math.min(1, kmh / 460)})`;
+    this.text(".v-mach", `MACH ${(p.speed / 343).toFixed(2)} · TOP ${Math.round(p.topSpeed * 3.6)}`);
+    this.q(".v-speedbar").style.transform = `scaleY(${Math.min(1, kmh / 1300)})`;
     this.q(".v-alt").textContent = String(Math.round(p.pos.y));
     this.q(".v-altbar").style.transform = `scaleY(${Math.min(1, Math.max(0, p.pos.y) / 2600)})`;
     const vs = p.vel.y;
@@ -494,18 +485,25 @@ export class Hud {
       for (const n of this.el.querySelectorAll(`[data-p="${part}"]`)) n.setAttribute("class", cls);
     }
 
-    const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? (p.falling ? "FALLING" : "ON FOOT") : p.blackout ? "BLACKOUT" : p.freefall ? "FREE FALL" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
+    const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? (p.falling ? "FALLING" : "ON FOOT") : p.blackout ? "BLACKOUT" : p.freefall ? "FREE FALL" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.hypersonic ? "HYPERSONIC" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
     const modeEl = this.q(".v-mode");
     if (modeText !== this.lastMode) {
       this.lastMode = modeText;
       modeEl.textContent = modeText;
-      modeEl.classList.remove("pulse");
-      void modeEl.offsetWidth;
-      modeEl.classList.add("pulse");
+      restart(modeEl, "pulse");
     }
     this.el.dataset.mode = p.mode;
     this.el.classList.toggle("civ", !p.suited);
     this.el.classList.toggle("burn", p.afterburner);
     (this.q(".h-vignette") as HTMLElement).style.opacity = String(Math.min(1, Math.max(0, (p.speed - 50) / 80)));
   }
+}
+
+/**
+ * Re-trigger a CSS animation class on the next frame. (The classic
+ * "remove, read offsetWidth, re-add" trick forces a full page layout.)
+ */
+function restart(el: HTMLElement, cls: string): void {
+  el.classList.remove(cls);
+  requestAnimationFrame(() => el.classList.add(cls));
 }

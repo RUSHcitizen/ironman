@@ -6,6 +6,8 @@ import { CreateCapsule } from "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import type { CollisionWorld } from "../world/Collision";
@@ -28,6 +30,19 @@ interface Template {
   minLevel?: number;
   /** A civilian falls off this rooftop: catch them mid-air. */
   rescue?: boolean;
+  /** A ring course to fly through against the clock. */
+  course?: boolean;
+}
+
+const RING_COUNT = 10;
+const RING_RADIUS = 14;
+
+interface Course {
+  rings: { x: number; y: number; z: number; yaw: number; pitch: number }[];
+  next: number;
+  timeLeft: number;
+  elapsed: number;
+  prev: { x: number; y: number; z: number };
 }
 
 /** Fall speed (m/s) a civilian survives (matches the player's civilian limit). */
@@ -68,6 +83,7 @@ const TEMPLATES: Template[] = [
   { title: "Spider walkers", detail: "Six-legged walkers lobbing mortars down the avenue", place: "street", squad: ["spider", "spider", "trooper", "trooper"], minLevel: 2 },
   { title: "Ghost squadron", detail: "Cloaked drones - they only show when they fire", place: "air", squad: ["cloaker", "cloaker", "cloaker", "drone"], minLevel: 2 },
   { title: "TITAN AWAKENS", detail: "Super-heavy mech - dodge the laser and the stomp", place: "street", squad: ["titan", "sentinel", "sentinel", "spider"], minLevel: 4 },
+  { title: "Flight challenge", detail: "Fly through every ring before the clock runs out - each ring is a speed boost", place: "air", squad: [], course: true },
   { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
   { title: "Rooftop distress beacon", detail: "Civilian signal from a rooftop", place: "roof", squad: [] },
@@ -97,6 +113,12 @@ export class CityEvents {
   completed = 0;
   private time = 0;
   faller: Faller | null = null;
+  course: Course | null = null;
+  private ringMesh: Mesh;
+  private ringM = new Float32Array(RING_COUNT * 16);
+  private ringC = new Float32Array(RING_COUNT * 4).fill(1);
+  /** Best ring-course time (seconds), saved between sessions. */
+  bestCourse = Infinity;
   private person: TransformNode;
   /** Rescues: caught / lost (for the HUD and tests). */
   saved = 0;
@@ -118,6 +140,21 @@ export class CityEvents {
     for (const m of [this.beam, this.ring]) {
       m.isPickable = false;
       m.setEnabled(false);
+    }
+    // Ring course: one thin-instanced torus mesh, coloured per ring.
+    this.ringMesh = CreateTorus("courseRing", { diameter: RING_RADIUS * 2, thickness: 2.4, tessellation: 48 }, scene);
+    this.ringMesh.material = mats.additive("courseRing", new Color3(1, 1, 1), 0.9);
+    this.ringMesh.isPickable = false;
+    this.ringMesh.alwaysSelectAsActiveMesh = true;
+    this.ringMesh.thinInstanceSetBuffer("matrix", this.ringM, 16, false);
+    this.ringMesh.thinInstanceSetBuffer("color", this.ringC, 4, false);
+    this.ringMesh.thinInstanceCount = 0;
+    this.ringMesh.setEnabled(false);
+    try {
+      const v = Number(localStorage.getItem("ironman.bestCourse"));
+      if (v > 0) this.bestCourse = v;
+    } catch {
+      /* no storage */
     }
     // The person to rescue: simple figure in a bright jacket so you can spot them.
     this.person = new TransformNode("faller", scene);
@@ -154,6 +191,12 @@ export class CityEvents {
   get objective(): [string, string] {
     const c = this.current;
     if (!c) return ["", ""];
+    if (c.t.course && this.course) {
+      const co = this.course;
+      const clock = co.next === 0 ? "clock starts at ring 1" : `${Math.max(0, co.timeLeft).toFixed(1)} s left`;
+      const best = Number.isFinite(this.bestCourse) ? ` · best ${this.bestCourse.toFixed(1)} s` : "";
+      return [c.t.title.toUpperCase(), `Ring ${co.next + 1}/${co.rings.length} · ${clock}${best}`];
+    }
     if (c.total === 0) return [c.t.title.toUpperCase(), c.t.detail];
     const left = this.enemies.aliveInGroup(c.group);
     return [c.t.title.toUpperCase(), `Hostiles ${c.total - left}/${c.total} · ${c.t.detail}`];
@@ -174,6 +217,8 @@ export class CityEvents {
   clear(): void {
     this.current = null;
     this.faller = null;
+    this.course = null;
+    this.ringMesh.setEnabled(false);
     this.person.setEnabled(false);
     this.beam.setEnabled(false);
     this.ring.setEnabled(false);
@@ -212,6 +257,7 @@ export class CityEvents {
       }
     }
     if (c.t.rescue) return this.updateRescue(dt, p, c);
+    if (c.t.course) return this.updateCourse(dt, p, c);
     const done = c.total > 0 ? this.enemies.aliveInGroup(c.group) === 0 : this.distanceTo(p) < 10 && p.suited;
     if (done) {
       this.completed++;
@@ -247,6 +293,11 @@ export class CityEvents {
       const y = t.place === "air" ? top + this.rng.range(30, 55) : top;
       this.current = { t, x, y, z, group, total: t.squad.length };
       this.placeSquad(t, x, y, z, top, group);
+      if (t.course) {
+        this.course = this.layCourse(x, z, p);
+        this.ringMesh.setEnabled(true);
+        this.drawRings(this.course);
+      }
       if (drop) {
         this.faller = { x: drop.x, y: top, z: drop.z, vy: 0, floor: drop.floor, dropX: drop.dropX, dropZ: drop.dropZ, state: "waiting", t: 0 };
         this.person.position.set(drop.x, top, drop.z);
@@ -259,7 +310,7 @@ export class CityEvents {
       this.beam.position.set(x, top + 200, z);
       this.ring.position.set(x, y + 1.2, z);
       this.beam.setEnabled(true);
-      this.ring.setEnabled(true);
+      this.ring.setEnabled(!t.course);
       this.bus.emit("alert", { text: `${t.squad.length ? "Threat" : "Incident"}: ${t.title}`, level: t.squad.length ? "critical" : "warn", ttl: 5 });
       return;
     }
@@ -331,6 +382,136 @@ export class CityEvents {
     c.z = f.z;
     this.ring.position.set(f.x, f.y + 1.2, f.z);
     return false;
+  }
+
+  /** Lay out a curving ring course through the sky starting near (x, z). */
+  private layCourse(x: number, z: number, p: PlayerController): Course {
+    const rings: Course["rings"] = [];
+    let yaw = Math.atan2(x - p.pos.x, z - p.pos.z);
+    let cx = x, cz = z;
+    let cy = Math.max(this.world.surfaceBelow(x, 1000, z, 6, 0) + 45, 90);
+    for (let k = 0; k < RING_COUNT; k++) {
+      yaw += this.rng.range(-0.5, 0.5);
+      const step = this.rng.range(150, 230);
+      const nx = cx + Math.sin(yaw) * step, nz = cz + Math.cos(yaw) * step;
+      const floor = this.world.surfaceBelow(nx, 1000, nz, RING_RADIUS, 0) + RING_RADIUS + 18;
+      const ny = Math.max(floor, Math.min(320, cy + this.rng.range(-50, 60)));
+      if (k > 0) {
+        // Ring faces along the path from the previous ring.
+        const pr = rings[k - 1];
+        pr.yaw = Math.atan2(cx - pr.x, cz - pr.z);
+      }
+      rings.push({ x: cx, y: cy, z: cz, yaw, pitch: 0 });
+      cx = nx;
+      cz = nz;
+      cy = ny;
+    }
+    // Every leg must clear the buildings along it: lift both rings above the
+    // tallest roof sampled on the straight line between them.
+    for (let k = 0; k < rings.length - 1; k++) {
+      const a = rings[k], b = rings[k + 1];
+      let roof = 0;
+      for (let u = 0; u <= 1.0001; u += 1 / 16) {
+        roof = Math.max(roof, this.world.surfaceBelow(a.x + (b.x - a.x) * u, 1000, a.z + (b.z - a.z) * u, RING_RADIUS, 0));
+      }
+      const need = Math.min(600, roof + RING_RADIUS + 12);
+      a.y = Math.max(a.y, need);
+      b.y = Math.max(b.y, need);
+    }
+    for (let k = 0; k < rings.length - 1; k++) {
+      const a = rings[k], b = rings[k + 1];
+      a.yaw = Math.atan2(b.x - a.x, b.z - a.z);
+      a.pitch = Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z));
+    }
+    let len = 0;
+    for (let k = 1; k < rings.length; k++) len += Math.hypot(rings[k].x - rings[k - 1].x, rings[k].y - rings[k - 1].y, rings[k].z - rings[k - 1].z);
+    return { rings, next: 0, timeLeft: 20 + len / 110, elapsed: 0, prev: { ...p.center } };
+  }
+
+  /** Ring course: pass each ring in order (any frame-step through it counts). */
+  private updateCourse(dt: number, p: PlayerController, c: Incident): boolean {
+    const co = this.course;
+    if (!co) return false;
+    const pc = p.center;
+    // Start the clock once you reach the first ring's area.
+    if (co.next > 0) {
+      co.timeLeft -= dt;
+      co.elapsed += dt;
+    }
+    const r = co.rings[co.next];
+    // Did the segment travelled this frame pass through the ring disc?
+    const ax = co.prev.x - r.x, ay = co.prev.y - r.y, az = co.prev.z - r.z;
+    const bx = pc.x - r.x, by = pc.y - r.y, bz = pc.z - r.z;
+    const nx = Math.sin(r.yaw) * Math.cos(r.pitch), ny = Math.sin(r.pitch), nz = Math.cos(r.yaw) * Math.cos(r.pitch);
+    const da = ax * nx + ay * ny + az * nz, db = bx * nx + by * ny + bz * nz;
+    let through = false;
+    if (da <= 0 && db >= 0 && da !== db) {
+      const t = da / (da - db);
+      const ix = ax + (bx - ax) * t, iy = ay + (by - ay) * t, iz = az + (bz - az) * t;
+      through = Math.hypot(ix, iy, iz) < RING_RADIUS;
+    } else through = Math.hypot(bx, by, bz) < RING_RADIUS * 0.8;
+    co.prev = { ...pc };
+    if (through && p.suited) {
+      co.next++;
+      this.bus.emit("ringPassed", { index: co.next, total: co.rings.length });
+      if (co.next >= co.rings.length) {
+        const time = co.elapsed;
+        const best = time < this.bestCourse;
+        if (best) {
+          this.bestCourse = time;
+          try {
+            localStorage.setItem("ironman.bestCourse", String(time));
+          } catch {
+            /* ignore */
+          }
+        }
+        this.completed++;
+        this.bus.emit("alert", { text: `Course complete in ${time.toFixed(1)} s${best ? " - new record!" : ` (best ${this.bestCourse.toFixed(1)} s)`}`, level: "success", ttl: 5 });
+        this.onComplete?.(false);
+        this.clear();
+        this.cooldown = this.rng.range(6, 12);
+        return true;
+      }
+    }
+    if (co.next > 0 && co.timeLeft <= 0) {
+      this.bus.emit("alert", { text: `Out of time - ${co.next}/${co.rings.length} rings`, level: "warn" });
+      this.clear();
+      this.cooldown = this.rng.range(6, 12);
+      return true;
+    }
+    // Marker and beam follow the next ring.
+    const nr = co.rings[co.next];
+    c.x = nr.x;
+    c.y = nr.y;
+    c.z = nr.z;
+    this.beam.position.set(nr.x, nr.y + 200, nr.z);
+    this.drawRings(co);
+    return false;
+  }
+
+  private drawRings(co: Course): void {
+    const m = new Matrix(), q = new Quaternion();
+    const pulse = 1 + Math.sin(this.time * 6) * 0.05;
+    let n = 0;
+    for (let k = co.next; k < co.rings.length; k++) {
+      const r = co.rings[k];
+      const s = k === co.next ? pulse : 1;
+      Quaternion.RotationYawPitchRollToRef(r.yaw, Math.PI / 2 - r.pitch, 0, q);
+      Matrix.ComposeToRef(new Vector3(s, s, s), q, new Vector3(r.x, r.y, r.z), m);
+      m.copyToArray(this.ringM, n * 16);
+      // Next ring blazes gold; the rest of the course is a dim cyan line.
+      if (k === co.next) this.ringC.set([1, 0.62, 0.08, 1], n * 4);
+      else this.ringC.set([0.08, 0.42, 0.75, 1], n * 4);
+      n++;
+    }
+    this.ringMesh.thinInstanceCount = n;
+    this.ringMesh.thinInstanceBufferUpdated("matrix");
+    this.ringMesh.thinInstanceBufferUpdated("color");
+  }
+
+  /** Course state for the HUD / tests. */
+  get courseState(): { next: number; total: number; timeLeft: number } | null {
+    return this.course ? { next: this.course.next, total: this.course.rings.length, timeLeft: this.course.timeLeft } : null;
   }
 
   /** Find a roof edge with a clear drop of 25 m+ to the street beside it. */
