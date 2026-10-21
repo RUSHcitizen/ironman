@@ -7,10 +7,28 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | | |
 |---|---|
 | ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Warbot](docs/screenshots/04-warbot.png) |
-| ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Civilian on foot](docs/screenshots/07-civilian.png) |
+| ![Stepped out of the suit](docs/screenshots/07-civilian.png) | ![Sentry mode](docs/screenshots/11-sentry.png) |
+| ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Suit flying in](docs/screenshots/12-suit-inbound.png) |
 | ![City from 420 m](docs/screenshots/06-city-overview.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 3 – the suit has a mind of its own, a 20 km² city
+
+- **The suit is its own unit.**
+  - **Step out** (`G` while landed): the empty armour stays standing exactly where you were, and you step back out of it as the civilian.
+  - **Call the suit** (`G` / CALL SUIT on foot): it lifts off, climbs over buildings in its way, flies across the city to you (up to about 290 km/h), and docks: the armour assembles around you. It tracks you if you keep walking. A red compass marker shows where it is.
+  - **Sentry mode** (`V` / SENTRY): the empty suit, with nobody inside, guards you. It hovers ahead of you on whichever side is not a wall, engages any hostile within 200 m on its own with repulsors and homing rockets, weaves while fighting, and barrel-rolls away from incoming missiles. Enemies fight the suit and leave the civilian alone. Its armour is the same suit, so damage carries over. If integrity drops below 15% it goes offline until self-repair brings it back. Pressing `V` while suited (and landed) steps out and leaves the suit on guard.
+- **A bigger, denser city:** 14 × 14 chunks, about **4.5 km × 4.5 km (20 km²)** with 49 named districts.
+  - Four skyscraper clusters, and the rest is dense low/mid-rise.
+  - Rowhouse blocks (narrow 3–7 storey brownstones wrapped around courtyards) and 3×3 mid-rise grids.
+  - Street trees between the lamps and more street furniture.
+  - A longer central park.
+- **Much busier streets:** about 2.5× the cars and 3× the pedestrians at each quality level (Medium: 80 vehicles, 120 people).
+  - Vehicles are cars (lots of yellow cabs), box vans and city buses. Spacing accounts for vehicle length, and cars brake for you if you stand in the road.
+  - Pedestrians vary in skin tone and height.
+  - They **run away from explosions and gunfire.**
+  - Traffic and crowds fill in around you immediately after spawning.
 
 ## Milestone 2 – combat, a much bigger city, civilian mode
 
@@ -32,7 +50,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - **Sonic boom** ring and shake when you pass about 540 km/h.
   - **Close-call bonuses** for skimming buildings at speed (power refill and streak counter).
   - Speed streaks, FOV punch, harder banking, and tighter low-speed turns.
-- **Take off the suit.** Press `G` (or SUIT) while landed: the armour peels away piece by piece and you walk the streets as a civilian (jacket, jeans, sunglasses). Walk, sprint with `Shift`, jump with `Space`. The helmet HUD switches to a minimal on-foot view, and enemies ignore civilians. Press `G` again and the armour assembles around you.
+- **Take off the suit** and walk the streets as a civilian (jacket, jeans, sunglasses): walk, sprint with `Shift`, jump with `Space`. The helmet HUD switches to a minimal on-foot view, and enemies ignore civilians. Milestone 3 turns the empty suit into its own unit (see above).
 - **Combat HUD:** target brackets with health bars, amber lock-on diamonds, a hit marker, damage flash, a weapons panel (rocket pips, kill count), and pop-ups for kills, close calls, evasions and sonic booms. All sounds are synthesised (repulsor zaps, rocket whooshes, explosions, laser).
 
 ## Milestone 1 – playable prototype (foundation)
@@ -62,7 +80,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Barrel roll / dodge | `Q` / `E`, or double-tap `A` / `D` | Double-tap the right side |
 | Repulsors (hold) | Left mouse or `X` | BLAST |
 | Micro-rockets (lock-on) | Right mouse or `R` | MSL |
-| Suit off / on (when landed) | `G` | SUIT |
+| Step out of the suit (landed) / call it back | `G` | SUIT · CALL SUIT |
+| Sentry mode for the empty suit (on foot, or step out into sentry) | `V` | SENTRY |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -129,12 +148,13 @@ src/
     Traffic.ts / Pedestrians.ts   thin-instanced ambient life
     Environment.ts        lights, sky dome, fog, island, water, road markings, skyline
     Collision.ts          AABB spatial hash, ground heights, ray casts
-  player/                 PlayerController (pure flight/walk physics, suit toggle, rolls), ArmorModel (armour +
-                          civilian rig, poses, transformation), SuitSystems, SpeedFx
+  player/                 PlayerController (pure flight/walk physics, suit exit/entry, rolls), SuitUnit (the
+                          empty suit: parked / sentry AI / flying in to dock), ArmorModel (armour + civilian
+                          rig, poses, transformation), SuitSystems, SpeedFx
   camera/                 ThirdPersonCamera
   input/                  InputManager (keyboard/mouse/touch → InputState), TouchControls
   ui/                     Hud (ARIA HUD), SettingsMenu
-  combat/                 Enemies (AI), Projectiles (bolts, rockets, missiles, explosions), Combat (player weapons,
+  combat/                 Targets (anything enemies can attack: player or sentry suit), Enemies (AI), Projectiles (bolts, rockets, missiles, explosions), Combat (player weapons,
                           lock-on, aim assist) - all pure logic, unit-tested - plus EnemyRenderer/ProjectileRenderer
   gameplay/               CityEvents (combat incidents, rescue calls, markers)
   audio/                  SuitAudio (synthesised)
@@ -157,32 +177,36 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **28 unit tests** pass, covering:
-  - City generation and collision: the analytic sidewalk/road heights and the landing-pad collider.
-  - Flight physics: civilian walk/sprint, the suit toggle, barrel-roll invulnerability, and dive speed.
-  - Combat: repulsors kill a trooper; rockets lock on and kill an off-centre drone; drones damage a suited player but ignore a civilian; a roll breaks missile lock; kamikazes dive in and explode; the Warbot laser only fires after its telegraph.
-- **Browser tests** (11 pass on the desktop and emulated-mobile projects):
-  - The game boots with no console errors.
-  - **Mouse drag-look turns the camera.**
-  - The full takeoff → hover → flight → afterburner → brake → landing sequence works.
-  - **Rockets fire and repulsors kill a trooper.**
-  - **Suit off → walk as a civilian → suit on** works.
-  - The settings menu works.
-  - Touch (Chromium iPhone emulation): LIFT, stick, MSL, FLY, menu, and the SUIT button to civilian and back. Low quality is the default on mobile.
-  - The WebGL-unavailable error screen appears.
-- Shaders for all enemies, effects and the civilian are compiled during loading, so nothing hitches when they first appear.
+- Production build and TypeScript strict checks pass. **32 unit tests** pass, covering:
+  - City generation and collision.
+  - Flight physics, civilian movement and rolls.
+  - Combat and enemy behaviours.
+  - The autonomous suit:
+    - It docks after flying 200 m around a tall building.
+    - It follows a walking civilian.
+    - Sentry mode kills hostiles while enemies ignore the civilian.
+    - A wrecked sentry goes offline and refuses calls.
+- **12 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - Mouse drag-look.
+  - The full flight sequence.
+  - Repulsors and rockets.
+  - Suit off and back on.
+  - **Step out → sentry kills a drone → walk away → call the suit → it flies in and docks.**
+  - The settings menu, the WebGL error screen, and the touch layout (including CALL SUIT / SENTRY).
+- JavaScript cost at Medium on this container: about **1.2 ms per frame** of game logic, with 80 vehicles, 120 pedestrians and about 34k colliders. Building a newly streamed chunk takes about 4–5 ms, capped at one chunk per frame.
+- The scene draws about 510k triangles at Medium in a typical street view.
 
 **Not yet tested:**
 - **Real iPhone Safari**, a real Chromebook, or any physical GPU.
-- **Real frame rates.** SwiftShader renders on the CPU, so on-screen frame rates here are meaningless. Measured in the browser, the game's own JavaScript costs about 1 ms per frame and render submission about 4 ms. The scene draws about 350k triangles in about 120 draw calls at Medium. This should be comfortable on integrated GPUs and modern iPhones, but it needs on-device profiling.
-- **Real pointer-lock behaviour.** It wasn't observed in headless Chromium; the drag-look fallback was what got tested.
+- **Real frame rates.** SwiftShader renders on the CPU, so on-screen frame rates here are meaningless. The denser city raised the triangle count, so on-device profiling is the top priority. If it struggles, the Low preset or a lower view distance will help.
+- **Real pointer-lock behaviour.** The drag-look fallback is what got tested.
 - Audio output (nobody has listened to it), gamepads (not supported), and WebGL context-loss recovery.
 - Cloudflare deployment from this repo. `wrangler deploy --dry-run` passes; the real deploy runs in your account.
 
 ## Roadmap (next milestones)
 
-1. On-device profiling (iPhone Safari, Chromebook) and tuning of the quality presets.
-2. More abilities: a charged chest beam, scanner mode that highlights hostiles through walls, and flares.
+1. On-device profiling (iPhone Safari, Chromebook) and tuning of the quality presets (prop LODs, merged far-chunk meshes).
+2. More abilities: a charged chest beam, scanner mode that highlights hostiles through walls, and flares. Sentry commands such as "guard this spot" and "attack my target".
 3. Civilian life: enter buildings, NPC reactions to combat (pedestrians flee), police and traffic responding to incidents.
 4. Story missions and boss fights built on the incident system, with a minimap and mission log.
 5. Gamepad support, PWA offline caching, and save data for progress and unlocks.

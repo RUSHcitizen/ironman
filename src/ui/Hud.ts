@@ -19,7 +19,7 @@ export interface HudMarker {
   label: string;
   x: number;
   z: number;
-  kind: "poi" | "event";
+  kind: "poi" | "event" | "suit";
 }
 
 const CARDINALS: Record<number, string> = { 0: "N", 45: "NE", 90: "E", 135: "SE", 180: "S", 225: "SW", 270: "W", 315: "NW" };
@@ -108,7 +108,7 @@ export class Hud {
       </div>
       <div class="h-popup"></div>
       <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
-      <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Press G to suit up</b></div>
+      <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Suit parked</b></div>
       <div class="h-mode"><b class="v-mode">GROUND</b><span class="v-hint"></span></div>
       <div class="h-objective"><small class="v-obj-t"></small><b class="v-obj"></b></div>
       <div class="h-alerts"></div>

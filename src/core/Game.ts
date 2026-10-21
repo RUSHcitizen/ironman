@@ -22,6 +22,8 @@ import { CHUNK_SIZE, HERO_BLOCK, BLOCK_SIZE, blockOrigin } from "../world/WorldC
 import { PlayerController } from "../player/PlayerController";
 import { ArmorModel } from "../player/ArmorModel";
 import { SpeedFx } from "../player/SpeedFx";
+import { SuitUnit } from "../player/SuitUnit";
+import type { CombatTarget } from "../combat/Targets";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
 import { InputManager } from "../input/InputManager";
 import { Hud, type HudMarker, type HudTarget } from "../ui/Hud";
@@ -67,6 +69,12 @@ export class Game {
   private enemyRenderer!: EnemyRenderer;
   private projRenderer!: ProjectileRenderer;
   private speedFx!: SpeedFx;
+  /** The armour as an independent unit (parked, sentry, flying in). */
+  suitUnit!: SuitUnit;
+  private suitAvatar!: ArmorModel;
+  private targets: CombatTarget[] = [];
+  private suitMarker: HudMarker = { id: "suit", label: "SUIT", x: 0, z: 0, kind: "suit" };
+  private lastSuitState = "worn";
   private shadowGen: ShadowGenerator | null = null;
   private paused = true;
   private started = false;
@@ -105,13 +113,15 @@ export class Game {
     this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
-    await progress(0.15, "Surveying 10 km² of city");
+    await progress(0.15, "Surveying 20 km² of city");
     this.chunks.registerWorld();
     await progress(0.3, "Constructing nearby districts");
     this.chunks.loadAround(SPAWN.x, SPAWN.z, this.settings.preset.viewDistance);
     await progress(0.6, "Populating streets");
     this.traffic = new TrafficSystem(scene, this.mats, QUALITY_PRESETS.high.cars);
     this.peds = new PedestrianSystem(scene, this.mats, QUALITY_PRESETS.high.pedestrians);
+    this.traffic.scatter(SPAWN.x, SPAWN.z);
+    this.peds.scatter(SPAWN.x, SPAWN.z);
 
     await progress(0.68, "Calibrating armour and weapons");
     this.player = new PlayerController(this.world, this.bus);
@@ -119,7 +129,10 @@ export class Game {
     this.avatar = new ArmorModel(scene);
     this.cam = new ThirdPersonCamera(scene);
     this.enemies = new EnemyManager(this.world, this.bus);
-    this.projectiles = new ProjectileSystem(this.world, this.enemies, this.player, this.bus);
+    this.projectiles = new ProjectileSystem(this.world, this.enemies, this.targets, this.bus);
+    this.suitUnit = new SuitUnit(this.world, this.player.suit, this.enemies, this.projectiles, this.bus);
+    this.targets.push(this.player, this.suitUnit);
+    this.suitAvatar = new ArmorModel(scene, false);
     this.combat = new Combat(this.world, this.enemies, this.projectiles, this.bus);
     this.enemyRenderer = new EnemyRenderer(scene, this.mats);
     this.projRenderer = new ProjectileRenderer(scene, this.mats);
@@ -152,6 +165,7 @@ export class Game {
 
     await progress(0.8, "Compiling shaders");
     await this.prewarmShaders();
+    this.suitAvatar.setVisible(false);
     await progress(1, "Systems online");
 
     window.addEventListener("resize", () => this.resize());
@@ -192,8 +206,13 @@ export class Game {
     bus.on("impact", (e) => this.cam.addShake(Math.min(1, e.speed / 60)));
     bus.on("landed", (e) => this.cam.addShake(e.hard ? 0.7 : 0.15));
     bus.on("suitTransform", (e) => {
-      this.avatar.startTransform(e.toSuited);
-      bus.emit("alert", { text: e.toSuited ? "Deploying armour" : "Armour disengaged · walking civilian", level: "info", ttl: 3 });
+      if (e.toSuited) {
+        this.avatar.startTransform(true);
+        bus.emit("alert", { text: "Suit docking - armour assembling", level: "info", ttl: 3 });
+      } else {
+        this.stepOutOfSuit();
+        bus.emit("alert", { text: "Stepped out of the suit · G to call it · V for sentry mode", level: "info", ttl: 4 });
+      }
       this.syncTouchMode(e.toSuited);
     });
     bus.on("suitChanged", () => this.syncTouchMode());
@@ -212,7 +231,11 @@ export class Game {
     });
     bus.on("nearMiss", (e) => this.hud.popup(e.streak > 1 ? `CLOSE CALL ×${e.streak}` : "CLOSE CALL"));
     bus.on("kill", (e) => this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${ENEMY_STATS[e.kind as EnemyKind].score}`));
+    bus.on("weapon", (w) => {
+      if (w.kind !== "repulsor") this.peds.panic(w.x, w.z, w.kind === "laser" ? 60 : 35);
+    });
     bus.on("explosion", (e) => {
+      this.peds.panic(e.x, e.z, 40 + e.size * 4);
       const d = Math.hypot(e.x - this.player.pos.x, e.y - this.player.pos.y, e.z - this.player.pos.z);
       if (d < 60) this.cam.addShake(Math.min(0.8, (e.size / 10) * (1 - d / 60)));
     });
@@ -220,6 +243,45 @@ export class Game {
       bus.emit("alert", { text: "SUIT FAILURE - emergency return to Apex Tower", level: "critical", ttl: 4 });
       this.failTimer = 1.6;
     });
+  }
+
+  /**
+   * The civilian steps out backwards; the empty armour stays standing where
+   * the player was (same pose), so the swap reads as one continuous motion.
+   */
+  private stepOutOfSuit(): void {
+    const p = this.player;
+    this.suitUnit.park(p.pos.x, p.pos.y, p.pos.z, p.bodyYaw);
+    this.suitAvatar.setVisible(true);
+    this.suitAvatar.update(0.016, this.suitUnit);
+    this.avatar.exitArmor();
+    const bx = p.pos.x - Math.sin(p.bodyYaw) * 1.3, bz = p.pos.z - Math.cos(p.bodyYaw) * 1.3;
+    if (!this.world.overlaps(bx - 0.45, p.pos.y + 0.4, bz - 0.45, bx + 0.45, p.pos.y + 1.9, bz + 0.45)) {
+      p.pos.x = bx;
+      p.pos.z = bz;
+    }
+  }
+
+  /** G / V routing between the player and the autonomous suit. */
+  private handleSuitCommands(input: { toggleSuit: boolean; sentry: boolean }): void {
+    const p = this.player;
+    const u = this.suitUnit;
+    if (input.toggleSuit) {
+      if (p.suited) p.exitSuit();
+      else if (p.transformTimer <= 0) {
+        if (u.state === "inbound") this.bus.emit("alert", { text: `Suit inbound · ${Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z))} m`, level: "info", ttl: 2 });
+        else if (u.call()) this.bus.emit("alert", { text: `Suit called - inbound from ${Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z))} m`, level: "success", ttl: 3 });
+      }
+    }
+    if (input.sentry) {
+      if (p.suited) {
+        // Step out and leave the suit on guard.
+        if (p.exitSuit()) u.setSentry(true);
+      } else if (u.state === "sentry") u.setSentry(false);
+      else u.setSentry(true);
+    }
+    input.toggleSuit = false;
+    input.sentry = false;
   }
 
   private syncTouchMode(suited = this.player.suited): void {
@@ -266,11 +328,21 @@ export class Game {
     }
     this.syncTouchMode();
     this.chunks.loadAround(x, z, Math.min(400, this.settings.preset.viewDistance));
+    this.traffic.scatter(x, z);
+    this.peds.scatter(x, z);
     this.cam.snap();
     this.cam.update(0.016, p, this.world);
   }
 
   respawn(): void {
+    if (!this.player.suited) {
+      // Respawn always returns you in the armour.
+      this.suitUnit.state = "worn";
+      this.suitAvatar.setVisible(false);
+      this.player.suited = true;
+      this.avatar.startTransform(true);
+      this.refreshMarkers();
+    }
     this.teleport(SPAWN.x, SPAWN.y, SPAWN.z, SPAWN.yaw);
     this.bus.emit("alert", { text: "Returned to Apex Tower landing pad", level: "info" });
   }
@@ -287,15 +359,14 @@ export class Game {
   private updateHint(): void {
     const p = this.player;
     if (!p.suited) {
-      this.hud.setHint(this.input.mouseMode ? "WASD walk · SHIFT sprint · SPACE jump · G suit up" : "");
-      this.hud.setCivilianHint(this.input.mouseMode ? "Press G to suit up" : "Tap SUIT UP to armour up");
+      this.hud.setHint(this.input.mouseMode ? "WASD walk · SHIFT sprint · SPACE jump · G call suit · V sentry" : "");
       return;
     }
     if (!this.input.mouseMode) return this.hud.setHint("");
     const m = p.mode;
     this.hud.setHint(
       m === "ground"
-        ? "SPACE lift-off · SHIFT launch · LMB blast · RMB rockets · G suit off"
+        ? "SPACE lift-off · SHIFT launch · LMB blast · RMB rockets · G step out · V sentry"
         : m === "hover"
           ? "SPACE/C altitude · SHIFT flight · Q/E dodge · LMB/RMB fire"
           : "W afterburner · S brake · Q/E barrel roll · dive for speed",
@@ -308,7 +379,7 @@ export class Game {
     const ratio = Math.min(this.device.dpr, q.pixelRatio);
     this.engine.setHardwareScalingLevel(1 / ratio);
     this.env.setViewDistance(q.viewDistance);
-    this.cam.camera.maxZ = 5200;
+    this.cam.camera.maxZ = 8000;
     this.traffic.setCount(q.cars);
     this.peds.setCount(q.pedestrians);
     this.avatar.setParticles(q.particles);
@@ -362,15 +433,23 @@ export class Game {
       return;
     }
     const p = this.player;
+    this.handleSuitCommands(input);
     p.update(dt, input);
     this.avatar.update(dt, p);
+    if (this.suitUnit.update(dt, p)) {
+      // Suit arrived: it wraps around the civilian.
+      this.suitAvatar.setVisible(false);
+      p.beginSuitUp();
+    }
+    if (this.suitUnit.state !== "worn") this.suitAvatar.update(dt, this.suitUnit);
+    this.updateSuitStatus();
     this.cam.update(dt, p, this.world);
     const camPos = this.cam.position;
 
     // Combat.
     this.combat.aimAssist = this.input.mouseMode ? 0.06 : 0.16;
     this.combat.update(dt, input, p, camPos);
-    this.enemies.update(dt, p);
+    this.enemies.update(dt, this.targets);
     this.projectiles.update(dt);
     if (this.projectiles.hitsThisFrame > 0) this.hud.hitMarker();
     this.enemyRenderer.update(this.enemies);
@@ -387,12 +466,12 @@ export class Game {
 
     // World.
     this.env.update(this.time);
-    this.traffic.update(dt, p.pos.x, p.pos.z);
+    this.traffic.update(dt, p.pos.x, p.pos.z, p.pos.y);
     this.props.setSignalPhase(this.traffic.phase);
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
     this.peds.update(dt, p.pos.x, p.pos.z);
     const q = this.settings.preset;
-    this.chunks.stream(camPos.x, camPos.z, q.viewDistance, p.mode === "flight" ? 2 : 1);
+    this.chunks.stream(camPos.x, camPos.z, q.viewDistance, 1);
     this.visTimer -= dt;
     if (this.visTimer <= 0) {
       this.visTimer = 0.25;
@@ -455,8 +534,35 @@ export class Game {
     });
   }
 
+  /** Civilian HUD line, touch labels and compass marker for the suit. */
+  private updateSuitStatus(): void {
+    const p = this.player;
+    const u = this.suitUnit;
+    if (u.state !== this.lastSuitState) {
+      this.lastSuitState = u.state;
+      this.input.touch.setSuitState(u.state);
+      this.refreshMarkers();
+    }
+    this.suitMarker.x = u.pos.x;
+    this.suitMarker.z = u.pos.z;
+    if (p.suited || p.transformTimer > 0) return;
+    const d = Math.round(Math.hypot(u.pos.x - p.pos.x, u.pos.z - p.pos.z));
+    const integ = Math.round(p.suit.overallIntegrity);
+    const keys = this.input.mouseMode;
+    const text =
+      u.state === "inbound"
+        ? `Suit inbound · ${d} m`
+        : u.state === "sentry"
+          ? `Sentry active · ${integ}% · ${keys ? "V to stand down · G to suit up" : "tap CALL SUIT to suit up"}`
+          : !u.operational
+            ? `Suit offline · self-repair ${integ}%`
+            : `Suit parked ${d} m away · ${keys ? "G call · V sentry" : "CALL SUIT · SENTRY"}`;
+    this.hud.setCivilianHint(text);
+  }
+
   private refreshMarkers(): void {
     const markers: HudMarker[] = [{ id: "apex", label: "APEX", x: HERO_X, z: HERO_Z, kind: "poi" }, ...this.events.markers];
+    if (this.suitUnit && this.suitUnit.state !== "worn") markers.push(this.suitMarker);
     this.hud.setMarkers(markers);
   }
 
@@ -502,6 +608,8 @@ export class Game {
       enemies: this.enemies.alive.length,
       kills: this.enemies.kills,
       rockets: this.combat.rockets,
+      suitState: this.suitUnit.state,
+      suitPos: { ...this.suitUnit.pos },
       mouseMode: this.input.mouseMode,
       pointerLocked: this.input.isPointerLocked,
     };

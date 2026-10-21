@@ -11,11 +11,11 @@ export const BLOCK_SIZE = BLOCK_PITCH - ROAD_WIDTH; // 64, includes sidewalk rin
 export const CHUNK_BLOCKS = 4;
 export const CHUNK_SIZE = BLOCK_PITCH * CHUNK_BLOCKS; // 320
 
-/** Inclusive chunk range of the playable city (10x10 chunks = 3.2 km square). */
-export const DISTRICT = { minChunk: -5, maxChunk: 4 };
+/** Inclusive chunk range of the playable city (14x14 chunks = 4.48 km square). */
+export const DISTRICT = { minChunk: -7, maxChunk: 6 };
 
-export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -1600
-export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 1600
+export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -2240
+export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 2240
 /** Promenade margin outside the outermost roads before the shoreline. */
 export const ISLAND_MARGIN = ROAD_WIDTH / 2 + 14;
 export const ISLAND_MIN = DISTRICT_MIN - ISLAND_MARGIN;

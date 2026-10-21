@@ -15,6 +15,9 @@ interface Ped {
   t: number;
   speed: number;
   phase: number;
+  height: number;
+  /** Seconds left running from danger. */
+  panic: number;
 }
 
 const SHIRTS: RGB[] = [
@@ -25,6 +28,13 @@ const SHIRTS: RGB[] = [
   [0.3, 0.5, 0.35],
   [0.75, 0.55, 0.25],
   [0.5, 0.3, 0.55],
+];
+const SKIN: RGB[] = [
+  [0.95, 0.78, 0.66],
+  [0.85, 0.66, 0.5],
+  [0.7, 0.5, 0.36],
+  [0.5, 0.35, 0.25],
+  [0.35, 0.24, 0.18],
 ];
 const INSET = 2.3;
 const SIDE = BLOCK_SIZE - 2 * INSET;
@@ -47,7 +57,7 @@ export class PedestrianSystem {
     const g = new ProcGeo(scene);
     const rng = new Rng(99);
     this.torso = g.merge("pedTorso", [g.box(0.46, 0.66, 0.26, [1, 1, 1], 0, 1.18, 0), g.box(0.12, 0.6, 0.14, [1, 1, 1], -0.3, 1.16, 0), g.box(0.12, 0.6, 0.14, [1, 1, 1], 0.3, 1.16, 0)]);
-    const head = g.merge("pedHead", [g.sphere(0.13, [0.72, 0.55, 0.42], 0, 1.66, 0, 4, 1, 1.15, 1)]);
+    const head = g.merge("pedHead", [g.sphere(0.13, [1, 1, 1], 0, 1.66, 0, 4, 1, 1.15, 1)]);
     const pants: RGB = [0.16, 0.17, 0.22];
     // Legs are modelled hanging from the hip so they can swing.
     const legL = g.merge("pedLegL", [g.box(0.17, 0.86, 0.2, pants, -0.12, -0.43, 0)]);
@@ -65,14 +75,61 @@ export class PedestrianSystem {
     legL.thinInstanceSetBuffer("matrix", this.legLM, 16, false);
     legR.thinInstanceSetBuffer("matrix", this.legRM, 16, false);
     const colors = new Float32Array(max * 4);
+    const skins = new Float32Array(max * 4);
     for (let k = 0; k < max; k++) {
       const i = rng.int(-4, 4);
       const j = rng.int(-4, 4);
-      this.peds.push({ x0: blockOrigin(i) + INSET, z0: blockOrigin(j) + INSET, t: rng.range(0, PERIM), speed: rng.range(1.1, 1.7) * (rng.chance(0.5) ? 1 : -1), phase: rng.range(0, 6) });
+      this.peds.push({
+        x0: blockOrigin(i) + INSET,
+        z0: blockOrigin(j) + INSET,
+        t: rng.range(0, PERIM),
+        speed: rng.range(1.1, 1.7) * (rng.chance(0.5) ? 1 : -1),
+        phase: rng.range(0, 6),
+        height: rng.range(0.88, 1.1),
+        panic: 0,
+      });
       colors.set([...rng.pick(SHIRTS), 1], k * 4);
+      skins.set([...rng.pick(SKIN), 1], k * 4);
     }
     this.torso.thinInstanceSetBuffer("color", colors, 4, true);
+    head.thinInstanceSetBuffer("color", skins, 4, true);
     this.setCount(max);
+  }
+
+  /** Spread pedestrians over the blocks around a point (game start / teleport). */
+  scatter(px: number, pz: number): void {
+    for (const p of this.peds) {
+      const i = Math.max(BLOCK_MIN_INDEX, Math.min(BLOCK_MAX_INDEX, Math.floor(px / BLOCK_PITCH) + this.rng.int(-3, 3)));
+      const j = Math.max(BLOCK_MIN_INDEX, Math.min(BLOCK_MAX_INDEX, Math.floor(pz / BLOCK_PITCH) + this.rng.int(-3, 3)));
+      p.x0 = blockOrigin(i) + INSET;
+      p.z0 = blockOrigin(j) + INSET;
+      p.t = this.rng.range(0, PERIM);
+    }
+  }
+
+  /** Pedestrians near danger run away along the sidewalk for a while. */
+  panic(x: number, z: number, radius: number): void {
+    for (let k = 0; k < this.active; k++) {
+      const p = this.peds[k];
+      const [px, pz] = this.position(p);
+      const d = Math.hypot(px - x, pz - z);
+      if (d > radius) continue;
+      p.panic = 6 + Math.random() * 4;
+      // Pick the walking direction that increases distance from the danger.
+      const [ax, az] = this.position({ ...p, t: p.t + 1 });
+      const away = Math.hypot(ax - x, az - z) > d;
+      p.speed = Math.abs(p.speed) * (away ? 1 : -1);
+    }
+  }
+
+  private position(p: Pick<Ped, "x0" | "z0" | "t">): [number, number] {
+    const t = ((p.t % PERIM) + PERIM) % PERIM;
+    const side = Math.floor(t / SIDE);
+    const u = t - side * SIDE;
+    if (side === 0) return [p.x0 + u, p.z0];
+    if (side === 1) return [p.x0 + SIDE, p.z0 + u];
+    if (side === 2) return [p.x0 + SIDE - u, p.z0 + SIDE];
+    return [p.x0, p.z0 + SIDE - u];
   }
 
   setCount(n: number): void {
@@ -99,8 +156,10 @@ export class PedestrianSystem {
     const t = new Vector3();
     for (let k = 0; k < this.active; k++) {
       const p = this.peds[k];
-      p.t = (((p.t + p.speed * dt) % PERIM) + PERIM) % PERIM;
-      p.phase += Math.abs(p.speed) * dt * 3.2;
+      const run = p.panic > 0 ? 3.2 : 1;
+      if (p.panic > 0) p.panic -= dt;
+      p.t = (((p.t + p.speed * run * dt) % PERIM) + PERIM) % PERIM;
+      p.phase += Math.abs(p.speed) * run * dt * 3.2;
       const side = Math.floor(p.t / SIDE);
       const u = p.t - side * SIDE;
       let x = p.x0, z = p.z0, yaw = 0;
@@ -109,13 +168,14 @@ export class PedestrianSystem {
       else if (side === 2) { x += SIDE - u; z += SIDE; yaw = -Math.PI / 2; }
       else { z += SIDE - u; yaw = Math.PI; }
       if (p.speed < 0) yaw += Math.PI;
-      const bob = Math.abs(Math.sin(p.phase)) * 0.05;
-      Quaternion.RotationYawPitchRollToRef(yaw, 0, 0, q);
+      const bob = Math.abs(Math.sin(p.phase)) * (p.panic > 0 ? 0.1 : 0.05);
+      s.set(p.height, p.height, p.height);
+      Quaternion.RotationYawPitchRollToRef(yaw, p.panic > 0 ? 0.25 : 0, 0, q);
       t.set(x, SIDEWALK_HEIGHT + bob, z);
       Matrix.ComposeToRef(s, q, t, m);
       m.copyToArray(this.bodyM, k * 16);
-      const swing = Math.sin(p.phase) * 0.45;
-      t.y = SIDEWALK_HEIGHT + 0.86 + bob;
+      const swing = Math.sin(p.phase) * (p.panic > 0 ? 0.8 : 0.45);
+      t.y = SIDEWALK_HEIGHT + 0.86 * p.height + bob;
       Quaternion.RotationYawPitchRollToRef(yaw, swing, 0, q);
       Matrix.ComposeToRef(s, q, t, m);
       m.copyToArray(this.legLM, k * 16);

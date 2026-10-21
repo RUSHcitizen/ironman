@@ -10,6 +10,8 @@ export interface DebugState {
   enemies: number;
   kills: number;
   rockets: number;
+  suitState: string;
+  suitPos: { x: number; y: number; z: number };
   mouseMode: boolean;
   pointerLocked: boolean;
   pos: { x: number; y: number; z: number };

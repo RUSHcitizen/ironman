@@ -33,6 +33,10 @@ const GOLD: RGB = [0.9, 0.68, 0.3];
 export class ChunkManager {
   private chunks = new Map<string, LoadedChunk>();
   private specs = new Map<string, ChunkSpec>();
+  private allChunks: [number, number][] = [];
+  private scanX = Infinity;
+  private scanZ = Infinity;
+  private pending = true;
   private ringMat: import("@babylonjs/core/Materials/standardMaterial").StandardMaterial | null = null;
 
   constructor(
@@ -48,7 +52,8 @@ export class ChunkManager {
 
   /** Generate layout data and register colliders for every chunk. */
   registerWorld(): void {
-    for (const [cx, cz] of this.districtChunks()) {
+    this.allChunks = this.districtChunks();
+    for (const [cx, cz] of this.allChunks) {
       const spec = generateChunk(cx, cz);
       this.specs.set(ChunkManager.key(cx, cz), spec);
       for (const b of chunkColliders(spec)) this.world.add(b);
@@ -58,6 +63,7 @@ export class ChunkManager {
   /** Synchronously load every chunk within `radius` (used during the loading screen). */
   loadAround(x: number, z: number, radius: number): number {
     let n = 0;
+    this.pending = true;
     for (const [cx, cz] of this.districtChunks()) {
       if (chunkDistance(cx, cz, x, z) < radius && !this.chunks.has(ChunkManager.key(cx, cz))) {
         this.load(cx, cz);
@@ -72,13 +78,18 @@ export class ChunkManager {
    * the view distance and unload chunks well outside it.
    */
   stream(x: number, z: number, viewDistance: number, budget = 1): void {
+    // Rescan only after moving a bit, or while loads are still pending.
+    if (!this.pending && Math.hypot(x - this.scanX, z - this.scanZ) < 24) return;
+    this.scanX = x;
+    this.scanZ = z;
     let missing: [number, number, number][] = [];
-    for (const [cx, cz] of this.districtChunks()) {
+    for (const [cx, cz] of this.allChunks) {
       const d = chunkDistance(cx, cz, x, z);
       const key = ChunkManager.key(cx, cz);
       if (d < viewDistance && !this.chunks.has(key)) missing.push([d, cx, cz]);
       else if (d > viewDistance + 260 && this.chunks.has(key)) this.unload(cx, cz);
     }
+    this.pending = missing.length > budget;
     missing = missing.sort((a, b) => a[0] - b[0]).slice(0, budget);
     for (const [, cx, cz] of missing) this.load(cx, cz);
   }

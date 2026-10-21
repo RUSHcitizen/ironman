@@ -9,7 +9,8 @@ test.setTimeout(900_000);
 const OUT = "docs/screenshots";
 
 type G = {
-  player: { viewPitch: number; viewYaw: number; suited: boolean };
+  player: { viewPitch: number; viewYaw: number; suited: boolean; pos: { x: number; y: number; z: number } };
+  suitUnit: { pos: { x: number; y: number; z: number } };
   avatar: { armorT: number; startTransform(on: boolean): void };
   enemies: { clear(): void };
   teleport(x: number, y: number, z: number, yaw: number, mode?: string, speed?: number): void;
@@ -71,14 +72,38 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await frames(page, 40);
   await page.screenshot({ path: `${OUT}/06-city-overview.png` });
 
-  // Civilian on the street.
-  await run(page, `g.teleport(2.5, 0, -182, 0);`);
+  // Busy avenue: traffic, buses and crowds.
+  await run(page, `g.teleport(-77.5, 0, 260, 0); g.player.viewPitch = 0.02;`);
+  await frames(page, 30);
+  await page.screenshot({ path: `${OUT}/10-busy-street.png` });
+
+  // Step out of the suit: the empty armour stays behind.
+  await run(page, `g.teleport(11, 0.15, -182, Math.PI); g.player.viewPitch = -0.05;`);
+  await frames(page, 4);
   await page.keyboard.press("KeyG");
-  await frames(page, 45);
-  await page.keyboard.down("KeyW");
-  await frames(page, 14);
+  await frames(page, 10);
+  await run(page, `g.player.viewYaw = 0.55; g.player.viewPitch = -0.05;`);
+  await frames(page, 12);
   await page.screenshot({ path: `${OUT}/07-civilian.png` });
-  await page.keyboard.up("KeyW");
+
+  // Sentry mode: the empty suit fights on its own.
+  await page.keyboard.press("KeyV");
+  await run(page, `g.player.viewYaw = 0; g.spawnEnemy("drone", 45, 14, 8); g.spawnEnemy("drone", 55, 18, -6);`);
+  await frames(page, 24);
+  // Look at the suit while it fights.
+  await run(page, `const u = g.suitUnit, p = g.player; const dx = u.pos.x - p.pos.x, dz = u.pos.z - p.pos.z;
+    p.viewYaw = Math.atan2(dx, dz) - 0.25; p.viewPitch = Math.atan2(u.pos.y - p.pos.y - 1, Math.hypot(dx, dz)) * 0.8;`);
+  await frames(page, 6);
+  await page.screenshot({ path: `${OUT}/11-sentry.png` });
+
+  // Call the suit from across the city.
+  await page.keyboard.press("KeyV");
+  await frames(page, 3);
+  await run(page, `g.enemies.clear(); g.teleport(11, 0.15, -300, 0); g.player.viewYaw = 0; g.player.viewPitch = 0.18;`);
+  await page.keyboard.press("KeyG");
+  await frames(page, 26);
+  await page.screenshot({ path: `${OUT}/12-suit-inbound.png` });
+  await frames(page, 60);
 
   await page.keyboard.press("Escape");
   await frames(page, 3);

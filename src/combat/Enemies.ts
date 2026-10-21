@@ -1,6 +1,6 @@
 import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
-import type { PlayerController } from "../player/PlayerController";
+import { nearestTarget, type CombatTarget } from "./Targets";
 import { Rng } from "../core/math";
 import { dist, len, norm, type V3 } from "./math3";
 
@@ -20,6 +20,15 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   kamikaze: { hp: 14, radius: 0.9, centerY: 0, range: 300, score: 75 },
   trooper: { hp: 45, radius: 1.0, centerY: 1.1, range: 230, score: 150 },
   warbot: { hp: 340, radius: 2.9, centerY: 3.2, range: 340, score: 1000 },
+};
+
+/** Placeholder target when nothing is engageable: enemies just patrol. */
+const IDLE_TARGET: CombatTarget = {
+  center: { x: 0, y: -1e5, z: 0 },
+  vel: { x: 0, y: 0, z: 0 },
+  targetable: false,
+  evading: false,
+  takeHit: () => false,
 };
 
 export type EnemyState = "patrol" | "engage" | "hop" | "salvo" | "charge" | "slam" | "retreat";
@@ -186,11 +195,13 @@ export class EnemyManager {
     }
   }
 
-  update(dt: number, p: PlayerController): void {
-    const target = p.center;
-    const hostile = p.suited && p.transformTimer <= 0;
+  /** Each enemy engages the nearest targetable target (player in the suit, or the sentry suit). */
+  update(dt: number, targets: readonly CombatTarget[]): void {
     for (const e of this.enemies) {
       if (!e.alive) continue;
+      const p = nearestTarget(targets, e) ?? IDLE_TARGET;
+      const target = p.center;
+      const hostile = p.targetable;
       e.phase += dt;
       e.flash = Math.max(0, e.flash - dt * 5);
       e.dodgeCooldown -= dt;
@@ -237,7 +248,7 @@ export class EnemyManager {
   }
 
   /** Aim at the player with lead and spread. */
-  private aimAt(from: V3, p: PlayerController, speed: number, spread: number): V3 {
+  private aimAt(from: V3, p: CombatTarget, speed: number, spread: number): V3 {
     const t = p.center;
     const tof = dist(from, t) / speed;
     const lead = 0.6; // imperfect leading leaves room to dodge
@@ -284,7 +295,7 @@ export class EnemyManager {
     e.vz += (dz - e.vz) * k;
   }
 
-  private updateDrone(e: Enemy, dt: number, p: PlayerController, d: number): void {
+  private updateDrone(e: Enemy, dt: number, p: CombatTarget, d: number): void {
     const t = p.center;
     if (!e.aware) {
       e.orbit += dt * 0.5;
@@ -321,7 +332,7 @@ export class EnemyManager {
     this.burst(e, dt, p, 75, 4, 0.14, 0.03);
   }
 
-  private burst(e: Enemy, dt: number, p: PlayerController, speed: number, damage: number, interval: number, spread: number): void {
+  private burst(e: Enemy, dt: number, p: CombatTarget, speed: number, damage: number, interval: number, spread: number): void {
     if (e.burstLeft <= 0) return;
     e.burstTimer -= dt;
     if (e.burstTimer > 0) return;
@@ -332,7 +343,7 @@ export class EnemyManager {
     this.weapons?.bolt(from, this.aimAt(from, p, speed, spread), speed, damage);
   }
 
-  private updateKamikaze(e: Enemy, dt: number, p: PlayerController, d: number): void {
+  private updateKamikaze(e: Enemy, dt: number, p: CombatTarget, d: number): void {
     const t = p.center;
     if (!e.aware) {
       this.steerTo(e, e.anchor.x, e.anchor.y + Math.sin(e.phase * 2) * 1.5, e.anchor.z, 6, dt);
@@ -361,7 +372,7 @@ export class EnemyManager {
     e.jet = 1;
   }
 
-  private updateTrooper(e: Enemy, dt: number, p: PlayerController, d: number): void {
+  private updateTrooper(e: Enemy, dt: number, p: CombatTarget, d: number): void {
     const t = p.center;
     e.jet = Math.max(0, e.jet - dt * 1.5);
     if (e.state === "hop") {
@@ -423,7 +434,7 @@ export class EnemyManager {
     }
   }
 
-  private updateWarbot(e: Enemy, dt: number, p: PlayerController, _d: number): void {
+  private updateWarbot(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
     const t = p.center;
     if (!e.aware) {
       e.yaw += dt * 0.2;

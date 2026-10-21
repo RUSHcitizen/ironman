@@ -14,7 +14,28 @@ import "@babylonjs/core/Particles/particleSystemComponent";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import type { PlayerController } from "./PlayerController";
+import type { FlightMode } from "./PlayerController";
+
+/** Everything the armour model needs to pose itself (player or autonomous suit). */
+export interface AvatarState {
+  pos: { x: number; y: number; z: number };
+  vel: { x: number; y: number; z: number };
+  mode: FlightMode;
+  suited: boolean;
+  bodyYaw: number;
+  bodyPitch: number;
+  bodyRoll: number;
+  rollSpin: number;
+  walkPhase: number;
+  landingTimer: number;
+  viewPitch: number;
+  rocketTimer: number;
+  aimTimer: number;
+  thrust: number;
+  afterburner: boolean;
+  agl: number;
+  suit: { energy: number };
+}
 import { clamp, damp } from "../core/math";
 
 interface Joint {
@@ -50,7 +71,10 @@ export class ArmorModel {
   private crouch = 0;
   readonly meshes: AbstractMesh[] = [];
 
-  constructor(private scene: Scene) {
+  constructor(
+    private scene: Scene,
+    private withCivilian = true,
+  ) {
     const red = new StandardMaterial("armorRed", scene);
     red.diffuseColor = new Color3(0.62, 0.05, 0.04);
     red.specularColor = new Color3(1, 0.75, 0.7);
@@ -162,7 +186,7 @@ export class ArmorModel {
       this.emitters.push(emitter);
     }
 
-    this.buildCivilian();
+    if (this.withCivilian) this.buildCivilian();
 
     // Blob shadow (cheap on every quality level).
     const st = new DynamicTexture("blob", { width: 64, height: 64 }, scene, false);
@@ -314,6 +338,20 @@ export class ArmorModel {
     this.setCivilian(true);
   }
 
+  /** Instantly swap to the civilian (stepping out of the suit, which stays behind). */
+  exitArmor(): void {
+    this.armorT = -1;
+    this.setArmorVisible(false);
+    this.setCivilian(true);
+  }
+
+  /** Show / hide the whole character (used for the autonomous suit). */
+  setVisible(v: boolean): void {
+    this.root.setEnabled(v);
+    this.shadow.setEnabled(v);
+    for (const ps of this.particles) ps.emitRate = 0;
+  }
+
   get transforming(): boolean {
     return this.armorT >= 0;
   }
@@ -329,7 +367,7 @@ export class ArmorModel {
     for (const part of this.parts) part.mesh.setEnabled(on);
   }
 
-  update(dt: number, p: PlayerController): void {
+  update(dt: number, p: AvatarState): void {
     this.time += dt;
     const t = this.time;
     this.root.position.set(p.pos.x, p.pos.y, p.pos.z);

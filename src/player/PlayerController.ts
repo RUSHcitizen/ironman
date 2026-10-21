@@ -107,7 +107,12 @@ export class PlayerController {
     return Math.hypot(this.vel.x, this.vel.y, this.vel.z);
   }
 
-  /** Invulnerable while barrel-rolling or out of the suit (enemies ignore civilians). */
+  /** Enemies only engage the player while armoured (civilians are ignored). */
+  get targetable(): boolean {
+    return this.suited && this.transformTimer <= 0 && !this.failed;
+  }
+
+  /** Invulnerable while barrel-rolling. */
   get evading(): boolean {
     return this.rollTimer > 0;
   }
@@ -144,19 +149,37 @@ export class PlayerController {
     return true;
   }
 
-  /** Request suit-up / suit-off. Returns false (with an ARIA hint) if not possible now. */
+  /**
+   * Toggle without an external suit (tests / fallback): suit-off steps out,
+   * suit-up assembles the armour in place. The game routes G through the
+   * autonomous suit instead (call it, then it docks).
+   */
   requestSuitToggle(): boolean {
-    if (this.transformTimer > 0) return false;
-    if (this.suited && (this.mode !== "ground" || !this.grounded || this.landingTimer > 0)) {
+    return this.suited ? this.exitSuit() : this.beginSuitUp();
+  }
+
+  /** Step out of the armour (it stays behind as an empty suit). */
+  exitSuit(): boolean {
+    if (this.transformTimer > 0 || !this.suited) return false;
+    if (this.mode !== "ground" || !this.grounded || this.landingTimer > 0) {
       this.alert("Land first to exit the suit", "warn");
       return false;
     }
-    this.transformToSuited = !this.suited;
+    this.transformToSuited = false;
+    this.transformTimer = 0.5;
+    this.vel.x = this.vel.z = 0;
+    this.bus?.emit("suitTransform", { toSuited: false });
+    this.finishTransform();
+    return true;
+  }
+
+  /** Armour assembles around the civilian (after the suit docks). */
+  beginSuitUp(): boolean {
+    if (this.transformTimer > 0 || this.suited) return false;
+    this.transformToSuited = true;
     this.transformTimer = TUNING.transformTime;
     this.vel.x = this.vel.z = 0;
-    this.bus?.emit("suitTransform", { toSuited: this.transformToSuited });
-    // Suit-off completes instantly for gameplay (armour animates away); suit-up at the end.
-    if (!this.transformToSuited) this.finishTransform();
+    this.bus?.emit("suitTransform", { toSuited: true });
     return true;
   }
 
@@ -180,7 +203,10 @@ export class PlayerController {
       this.transformTimer -= dt;
       if (this.transformTimer <= 0) {
         this.transformTimer = 0;
-        if (this.transformToSuited) this.finishTransform();
+        if (this.transformToSuited) {
+          this.failed = false;
+          this.finishTransform();
+        }
       }
     }
 

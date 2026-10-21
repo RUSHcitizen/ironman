@@ -21,7 +21,7 @@ export class ThirdPersonCamera {
 
   constructor(scene: Scene) {
     this.camera = new TargetCamera("cam", new Vector3(0, 5, -10), scene);
-    this.camera.minZ = 0.15;
+    this.camera.minZ = 0.2;
     this.camera.maxZ = 4200;
     this.camera.fov = this.fov;
     this.camera.inertia = 0;

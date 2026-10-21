@@ -15,9 +15,9 @@ export interface QualityPreset {
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
-  low: { pixelRatio: 1, viewDistance: 520, propDistance: 140, shadows: false, particles: 0, cars: 18, pedestrians: 16, antialias: false },
-  medium: { pixelRatio: 1.5, viewDistance: 800, propDistance: 220, shadows: false, particles: 120, cars: 32, pedestrians: 36, antialias: true },
-  high: { pixelRatio: 2, viewDistance: 1100, propDistance: 320, shadows: true, particles: 260, cars: 48, pedestrians: 64, antialias: true },
+  low: { pixelRatio: 1, viewDistance: 520, propDistance: 140, shadows: false, particles: 0, cars: 40, pedestrians: 60, antialias: false },
+  medium: { pixelRatio: 1.5, viewDistance: 800, propDistance: 220, shadows: false, particles: 120, cars: 80, pedestrians: 120, antialias: true },
+  high: { pixelRatio: 2, viewDistance: 1100, propDistance: 320, shadows: true, particles: 260, cars: 130, pedestrians: 200, antialias: true },
 };
 
 export interface SettingsData {

@@ -1,13 +1,13 @@
 import { Rng, hashSeed, clamp, lerp } from "../core/math";
 import {
-  BLOCK_PITCH,
   BLOCK_SIZE,
-  CHUNK_BLOCKS,
   SIDEWALK_WIDTH,
   SIDEWALK_HEIGHT,
   WORLD_SEED,
   HERO_BLOCK,
   DISTRICT,
+  CHUNK_BLOCKS,
+  BLOCK_PITCH,
   blockOrigin,
 } from "./WorldConfig";
 
@@ -89,22 +89,44 @@ const GLASS_TINTS: RGB[] = [
   [0.62, 0.7, 0.78],
 ];
 
-const AREA_NAMES = [
-  "Inwood Heights", "Harlem Rise", "Morningside", "Yorkville", "Spanish Harbor",
-  "Hudson Yards", "Northpark West", "Northpark", "Lenox Hill", "East River Gate",
-  "Hell's Point", "Theatre Row", "Midtown Core", "Bryant Commons", "Murray Rise",
-  "Chelsea Steps", "Flatiron Wedge", "Union Square", "Gramercy Gate", "Stuy Town",
-  "Village Bend", "SoHo Lofts", "Financial Spire", "Bowery Line", "East Docks",
+const NAME_A = [
+  "Hudson", "Chelsea", "Harlem", "Astor", "Bowery", "Gramercy", "Murray", "Yorkville", "Inwood", "Tribeca",
+  "Delancey", "Mercer", "Hester", "Canal", "Lenox", "Morningside", "Kips", "Turtle", "Sutton", "Battery",
+  "Chambers", "Fulton", "Pearl", "Varick", "Stuyvesant", "Riverside", "Bleecker", "Lafayette",
 ];
+const NAME_B = ["Heights", "Square", "Yards", "Point", "Row", "Commons", "Gate", "Rise", "Village", "Docks", "Hill", "Bend", "Terrace", "Landing", "Park"];
 
 const REGION_CHUNKS = 2;
+const REGIONS = Math.ceil((DISTRICT.maxChunk - DISTRICT.minChunk + 1) / REGION_CHUNKS);
 
-/** District name for a chunk (regions of 2x2 chunks, 5x5 regions). */
+/** Deterministic district names (regions of 2x2 chunks), with a few landmarks. */
+const AREA_NAMES: string[] = (() => {
+  const rng = new Rng(WORLD_SEED + 99);
+  const used = new Set<string>();
+  const out: string[] = [];
+  for (let k = 0; k < REGIONS * REGIONS; k++) {
+    let n = "";
+    do n = `${rng.pick(NAME_A)} ${rng.pick(NAME_B)}`;
+    while (used.has(n));
+    used.add(n);
+    out.push(n);
+  }
+  return out;
+})();
+
+const LANDMARK_AREAS: [number, number, string][] = [
+  [20, 150, "Midtown Core"],
+  [260, -1500, "Financial Spire"],
+  [-600, 700, "Northpark"],
+];
+
+/** District name for a chunk. */
 export function areaName(cx: number, cz: number): string {
-  const n = Math.round(Math.sqrt(AREA_NAMES.length));
-  const rx = clampInt(Math.floor((cx - DISTRICT.minChunk) / REGION_CHUNKS), 0, n - 1);
-  const rz = clampInt(Math.floor((cz - DISTRICT.minChunk) / REGION_CHUNKS), 0, n - 1);
-  return AREA_NAMES[(n - 1 - rz) * n + rx];
+  const x = (cx + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH, z = (cz + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH;
+  for (const [lx, lz, name] of LANDMARK_AREAS) if (Math.hypot(lx - x, lz - z) < 340) return name;
+  const rx = clampInt(Math.floor((cx - DISTRICT.minChunk) / REGION_CHUNKS), 0, REGIONS - 1);
+  const rz = clampInt(Math.floor((cz - DISTRICT.minChunk) / REGION_CHUNKS), 0, REGIONS - 1);
+  return AREA_NAMES[(REGIONS - 1 - rz) * REGIONS + rx];
 }
 
 function clampInt(v: number, lo: number, hi: number): number {
@@ -112,13 +134,16 @@ function clampInt(v: number, lo: number, hi: number): number {
 }
 
 /** Big central park footprint in block indices (inclusive). */
-export const BIG_PARK = { i0: -9, i1: -6, j0: 4, j1: 10 };
+export const BIG_PARK = { i0: -10, i1: -6, j0: 4, j1: 14 };
 
 /** Skyscraper density 0..1: a midtown core and a taller downtown core. */
 export function skylineFactor(x: number, z: number): number {
-  const midtown = 1 - Math.hypot(x - 20, z - 150) / 720;
-  const downtown = (1 - Math.hypot(x - 260, z + 1080) / 520) * 1.15;
-  return clamp(Math.max(midtown, downtown, 0), 0, 1.15);
+  const midtown = 1 - Math.hypot(x - 20, z - 150) / 760;
+  const downtown = (1 - Math.hypot(x - 260, z + 1500) / 600) * 1.15;
+  const east = (1 - Math.hypot(x - 1500, z - 1300) / 480) * 0.9;
+  const west = (1 - Math.hypot(x + 1700, z + 500) / 420) * 0.8;
+  // Everywhere else is still a dense low/mid-rise city, never empty.
+  return clamp(Math.max(midtown, downtown, east, west, 0.08), 0, 1.15);
 }
 
 export function blockKind(i: number, j: number): BlockKind {
@@ -178,7 +203,8 @@ export function generateBlock(i: number, j: number, name = ""): BlockSpec {
     const cxw = x0 + BLOCK_SIZE / 2;
     const czw = z0 + BLOCK_SIZE / 2;
     const core = skylineFactor(cxw, czw);
-    for (const p of splitLot(rng, lx0, lz0, lot)) addBuilding(spec, rng, p, core);
+    if (core < 0.3 && rng.chance(0.5)) addRowhouses(spec, rng, lx0, lz0, lot);
+    else for (const p of splitLot(rng, lx0, lz0, lot, core)) addBuilding(spec, rng, p, core);
   }
   return spec;
 }
@@ -190,29 +216,78 @@ interface Parcel {
   d: number;
 }
 
-function splitLot(rng: Rng, x: number, z: number, s: number): Parcel[] {
+function splitLot(rng: Rng, x: number, z: number, s: number, core: number): Parcel[] {
   const gap = 2;
   const h = (s - gap) / 2;
   const r = rng.next();
-  if (r < 0.22) return [{ x, z, w: s, d: s }];
-  if (r < 0.5) {
+  // Big footprints are reserved for the towers in the cores.
+  if (r < 0.1 + core * 0.15) return [{ x, z, w: s, d: s }];
+  if (r < 0.3) {
     return rng.chance(0.5)
       ? [{ x, z, w: h, d: s }, { x: x + h + gap, z, w: h, d: s }]
       : [{ x, z, w: s, d: h }, { x, z: z + h + gap, w: s, d: h }];
   }
-  if (r < 0.75) {
+  if (r < 0.5) {
     return [
       { x, z, w: h, d: s },
       { x: x + h + gap, z, w: h, d: h },
       { x: x + h + gap, z: z + h + gap, w: h, d: h },
     ];
   }
-  return [
-    { x, z, w: h, d: h },
-    { x: x + h + gap, z, w: h, d: h },
-    { x, z: z + h + gap, w: h, d: h },
-    { x: x + h + gap, z: z + h + gap, w: h, d: h },
-  ];
+  if (r < 0.75) {
+    return [
+      { x, z, w: h, d: h },
+      { x: x + h + gap, z, w: h, d: h },
+      { x, z: z + h + gap, w: h, d: h },
+      { x: x + h + gap, z: z + h + gap, w: h, d: h },
+    ];
+  }
+  // Dense 3x3 grid of mid-rises.
+  const g = 1.5;
+  const c = (s - 2 * g) / 3;
+  const out: Parcel[] = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) out.push({ x: x + i * (c + g), z: z + j * (c + g), w: c, d: c });
+  return out;
+}
+
+const BROWNSTONE: RGB[] = [
+  [0.55, 0.36, 0.28],
+  [0.62, 0.33, 0.25],
+  [0.5, 0.4, 0.33],
+  [0.86, 0.8, 0.7],
+  [0.7, 0.55, 0.42],
+  [0.45, 0.3, 0.26],
+];
+
+/** Perimeter of narrow 3-7 storey rowhouses around a shared courtyard. */
+function addRowhouses(spec: BlockSpec, rng: Rng, x: number, z: number, s: number): void {
+  const depth = rng.range(13, 16);
+  const run = (fixed: "z0" | "z1" | "x0" | "x1", from: number, to: number) => {
+    let t = from;
+    while (to - t > 5) {
+      const w = Math.min(to - t, rng.range(6.5, 10.5));
+      const tint = rng.pick(BROWNSTONE);
+      const height = Math.round(rng.range(11, 25) / 3.6) * 3.6;
+      let b: Box;
+      if (fixed === "z0") b = box(t, 0, z, t + w, height, z + depth);
+      else if (fixed === "z1") b = box(t, 0, z + s - depth, t + w, height, z + s);
+      else if (fixed === "x0") b = box(x, 0, t, x + depth, height, t + w);
+      else b = box(x + s - depth, 0, t, x + s, height, t + w);
+      spec.buildings.push({ style: "masonry", tint, tiers: [b], trims: [box(b.minX - 0.3, height - 0.7, b.minZ - 0.3, b.maxX + 0.3, height + 0.3, b.maxZ + 0.3)] });
+      if (rng.chance(0.25)) {
+        spec.props.push({ type: "acUnit", x: (b.minX + b.maxX) / 2, y: height, z: (b.minZ + b.maxZ) / 2, yaw: 0, scale: 0.8 });
+      } else if (rng.chance(0.08) && w > 8) {
+        const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+        spec.props.push({ type: "waterTower", x: cx, y: height, z: cz, yaw: rng.range(0, 3), scale: 0.7 });
+        spec.colliders.push(box(cx - 1.8, height, cz - 1.8, cx + 1.8, height + 6.7, cz + 1.8));
+      }
+      t += w;
+    }
+  };
+  run("z0", x, x + s);
+  run("z1", x, x + s);
+  run("x0", z + depth, z + s - depth);
+  run("x1", z + depth, z + s - depth);
 }
 
 function addBuilding(spec: BlockSpec, rng: Rng, p: Parcel, core: number): void {
@@ -350,8 +425,17 @@ function addStreetFurniture(spec: BlockSpec, rng: Rng, x0: number, z0: number): 
   ];
   for (const [x, z, yaw] of corners) spec.props.push({ type: "trafficLight", x, y, z, yaw, scale: 1 });
 
+  // Street trees between the lamps on most sides.
+  for (let side = 0; side < 4; side++) {
+    if (!rng.chance(0.65)) continue;
+    for (const t of [22, 42]) {
+      const off = 2.0;
+      const [tx, tz] = side === 0 ? [x0 + t, z0 + off] : side === 1 ? [x0 + t, z0 + s - off] : side === 2 ? [x0 + off, z0 + t] : [x0 + s - off, z0 + t];
+      spec.props.push({ type: "tree", x: tx, y, z: tz, yaw: rng.range(0, 6.28), scale: rng.range(0.6, 0.85) });
+    }
+  }
   const small: PropType[] = ["hydrant", "trashcan", "bench", "trashcan"];
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 10; k++) {
     const type = rng.pick(small);
     const side = rng.int(0, 3);
     const t = rng.range(6, s - 6);

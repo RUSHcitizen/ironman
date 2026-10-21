@@ -83,7 +83,7 @@ export class Environment {
   }
 
   private buildSky(): void {
-    const sky = CreateSphere("sky", { diameter: 8000, segments: 24, sideOrientation: Mesh.BACKSIDE }, this.scene);
+    const sky = CreateSphere("sky", { diameter: 13000, segments: 24, sideOrientation: Mesh.BACKSIDE }, this.scene);
     const pos = sky.getVerticesData(VertexBuffer.PositionKind)!;
     const colors = new Float32Array((pos.length / 3) * 4);
     const d = new Vector3();
@@ -109,10 +109,10 @@ export class Environment {
     sky.applyFog = false;
     sky.metadata = { drawOrder: 2 };
 
-    const sunDisc = CreateDisc("sunDisc", { radius: 140, tessellation: 24 }, this.scene);
+    const sunDisc = CreateDisc("sunDisc", { radius: 230, tessellation: 24 }, this.scene);
     const sm = this.mats.additive("sunMat", new Color3(1, 0.86, 0.6), 1);
     sunDisc.material = sm;
-    sunDisc.position = SUN_DIR.scale(3800);
+    sunDisc.position = SUN_DIR.scale(6200);
     sunDisc.billboardMode = Mesh.BILLBOARDMODE_ALL;
     sunDisc.infiniteDistance = true;
     sunDisc.isPickable = false;
@@ -130,10 +130,10 @@ export class Environment {
     ground.freezeWorldMatrix();
     ground.metadata = { drawOrder: 1 };
 
-    const water = CreateGround("water", { width: 12000, height: 12000 }, this.scene);
+    const water = CreateGround("water", { width: 16000, height: 16000 }, this.scene);
     water.position.y = WATER_Y;
     this.waterTex = this.mats.water.diffuseTexture as Texture;
-    this.waterTex.uScale = this.waterTex.vScale = 480;
+    this.waterTex.uScale = this.waterTex.vScale = 640;
     water.material = this.mats.water;
     water.isPickable = false;
     water.freezeWorldMatrix();
@@ -168,7 +168,7 @@ export class Environment {
   private buildSkyline(): void {
     const b = new GeometryBatch(FACADE_TILE.masonryU, FACADE_TILE.masonryV);
     const rng = new Rng(77);
-    for (let k = 0; k < 420; k++) {
+    for (let k = 0; k < 520; k++) {
       const a = rng.range(0, Math.PI * 2);
       // Leave a gap toward the sunset so the sun sits over open water.
       if (Math.abs(((a - SUN_AZIMUTH + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.3) continue;

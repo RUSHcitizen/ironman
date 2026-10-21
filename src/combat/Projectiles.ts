@@ -1,6 +1,6 @@
 import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
-import type { PlayerController } from "../player/PlayerController";
+import { nearestTarget, type CombatTarget } from "./Targets";
 import { ENEMY_STATS, type Enemy, type EnemyManager, type EnemyWeapons } from "./Enemies";
 import { dist, norm, segmentPointDistance, steer, type V3 } from "./math3";
 
@@ -21,7 +21,8 @@ export interface Projectile {
   life: number;
   damage: number;
   target: Enemy | null;
-  homingPlayer: boolean;
+  /** Enemy missiles: the friendly target being homed on (null = lock lost). */
+  homing: CombatTarget | null;
   trail: number;
   alive: boolean;
 }
@@ -76,7 +77,8 @@ export class ProjectileSystem implements EnemyWeapons {
   constructor(
     private world: CollisionWorld,
     private enemies: EnemyManager,
-    private player: PlayerController,
+    /** Friendly targets enemies can hit (player, sentry suit). */
+    readonly targets: CombatTarget[],
     private bus?: EventBus<GameEvents>,
   ) {
     enemies.weapons = this;
@@ -96,27 +98,28 @@ export class ProjectileSystem implements EnemyWeapons {
   /** Player repulsor bolt. */
   playerBolt(from: V3, dir: V3): void {
     const d = norm(dir);
-    this.add({ kind: "bolt", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 240, maxSpeed: 240, accel: 0, turn: 0, life: 1.6, damage: 10, target: null, homingPlayer: false });
+    this.add({ kind: "bolt", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 240, maxSpeed: 240, accel: 0, turn: 0, life: 1.6, damage: 10, target: null, homing: null });
     this.fx.push({ kind: "spark", ...from, size: 0.9, t: 0, life: 0.08, yaw: 0, pitch: 0 });
   }
 
   /** Player arm-launched micro-rocket, homing on `target` if given. */
   playerRocket(from: V3, dir: V3, target: Enemy | null): void {
     const d = norm(dir);
-    this.add({ kind: "rocket", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 45, maxSpeed: 160, accel: 220, turn: 5.5, life: 4, damage: 40, target, homingPlayer: false });
+    this.add({ kind: "rocket", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 45, maxSpeed: 160, accel: 220, turn: 5.5, life: 4, damage: 40, target, homing: null });
   }
 
   // --- EnemyWeapons -------------------------------------------------------
 
   bolt(from: V3, dir: V3, speed: number, damage: number): void {
     const d = norm(dir);
-    this.add({ kind: "enemyBolt", ...from, dx: d.x, dy: d.y, dz: d.z, speed, maxSpeed: speed, accel: 0, turn: 0, life: 4, damage, target: null, homingPlayer: false });
+    this.add({ kind: "enemyBolt", ...from, dx: d.x, dy: d.y, dz: d.z, speed, maxSpeed: speed, accel: 0, turn: 0, life: 4, damage, target: null, homing: null });
     this.bus?.emit("weapon", { kind: "enemyBolt", ...from });
   }
 
   missile(from: V3, dir: V3, damage: number): void {
     const d = norm(dir);
-    this.add({ kind: "missile", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 20, maxSpeed: 58, accel: 30, turn: 1.9, life: 7, damage, target: null, homingPlayer: true });
+    const homing = nearestTarget(this.targets, from);
+    this.add({ kind: "missile", ...from, dx: d.x, dy: d.y, dz: d.z, speed: 20, maxSpeed: 58, accel: 30, turn: 1.9, life: 7, damage, target: null, homing });
     this.bus?.emit("weapon", { kind: "missile", ...from });
   }
 
@@ -126,8 +129,11 @@ export class ProjectileSystem implements EnemyWeapons {
     if (damage <= 0) return;
     const radius = size * 1.4;
     if (hurtsPlayer) {
-      const d = dist(at, this.player.center);
-      if (d < radius) this.player.takeHit(damage * (1 - (d / radius) * 0.6));
+      for (const t of this.targets) {
+        if (!t.targetable) continue;
+        const d = dist(at, t.center);
+        if (d < radius) t.takeHit(damage * (1 - (d / radius) * 0.6));
+      }
     } else {
       for (const e of this.enemies.enemies) {
         if (!e.alive) continue;
@@ -154,8 +160,6 @@ export class ProjectileSystem implements EnemyWeapons {
 
   update(dt: number): void {
     this.hitsThisFrame = 0;
-    const p = this.player;
-    const pc = p.center;
     for (const pr of this.projectiles) {
       if (!pr.alive) continue;
       pr.life -= dt;
@@ -175,12 +179,14 @@ export class ProjectileSystem implements EnemyWeapons {
           pr.dy = d.y;
           pr.dz = d.z;
         }
-      } else if (pr.kind === "missile" && pr.homingPlayer) {
-        if (p.evading || !p.suited) {
-          // Barrel roll breaks the lock.
-          pr.homingPlayer = false;
-          if (p.suited) this.bus?.emit("alert", { text: "Missile lock broken", level: "success", ttl: 2 });
+      } else if (pr.kind === "missile" && pr.homing) {
+        const h = pr.homing;
+        if (h.evading || !h.targetable) {
+          // Barrel roll (or leaving the fight) breaks the lock.
+          pr.homing = null;
+          if (h.evading) this.bus?.emit("alert", { text: "Missile lock broken", level: "success", ttl: 2 });
         } else {
+          const pc = h.center;
           const d = steer({ x: pr.dx, y: pr.dy, z: pr.dz }, norm({ x: pc.x - pr.x, y: pc.y - pr.y, z: pc.z - pr.z }), pr.turn * dt);
           pr.dx = d.x;
           pr.dy = d.y;
@@ -220,7 +226,6 @@ export class ProjectileSystem implements EnemyWeapons {
 
   /** Returns true if the projectile was consumed. */
   private collide(pr: Projectile, from: V3, to: V3, step: number): boolean {
-    const player = this.player;
     if (pr.kind === "bolt" || pr.kind === "rocket") {
       // Enemies.
       for (const e of this.enemies.enemies) {
@@ -248,12 +253,14 @@ export class ProjectileSystem implements EnemyWeapons {
           return true;
         }
       }
-    } else if (player.suited) {
-      const c = player.center;
-      if (segmentPointDistance(from, to, c) < (pr.kind === "missile" ? 1.6 : 1.05)) {
-        if (pr.kind === "missile") this.detonate(pr, to);
-        else player.takeHit(pr.damage);
-        return true;
+    } else {
+      for (const t of this.targets) {
+        if (!t.targetable) continue;
+        if (segmentPointDistance(from, to, t.center) < (pr.kind === "missile" ? 1.6 : 1.05)) {
+          if (pr.kind === "missile") this.detonate(pr, to);
+          else t.takeHit(pr.damage);
+          return true;
+        }
       }
     }
     // World geometry.

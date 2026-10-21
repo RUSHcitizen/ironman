@@ -185,6 +185,7 @@ export class InputManager {
     s.fire = (this.pointerLocked && (this.mouseButtons & 1) !== 0) || this.down("KeyX") || t.fire;
     s.rockets = this.rocketClick || this.hit("KeyR") || t.consume("msl");
     s.toggleSuit = this.hit("KeyG") || t.consume("suit");
+    s.sentry = this.hit("KeyV") || t.consume("sentry");
     s.roll = this.hit("KeyQ") ? -1 : this.hit("KeyE") ? 1 : this.keyRoll || t.consumeRoll();
     s.menu = this.hit("Escape", "KeyP");
     this.pressed.clear();

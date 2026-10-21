@@ -11,7 +11,7 @@ function setup() {
   const player = new PlayerController(world);
   player.spawn(0, 0, 0, 0); // facing +Z
   const enemies = new EnemyManager(world);
-  const proj = new ProjectileSystem(world, enemies, player);
+  const proj = new ProjectileSystem(world, enemies, [player]);
   const combat = new Combat(world, enemies, proj);
   return { world, player, enemies, proj, combat };
 }
@@ -24,7 +24,7 @@ function run(s: ReturnType<typeof setup>, seconds: number, input: Partial<InputS
     const c = s.player.center;
     // Camera roughly behind the player looking along the view direction.
     s.combat.update(dt, inp, s.player, { x: c.x - Math.sin(s.player.viewYaw) * 4, y: c.y + 0.5, z: c.z - Math.cos(s.player.viewYaw) * 4 });
-    s.enemies.update(dt, s.player);
+    s.enemies.update(dt, [s.player]);
     s.proj.update(dt);
   }
 }
@@ -70,7 +70,7 @@ describe("combat", () => {
     s.proj.missile({ x: 0, y: s.player.center.y, z: 60 }, { x: 0, y: 0, z: -1 }, 14);
     run(s, 0.2, {}, { roll: 1 });
     const m = s.proj.projectiles.find((p) => p.kind === "missile");
-    expect(m?.homingPlayer).toBe(false);
+    expect(m?.homing).toBeNull();
   });
 
   it("kamikaze drones dive in and explode on the player", () => {

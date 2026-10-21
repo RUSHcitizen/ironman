@@ -17,6 +17,8 @@ export interface InputState {
   toggleFlight: boolean;
   rockets: boolean;
   toggleSuit: boolean;
+  /** Toggle sentry mode for the empty suit. */
+  sentry: boolean;
   /** -1 roll left, +1 roll right, 0 none. */
   roll: number;
   menu: boolean;
@@ -36,6 +38,7 @@ export function emptyInput(): InputState {
     toggleFlight: false,
     rockets: false,
     toggleSuit: false,
+    sentry: false,
     roll: 0,
     menu: false,
   };

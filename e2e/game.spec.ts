@@ -85,6 +85,27 @@ test.describe("desktop controls", () => {
     await until(page, (s) => s.suited, 90_000);
   });
 
+  test("step out, sentry mode fights, walk away and call the suit back", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 0, -182, 0));
+    await page.keyboard.press("KeyG");
+    const out = await until(page, (s) => !s.suited && s.suitState === "parked");
+    expect(Math.hypot(out.suitPos.x - out.pos.x, out.suitPos.z - out.pos.z)).toBeLessThan(3);
+    // Sentry: the empty suit engages hostiles on its own.
+    await page.keyboard.press("KeyV");
+    await until(page, (s) => s.suitState === "sentry");
+    await game(page, (g) => g.spawnEnemy("drone", 40, 15, 0));
+    await until(page, (s) => s.kills >= 1, 120_000);
+    // Walk away (teleport for speed), then call it: it flies over and docks.
+    await page.keyboard.press("KeyV");
+    await until(page, (s) => s.suitState === "parked");
+    await game(page, (g) => g.teleport(2.5, 0, -330, 0));
+    await page.keyboard.press("KeyG");
+    await until(page, (s) => s.suitState === "inbound");
+    await until(page, (s) => s.suited, 180_000);
+    expect(errors).toEqual([]);
+  });
+
   test("pause menu changes graphics quality and persists it", async ({ page }) => {
     await boot(page);
     await page.keyboard.press("Escape");
@@ -148,7 +169,8 @@ test.describe("touch controls (emulated)", () => {
     await boot(page);
     await tap(page, ".t-suit", 21);
     await until(page, (s) => !s.suited && !s.transforming);
-    await expect(page.locator(".t-suit small")).toHaveText("SUIT UP");
+    await expect(page.locator(".t-suit small")).toHaveText("CALL SUIT");
+    await expect(page.locator(".t-sentry")).toBeVisible();
     await expect(page.locator(".t-fire")).toBeHidden();
     await tap(page, ".t-suit", 22);
     await until(page, (s) => s.suited, 90_000);

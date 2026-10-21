@@ -1,4 +1,4 @@
-type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit";
+type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry";
 
 /**
  * On-screen touch controls built from DOM elements and Pointer Events
@@ -40,7 +40,8 @@ export class TouchControls {
       <button class="t-btn t-fly" data-b="fly" aria-label="Toggle flight"><span>✈</span><small>FLY</small></button>
       <button class="t-btn t-fire" data-b="fire" aria-label="Repulsor blast (hold)"><span>✺</span><small>BLAST</small></button>
       <button class="t-btn t-msl" data-b="msl" aria-label="Fire micro-rockets"><span>➶</span><small>MSL</small></button>
-      <button class="t-btn t-suit" data-b="suit" aria-label="Toggle suit"><span>⛨</span><small>SUIT</small></button>
+      <button class="t-btn t-suit" data-b="suit" aria-label="Exit or call the suit"><span>⛨</span><small>SUIT</small></button>
+      <button class="t-btn t-sentry" data-b="sentry" aria-label="Toggle sentry mode"><span>⛯</span><small>SENTRY</small></button>
     `;
     parent.appendChild(this.el);
     this.stickBase = this.el.querySelector(".t-stick")!;
@@ -94,13 +95,19 @@ export class TouchControls {
     return this.el.style.display !== "none";
   }
 
+  /** Show the suit's state on the civilian buttons. */
+  setSuitState(state: string): void {
+    this.buttons.sentry.querySelector("small")!.textContent = state === "sentry" ? "SENTRY ON" : "SENTRY";
+    this.buttons.sentry.classList.toggle("active", state === "sentry");
+  }
+
   /** Update buttons to match the current flight mode / identity. */
   setMode(mode: string, suited = true): void {
     const label = (b: ButtonName, t: string) => (this.buttons[b].querySelector("small")!.textContent = t);
     label("up", !suited ? "JUMP" : mode === "ground" ? "LIFT" : mode === "flight" ? "CLIMB" : "UP");
     label("down", mode === "flight" ? "DIVE" : "DOWN");
     label("fly", mode === "flight" ? "HOVER" : "FLY");
-    label("suit", suited ? "SUIT OFF" : "SUIT UP");
+    label("suit", suited ? "SUIT OFF" : "CALL SUIT");
     this.buttons.fly.classList.toggle("active", mode === "flight");
     this.el.classList.toggle("civ", !suited);
     this.el.dataset.mode = mode;
