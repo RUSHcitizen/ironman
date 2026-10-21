@@ -340,6 +340,14 @@ export class Game {
       const p = this.player;
       this.projectiles.sonicBoom(p.pos, p.viewYaw, p.viewPitch);
     });
+    bus.on("rush", (e) => {
+      this.hud.popup(e.level >= 2 ? "MAX RUSH" : "RUSH");
+      this.cam.addKick(e.level >= 2 ? 0.12 : 0.07);
+    });
+    bus.on("scrape", (e) => {
+      this.projectiles.scrape(e, e.speed);
+      this.cam.addShake(Math.min(0.5, 0.15 + e.speed / 120));
+    });
     bus.on("rankUp", (e) => {
       this.hud.popup(`RANK UP · ${e.name}`);
       this.cam.addKick(0.12);
@@ -1099,6 +1107,7 @@ export class Game {
       rescue: this.events.rescue,
       course: this.events.courseState,
       topSpeed: p.topSpeed,
+      rush: p.rush,
       hypersonic: p.hypersonic,
       saved: this.events.saved,
       timeOfDay: this.env.time,

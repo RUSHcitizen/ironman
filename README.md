@@ -26,6 +26,13 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 12 – more fun, more fluid flying
+
+- **Scraping instead of stopping.** A glancing hit on a wall no longer stops you dead. You grind along it in a shower of sparks, lose about 12% speed, take light damage to the arms and legs, and your heading turns to follow the wall. Only head-on crashes stop the flight.
+- **RUSH meter.** Flying faster than 100 m/s close to rooftops, the ground or past buildings fills an amber bar under the speed gauge, worth up to +30% top speed. Popups read "RUSH" at half and "MAX RUSH" when full, with a FOV kick. The meter fades slowly while you fly and quickly once you stop.
+- **Smoother handling.** Steering responds a little faster. At low speed the flight path follows your heading more tightly, and at high speed it keeps more momentum, so fast turns carve.
+- **Livelier camera.** In turns the camera swings to the outside and looks slightly into the curve. The view also widens with rush.
+
 ## Milestone 11 – 150% faster flight, hypersonic, ring challenges, new suit & power rules
 
 - **Falls in the suit are always survivable.** Hit the ground from any height (even from space) and you walk away. The armour takes the hit instead: damage scales with impact speed, capped at 45% per fall. Unprotected falls (as a civilian, or after ejecting) can still kill you.
@@ -398,7 +405,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **68 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **70 unit tests** pass, covering:
+  - Milestone 12: a glancing wall hit scrapes along the wall and keeps you flying with most of your speed, and skimming low and fast builds RUSH, raises your speed past cruise, then fades once you climb high.
   - The new suit and power rules: falls from 30 m, 400 m and 3 km are all survived with armour damage; repeated hard falls destroy the suit and the pilot drifts down safely; power drains exactly 1% per minute in the air, at 0% you sink even holding climb, and landing recharges to 100% instantly.
   - Milestone 11: cruise and afterburner are exactly 2.5× the old values, holding the afterburner goes hypersonic past Mach 1 (with a sonic boom and the top-speed record), and the faster hover still settles precisely.
   - City generation and collision.
@@ -417,7 +425,8 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **38 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **39 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **RUSH: a full meter pops MAX RUSH, shows the HUD bar and then decays.**
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
   - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between far corners of the city keeps collider and layout memory bounded.**
   - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**

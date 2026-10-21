@@ -44,6 +44,8 @@ export interface GameEvents extends Record<string, unknown> {
   rankUp: { name: string };
   hypersonic: { x: number; y: number; z: number };
   ringPassed: { index: number; total: number };
+  rush: { level: number };
+  scrape: { x: number; y: number; z: number; speed: number };
   rescue: { saved: boolean };
   playerDied: { cause: "fall" | "water"; speed: number };
   weapon: { kind: "repulsor" | "rocket" | "enemyBolt" | "missile" | "laser"; x: number; y: number; z: number };

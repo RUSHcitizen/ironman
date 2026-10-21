@@ -265,6 +265,17 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
+  test("RUSH meter: fills the HUD bar, pops MAX RUSH and widens the view", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 600, -300, 0, "flight", 200));
+    await game(page, (g) => { g.player.rush = 1; });
+    await expect(page.locator(".h-popup")).toContainText(/MAX RUSH/, { timeout: 15_000 });
+    await expect(page.locator("#hud")).toHaveClass(/rushing/);
+    const s = await until(page, (st) => (st as unknown as { rush: number }).rush < 0.9, 30_000);
+    expect((s as unknown as { rush: number }).rush).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {

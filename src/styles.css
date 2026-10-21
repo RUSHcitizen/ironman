@@ -650,3 +650,8 @@ html.touch #hud .h-objective b { font-size: 9px; line-height: 1.3; white-space: 
 html.touch #hud .h-area { top: calc(84px + var(--st)); max-width: 40cqw; }
 html.touch #hud .h-area b { font-size: 15px; letter-spacing: 0.25em; white-space: nowrap; }
 html.touch #hud .h-area small { display: none; }
+
+/* RUSH meter: fills while flying fast close to buildings or the ground. */
+.h-rush { width: 100%; height: 3px; margin-top: 4px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity 0.4s; }
+.v-rush { display: block; height: 100%; background: var(--amber); transform: scaleX(0); transform-origin: left; transition: transform 0.15s ease-out; }
+#hud.rushing .h-rush { opacity: 1; }

@@ -98,6 +98,7 @@ export class Hud {
         <small>SPD</small><b class="v-speed">0</b><span>KM/H</span>
         <div class="h-bar"><i class="v-speedbar"></i></div>
         <em class="v-mach">MACH 0.00</em>
+        <div class="h-rush"><i class="v-rush"></i></div>
       </div>
       <div class="h-right h-gauge">
         <small>ALT</small><b class="v-alt">0</b><span>M</span>
@@ -460,6 +461,8 @@ export class Hud {
     this.q(".v-speed").textContent = String(Math.round(kmh));
     this.text(".v-mach", `MACH ${(p.speed / 343).toFixed(2)} · TOP ${Math.round(p.topSpeed * 3.6)}`);
     this.q(".v-speedbar").style.transform = `scaleY(${Math.min(1, kmh / 1300)})`;
+    this.q(".v-rush").style.transform = `scaleX(${p.rush.toFixed(2)})`;
+    this.el.classList.toggle("rushing", p.rush > 0.05);
     this.q(".v-alt").textContent = String(Math.round(p.pos.y));
     this.q(".v-altbar").style.transform = `scaleY(${Math.min(1, Math.max(0, p.pos.y) / 2600)})`;
     const vs = p.vel.y;

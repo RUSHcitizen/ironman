@@ -176,6 +176,16 @@ export class ProjectileSystem implements EnemyWeapons {
     this.particles.push({ ...p, t: 0, spin: Math.random() * 6, smoke: Math.random() * 0.1 });
   }
 
+  /** Sparks and grit thrown off when the armour scrapes along a wall. */
+  scrape(at: V3, speed: number): void {
+    this.fx.push({ kind: "spark", ...at, size: 1.8, t: 0, life: 0.15, yaw: 0, pitch: 0 });
+    const n = Math.min(10, 3 + Math.round(speed / 12));
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, sp = 6 + Math.random() * 10;
+      this.particle({ kind: "ember", ...at, vx: Math.cos(a) * sp, vy: 2 + Math.random() * 6, vz: Math.sin(a) * sp, life: 0.3 + Math.random() * 0.4, size: 0.2 });
+    }
+  }
+
   /** Wreckage chunks and embers flung out of a destroyed unit. */
   wreck(at: V3, size: number): void {
     const n = Math.min(14, 4 + Math.round(size * 1.2));

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PlayerController, TUNING } from "../src/player/PlayerController";
 import { CollisionWorld } from "../src/world/Collision";
+import { EventBus, type GameEvents } from "../src/core/EventBus";
 import { emptyInput, type InputState } from "../src/input/InputState";
 
 function sim(p: PlayerController, seconds: number, input: Partial<InputState> = {}, edges: Partial<InputState> = {}): void {
@@ -489,5 +490,43 @@ describe("PlayerController", () => {
     expect(Math.hypot(p.vel.x, p.vel.z)).toBeGreaterThan(24);
     sim(p, 2);
     expect(Math.hypot(p.vel.x, p.vel.z)).toBeLessThan(1);
+  });
+  it("glancing a wall scrapes along it instead of stopping the flight", () => {
+    const w = new CollisionWorld();
+    w.add({ minX: 20, minY: 0, minZ: -2000, maxX: 40, maxY: 300, maxZ: 2000 });
+    const bus = new EventBus<GameEvents>();
+    const scrapes: number[] = [];
+    bus.on("scrape", (e) => scrapes.push(e.speed));
+    const p = new PlayerController(w, bus);
+    p.spawn(15, 100, -600, 0.12); // heading north, drifting into the wall
+    p.mode = "flight";
+    p.grounded = false;
+    p.viewPitch = 0;
+    p.flightSpeed = 150;
+    p.vel.z = 150;
+    sim(p, 2);
+    expect(scrapes.length).toBeGreaterThan(0);
+    expect(p.mode).toBe("flight");
+    expect(p.pos.x).toBeLessThan(20);
+    expect(p.speed).toBeGreaterThan(80);
+    expect(p.pos.z).toBeGreaterThan(-500);
+  });
+
+  it("skimming low and fast builds RUSH, which raises top speed; it fades up high", () => {
+    const w = new CollisionWorld();
+    w.add({ minX: -3000, minY: -10, minZ: -3000, maxX: 3000, maxY: 0, maxZ: 3000 });
+    const p = new PlayerController(w);
+    p.spawn(0, 12, -2500, 0);
+    p.mode = "flight";
+    p.grounded = false;
+    p.viewPitch = 0;
+    p.flightSpeed = 140;
+    p.vel.z = 140;
+    sim(p, 5);
+    expect(p.rush).toBeGreaterThan(0.5);
+    expect(p.speed).toBeGreaterThan(TUNING.cruiseSpeed * 1.1);
+    p.pos.y = 600;
+    sim(p, 6);
+    expect(p.rush).toBeLessThan(0.5);
   });
 });

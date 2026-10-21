@@ -126,6 +126,12 @@ export class PlayerController {
   hypersonic = false;
   /** Fastest speed reached this session (m/s). */
   topSpeed = 0;
+  /**
+   * RUSH 0..1: flying fast close to buildings, rooftops or the street builds
+   * it; it adds up to +30% top speed and drains away in open sky.
+   */
+  rush = 0;
+  private rushLevel = 0;
   private sonicDone = false;
   walkPhase = 0;
   /** Seconds remaining in the landing crouch. */
@@ -422,6 +428,8 @@ export class PlayerController {
       this.bus?.emit("suitFailure", {});
     }
     this.updateNearMiss(dt);
+    // Rush fades in open sky (and fast when you stop flying).
+    this.rush = Math.max(0, this.rush - dt * (this.mode === "flight" ? 0.12 : 0.6));
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
     if (this.aimTimer > 0) this.aimTimer -= dt;
@@ -600,10 +608,10 @@ export class PlayerController {
     const turnRate = TUNING.turnRate * (1.25 - Math.min(0.5, this.flightSpeed / 625));
     // Banked turns bite harder: roll into the turn and it tightens.
     const bankGrip = 0.75 + 0.45 * Math.min(1, Math.abs(this.bank) / TUNING.maxBank);
-    this.yawRate += (input.moveX * turnRate * bankGrip - this.yawRate) * damp(3.5, dt);
+    this.yawRate += (input.moveX * turnRate * bankGrip - this.yawRate) * damp(4.5, dt);
     this.viewYaw = wrapAngle(this.viewYaw + this.yawRate * dt);
     const pitchIn = ((input.ascend ? 1 : 0) - (input.descend ? 1 : 0)) * TUNING.pitchRate;
-    this.pitchRate += (pitchIn - this.pitchRate) * damp(3.5, dt);
+    this.pitchRate += (pitchIn - this.pitchRate) * damp(4.5, dt);
     this.viewPitch = clamp(this.viewPitch + this.pitchRate * dt, -85 * DEG, 85 * DEG);
     this.lookRate += (input.lookX / Math.max(dt, 1e-3) - this.lookRate) * damp(5, dt);
 
@@ -626,7 +634,7 @@ export class PlayerController {
 
     // Thin air at altitude: less drag, so the suit flies much faster.
     const thin = 1 + clamp((this.pos.y - 400) / 2000, 0, 1) * 1.6;
-    let target = (this.afterburner ? TUNING.afterburnerSpeed * (hyper ? TUNING.hyperBoost : 1) : TUNING.cruiseSpeed) * thin;
+    let target = (this.afterburner ? TUNING.afterburnerSpeed * (hyper ? TUNING.hyperBoost : 1) : TUNING.cruiseSpeed) * thin * (1 + 0.3 * this.rush);
     // Gravity assist: dives build speed, climbs bleed it.
     const sp = Math.sin(this.viewPitch);
     target += sp < 0 ? -sp * 112 : -sp * (this.afterburner ? 20 : 50);
@@ -643,7 +651,9 @@ export class PlayerController {
 
     const cp = Math.cos(this.viewPitch);
     let dx = Math.sin(this.viewYaw) * cp, dy = sp, dz = Math.cos(this.viewYaw) * cp;
-    let rate = 2.6; // momentum: velocity eases toward the heading
+    // Momentum: the path follows the heading snappily when slow, and carries
+    // more momentum (a satisfying drift through turns) when fast.
+    let rate = 4.2 - Math.min(2, this.flightSpeed / 150);
     const tr = this.trick;
     if (tr && tr.kind === "loop") {
       // Loop-the-loop: the flight path itself rotates through 360 degrees.
@@ -787,6 +797,15 @@ export class PlayerController {
     const c = this.center;
     const s = Math.sin(this.viewYaw), co = Math.cos(this.viewYaw);
     const close = (dx: number, dy: number, dz: number) => this.world.raycast(c.x, c.y, c.z, dx, dy, dz, 7) < 7;
+    // RUSH: skimming rooftops / the street or threading between buildings.
+    if (this.flightSpeed > 100) {
+      const skim = this.world.raycast(c.x, c.y, c.z, 0, -1, 0, 28) < 28;
+      const side = this.world.raycast(c.x, c.y, c.z, co, 0, -s, 14) < 14 || this.world.raycast(c.x, c.y, c.z, -co, 0, s, 14) < 14;
+      if (skim || side) this.rush = Math.min(1, this.rush + (side ? 0.07 : 0.045));
+    }
+    const lvl = this.rush >= 0.99 ? 2 : this.rush >= 0.5 ? 1 : 0;
+    if (lvl > this.rushLevel) this.bus?.emit("rush", { level: lvl });
+    this.rushLevel = lvl;
     if ((close(co, 0, -s) || close(-co, 0, s) || close(0, -1, 0)) && this.nearMissCooldown <= 0) {
       this.nearMissStreak++;
       this.nearMissCooldown = 0.9;
@@ -796,7 +815,8 @@ export class PlayerController {
   }
 
   private integrate(dt: number): void {
-    const dist = Math.hypot(this.vel.x, this.vel.y, this.vel.z) * dt;
+    const speed0 = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+    const dist = speed0 * dt;
     // Fine sub-steps so even hypersonic flight can't tunnel through walls.
     const steps = Math.min(24, Math.max(1, Math.ceil(dist / 1.4)));
     const h = dt / steps;
@@ -858,6 +878,15 @@ export class PlayerController {
       }
     }
 
+    // Glancing blow in flight: scrape along the wall and keep flying.
+    if (impactSpeed > 6 && this.mode === "flight" && impactSpeed < speed0 * 0.5 && impactSpeed < 120) {
+      this.flightSpeed *= 0.88;
+      this.suit.damage(impactSpeed * 0.04, ["arms", "legs"]);
+      const hs = Math.hypot(this.vel.x, this.vel.z);
+      if (hs > 5) this.viewYaw = dampAngle(this.viewYaw, Math.atan2(this.vel.x, this.vel.z), 12, dt);
+      this.bus?.emit("scrape", { x: this.pos.x, y: this.pos.y + 1, z: this.pos.z, speed: impactSpeed });
+      impactSpeed = 0;
+    }
     if (impactSpeed > 22 && this.mode !== "ground") {
       this.bus?.emit("impact", { speed: impactSpeed });
       this.suit.damage(impactSpeed * 0.15, impactSpeed > 70 ? undefined : ["chest", "arms", "helmet"]);
