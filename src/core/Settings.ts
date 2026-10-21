@@ -39,6 +39,8 @@ export interface SettingsData {
   timeOfDay: "sunset" | "day" | "night";
   /** Show the helmet HUD (off = cinematic). */
   hud: boolean;
+  /** The player chose a quality preset themselves (no automatic upgrades). */
+  qualityPicked: boolean;
 }
 
 const KEY = "ironman.settings.v1";
@@ -55,6 +57,7 @@ export function defaultSettings(isMobile: boolean): SettingsData {
     suit: "classic",
     timeOfDay: "sunset",
     hud: true,
+    qualityPicked: false,
   };
 }
 

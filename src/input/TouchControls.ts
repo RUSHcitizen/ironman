@@ -90,6 +90,22 @@ export class TouchControls {
       b.addEventListener("contextmenu", (e) => e.preventDefault());
     }
     this.resetStick();
+    // Fade the controls away when the screen hasn't been touched for a bit.
+    window.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse") this.wake();
+    });
+    this.wake();
+  }
+
+  private idleTimer: number | undefined;
+  private wake(): void {
+    this.el.classList.remove("idle");
+    window.clearTimeout(this.idleTimer);
+    this.idleTimer = window.setTimeout(() => {
+      // Stay awake while a thumb is still down.
+      if (this.stickId !== null || this.lookIds.size > 0 || this.ascend || this.descend || this.fire) this.wake();
+      else this.el.classList.add("idle");
+    }, 4000);
   }
 
   /**

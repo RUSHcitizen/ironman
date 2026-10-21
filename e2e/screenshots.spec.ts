@@ -193,6 +193,13 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.screenshot({ path: `${OUT}/23-clouds-contrails.png` });
   await page.keyboard.up("KeyW");
 
+  // New enemies: a titan with sentinels and a spider walker.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 30, -420, 0, "hover"); g.player.viewPitch = 0.02;
+    g.spawnEnemy("titan", 70, -30, 6); g.spawnEnemy("sentinel", 35, 4, -8); g.spawnEnemy("sentinel", 45, 8, 10); g.spawnEnemy("spider", 50, -30, -18);`);
+  await frames(page, 36);
+  await page.screenshot({ path: `${OUT}/27-titan-sentinels.png` });
+  await run(page, `g.enemies.clear();`);
+
   // Night over the city, then a sunny day in the Midas armour with a boss bar.
   await run(page, `g.settings.update({ timeOfDay: "night" }); g.teleport(2.5, 120, -300, 0.4, "hover"); g.player.viewPitch = -0.12;`);
   await frames(page, 30);

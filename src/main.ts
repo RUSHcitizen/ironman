@@ -56,16 +56,6 @@ function setupOrientation(isMobile: boolean): void {
   check();
 }
 
-/** Android: go full-screen and lock to landscape (ignored where unsupported, e.g. iPhone). */
-async function lockLandscape(): Promise<void> {
-  try {
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });
-    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
-    await o.lock?.("landscape");
-  } catch {
-    /* not supported here: the sideways fallback covers it */
-  }
-}
 
 async function boot(): Promise<void> {
   $("e-retry").addEventListener("click", () => location.reload());
@@ -89,7 +79,7 @@ async function boot(): Promise<void> {
   const glError = checkWebGL();
   if (glError) return showError(glError);
 
-  const settings = new Settings(device.isMobile);
+  const settings = new Settings(device.isMobile || device.isChromebook);
   const canvas = $<HTMLCanvasElement>("game");
   let engine: Engine;
   try {
@@ -129,7 +119,6 @@ async function boot(): Promise<void> {
     () => {
       $("loading").classList.add("out");
       setTimeout(() => ($("loading").hidden = true), 600);
-      if (device.isMobile) void lockLandscape();
       game.start();
     },
     { once: true },

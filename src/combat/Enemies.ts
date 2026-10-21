@@ -259,6 +259,13 @@ export class EnemyManager {
     e.hp -= amount;
     e.flash = 1;
     e.aware = true;
+    // Light units get knocked about by hits.
+    if (AIR_KINDS.has(e.kind) && ENEMY_STATS[e.kind].hp < 200) {
+      const k = Math.min(10, amount * 0.4);
+      e.vx += this.rng.range(-k, k);
+      e.vy += this.rng.range(0, k * 0.6);
+      e.vz += this.rng.range(-k, k);
+    }
     if (e.kind === "cloaker") {
       // Hit: the cloak drops for a moment.
       e.state = "engage";

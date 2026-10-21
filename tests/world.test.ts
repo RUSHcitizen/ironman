@@ -82,6 +82,12 @@ describe("CollisionWorld", () => {
     expect(w.chunksLoaded).toBeGreaterThan(0);
     expect(w.chunksLoaded).toBeLessThan(5);
     expect(roof).toBeGreaterThanOrEqual(0);
+    // Far chunks can be evicted to bound memory, and come back on demand.
+    const before = w.chunksLoaded;
+    expect(w.evictFar(0, 0, 1000).length).toBe(before);
+    expect(w.chunksLoaded).toBe(0);
+    expect(w.surfaceBelow(6000, 1000, -6000, 0.5, 0)).toBe(roof);
+    expect(w.chunksLoaded).toBe(before);
   });
 
   it("detects overlaps", () => {

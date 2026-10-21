@@ -96,6 +96,8 @@ export class Game {
   private perfTime = 0;
   private perfFrames = 0;
   private lowPerfStrikes = 0;
+  private highPerfStrikes = 0;
+  private downgraded = false;
   private runTime = 0;
   private time = 0;
   private failTimer = 0;
@@ -766,6 +768,7 @@ export class Game {
     this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
     this.input.touch.setCharging(this.combat.beamCharge >= 0);
     this.updateThrusterWash(dt);
+    this.evictFar(dt);
     this.updateRadar(dt);
     this.updateBossBar(dt);
     const rank = this.progress.rank;
@@ -800,6 +803,16 @@ export class Game {
     }
     for (const m of this.hud.markers) b.push({ x: m.x, z: m.z, kind: m.kind === "event" ? "event" : m.kind === "suit" ? "suit" : "poi" });
     this.hud.updateRadar(dt, this.player, b);
+  }
+
+  private evictTimer = 0;
+  /** Keep memory bounded on the huge map: drop far collider / layout data. */
+  private evictFar(dt: number): void {
+    this.evictTimer -= dt;
+    if (this.evictTimer > 0) return;
+    this.evictTimer = 5;
+    const p = this.player.pos;
+    this.chunks.dropSpecs(this.world.evictFar(p.x, p.z, 2600));
   }
 
   private washTimer = 0;
@@ -886,9 +899,19 @@ export class Game {
     this.perfFrames = 0;
     if (!this.settings.data.autoQuality || this.runTime < 6) return;
     this.lowPerfStrikes = fps < 26 ? this.lowPerfStrikes + 1 : 0;
+    this.highPerfStrikes = fps >= 57 ? this.highPerfStrikes + 1 : 0;
     const idx = QUALITY_ORDER.indexOf(this.settings.data.quality);
+    // Fast devices (iPhone 15, quick Chromebooks) started on Low step up to
+    // Medium once they hold ~60 fps for a while; never after a downgrade.
+    if (this.highPerfStrikes >= 3 && idx === 0 && !this.downgraded && !this.settings.data.qualityPicked) {
+      this.highPerfStrikes = 0;
+      this.settings.update({ quality: "medium" });
+      this.bus.emit("alert", { text: `Running smoothly (${fps.toFixed(0)} fps) · graphics raised to medium`, level: "info" });
+      return;
+    }
     if (this.lowPerfStrikes >= 2 && idx > 0) {
       this.lowPerfStrikes = 0;
+      this.downgraded = true;
       const next = QUALITY_ORDER[idx - 1];
       this.settings.update({ quality: next });
       this.bus.emit("alert", { text: `Performance low (${fps.toFixed(0)} fps) · graphics set to ${next}`, level: "warn" });
@@ -921,6 +944,8 @@ export class Game {
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
+      colliderChunks: this.world.chunksLoaded,
+      specChunks: this.chunks.specCount,
       rescue: this.events.rescue,
       saved: this.events.saved,
       timeOfDay: this.env.time,

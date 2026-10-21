@@ -24,13 +24,13 @@ export class CollisionWorld {
   private cells = new Map<number, Box[]>();
   private stamp = 0;
   private marks = new WeakMap<Box, number>();
-  readonly boxes: Box[] = [];
   /**
    * Lazy collider source: called the first time any query touches a city
    * chunk, so the whole (huge) city never has to be registered up front.
    */
   provider: ((cx: number, cz: number) => Box[]) | null = null;
-  private loadedChunks = new Set<number>();
+  /** Boxes registered per lazily loaded chunk (so far chunks can be evicted). */
+  private loadedChunks = new Map<number, Box[]>();
 
   /** Number of chunks whose colliders have been generated. */
   get chunksLoaded(): number {
@@ -46,8 +46,9 @@ export class CollisionWorld {
       for (let cz = c0z; cz <= c1z; cz++) {
         const k = (cx + 512) * 1024 + (cz + 512);
         if (this.loadedChunks.has(k)) continue;
-        this.loadedChunks.add(k);
-        for (const b of this.provider(cx, cz)) this.add(b);
+        const boxes = this.provider(cx, cz);
+        this.loadedChunks.set(k, boxes);
+        for (const b of boxes) this.add(b);
       }
     }
   }
@@ -56,8 +57,39 @@ export class CollisionWorld {
     return ((cx + 32768) << 16) | (cz + 32768);
   }
 
+  /**
+   * Drop lazily generated chunks farther than `radius` from (x,z) so memory
+   * stays bounded on a huge map (they regenerate on demand). Returns the
+   * evicted chunk coordinates.
+   */
+  evictFar(x: number, z: number, radius: number): [number, number][] {
+    const out: [number, number][] = [];
+    for (const [k, boxes] of this.loadedChunks) {
+      const cx = Math.floor(k / 1024) - 512, cz = (k % 1024) - 512;
+      if (Math.hypot((cx + 0.5) * CHUNK_SIZE - x, (cz + 0.5) * CHUNK_SIZE - z) < radius) continue;
+      for (const b of boxes) this.remove(b);
+      this.loadedChunks.delete(k);
+      out.push([cx, cz]);
+    }
+    return out;
+  }
+
+  private remove(b: Box): void {
+    const x0 = Math.floor(b.minX / CELL), x1 = Math.floor(b.maxX / CELL);
+    const z0 = Math.floor(b.minZ / CELL), z1 = Math.floor(b.maxZ / CELL);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const k = this.key(x, z);
+        const list = this.cells.get(k);
+        if (!list) continue;
+        const i = list.indexOf(b);
+        if (i >= 0) list.splice(i, 1);
+        if (list.length === 0) this.cells.delete(k);
+      }
+    }
+  }
+
   add(b: Box): void {
-    this.boxes.push(b);
     const x0 = Math.floor(b.minX / CELL), x1 = Math.floor(b.maxX / CELL);
     const z0 = Math.floor(b.minZ / CELL), z1 = Math.floor(b.maxZ / CELL);
     for (let x = x0; x <= x1; x++) {

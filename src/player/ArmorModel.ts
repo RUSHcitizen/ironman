@@ -45,6 +45,14 @@ export interface AvatarState {
   readonly beamTimer?: number;
   /** Where the pilot is looking (head and torso turn toward it). */
   readonly viewYaw?: number;
+  /** Repulsor recoil 0..1. */
+  readonly recoil?: number;
+  /** Hit flinch 0..1 and side. */
+  readonly flinch?: number;
+  readonly flinchSide?: number;
+  /** Dead: slump to the ground. */
+  readonly dead?: boolean;
+  readonly deadTime?: number;
 }
 import { clamp, damp } from "../core/math";
 
@@ -106,6 +114,11 @@ export class ArmorModel {
   /** Smoothed head / torso turn toward the aim. */
   private lookYaw = 0;
   private beamGlow = 0;
+  /** Take-off spring (1 at lift-off, decays) and the last mode seen. */
+  private launch = 0;
+  private lastMode = "ground";
+  /** Slow idle weight shift on the ground. */
+  private idleT = 0;
   readonly meshes: AbstractMesh[] = [];
 
   constructor(
@@ -714,6 +727,63 @@ export class ArmorModel {
       pose.elR = [-0.5, 0];
     }
     this.beamGlow += ((beam > 0 ? 1 : 0) - this.beamGlow) * damp(beam > 0 ? 14 : 4, dt);
+    // Take-off: a quick crouch-and-spring as the thrusters fire.
+    if (p.mode !== this.lastMode) {
+      if (this.lastMode === "ground" && p.suited && p.agl < 3) this.launch = 1;
+      this.lastMode = p.mode;
+    }
+    if (this.launch > 0.01) {
+      const l = this.launch;
+      const k = Math.sin(l * Math.PI) * 0.9;
+      pose.hipL = [(pose.hipL?.[0] ?? 0) - k * 0.9, pose.hipL?.[1] ?? 0];
+      pose.hipR = [(pose.hipR?.[0] ?? 0) - k * 0.9, pose.hipR?.[1] ?? 0];
+      pose.knL = [(pose.knL?.[0] ?? 0) + k * 1.4, 0];
+      pose.knR = [(pose.knR?.[0] ?? 0) + k * 1.4, 0];
+      pose.shL = [0.5 * l, -0.35];
+      pose.shR = [0.5 * l, 0.35];
+      pivotY -= k * 0.35;
+      this.launch = Math.max(0, this.launch - dt * 2.8);
+    }
+    // Idle on the ground: slowly shift weight from leg to leg.
+    if (p.mode === "ground" && Math.hypot(p.vel.x, p.vel.z) < 0.3 && p.landingTimer <= 0) {
+      this.idleT += dt;
+      const w = Math.sin(this.idleT * 0.7) * Math.min(1, this.idleT / 3);
+      pose.hipL = [(pose.hipL?.[0] ?? 0) + Math.max(0, w) * 0.12, (pose.hipL?.[1] ?? 0) - w * 0.05];
+      pose.knL = [(pose.knL?.[0] ?? 0) + Math.max(0, w) * 0.2, 0];
+      pose.hipR = [(pose.hipR?.[0] ?? 0) + Math.max(0, -w) * 0.12, (pose.hipR?.[1] ?? 0) - w * 0.05];
+      pose.knR = [(pose.knR?.[0] ?? 0) + Math.max(0, -w) * 0.2, 0];
+      pose.spine = [(pose.spine?.[0] ?? 0), (pose.spine?.[1] ?? 0) + w * 0.04];
+    } else this.idleT = 0;
+    // Repulsor recoil: the firing forearm kicks back.
+    const rc = p.recoil ?? 0;
+    if (rc > 0 && pose.shR) {
+      pose.shR = [pose.shR[0] + rc * 0.25, pose.shR[1]];
+      pose.elR = [(pose.elR?.[0] ?? 0) - rc * 0.45, 0];
+    }
+    // Hit flinch: torso jolts away from the impact.
+    const fl = p.flinch ?? 0;
+    if (fl > 0) {
+      const sd = p.flinchSide ?? 1;
+      pose.spine = [(pose.spine?.[0] ?? 0) - fl * 0.35, (pose.spine?.[1] ?? 0) + sd * fl * 0.3];
+      pose.neck = [(pose.neck?.[0] ?? 0) - fl * 0.3, sd * fl * 0.2];
+    }
+    // Dead: crumple to the ground.
+    if (p.dead) {
+      const u = Math.min(1, (p.deadTime ?? 0) / 0.6);
+      pose = {
+        spine: [0.9 * u, 0.2 * u],
+        neck: [0.6 * u, 0.3 * u],
+        hipL: [-1.4 * u, -0.3 * u],
+        hipR: [-1.2 * u, 0.25 * u],
+        knL: [2.0 * u, 0],
+        knR: [1.6 * u, 0],
+        shL: [0.4 * u, -1.0 * u],
+        shR: [0.6 * u, 0.8 * u],
+        elL: [-0.6 * u, 0],
+        elR: [-0.3 * u, 0],
+      };
+      pivotY = 1.0 - 0.7 * u;
+    }
     if (p.mode !== "ground") this.crouch = 0;
     this.pivot.position.y += (pivotY - this.pivot.position.y) * damp(12, dt);
 

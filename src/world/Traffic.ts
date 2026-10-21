@@ -24,6 +24,8 @@ interface Car {
   lane: number;
   length: number;
   slot: number;
+  /** Smoothed body pitch from braking / accelerating (suspension). */
+  pitch?: number;
 }
 
 interface KindMeshes {
@@ -241,7 +243,11 @@ export class TrafficSystem {
         const stop = this.nextStopLine(c) - c.length / 2;
         if (stop > 0 && stop < 22) target = Math.min(target, Math.max(0, (stop - 1) * 0.7));
       }
-      c.speed += Math.max(-9 * dt, Math.min(4 * dt, target - c.speed));
+      const dv = Math.max(-9 * dt, Math.min(4 * dt, target - c.speed));
+      c.speed += dv;
+      // Suspension: nose dips under braking, squats when pulling away.
+      const want = Math.max(-0.05, Math.min(0.04, (-dv / Math.max(dt, 1e-3)) * 0.006));
+      c.pitch = (c.pitch ?? 0) + (want - (c.pitch ?? 0)) * Math.min(1, dt * 6);
       c.s += c.speed * c.dir * dt;
       if (c.s > hi) c.s = lo;
       else if (c.s < lo) c.s = hi;
@@ -255,8 +261,9 @@ export class TrafficSystem {
       const km = this.kinds.get(c.kind)!;
       if (km.n >= km.max) continue;
       this.sc.set(sc, sc, sc);
-      Quaternion.RotationYawPitchRollToRef(yaw, 0, 0, this.q);
-      this.t.set(x, 0, z);
+      Quaternion.RotationYawPitchRollToRef(yaw, c.pitch ?? 0, 0, this.q);
+      // Tiny road-surface bounce at speed.
+      this.t.set(x, Math.abs(Math.sin(c.s * 0.9)) * 0.015 * Math.min(1, c.speed / 10), z);
       Matrix.ComposeToRef(this.sc, this.q, this.t, this.m);
       this.m.copyToArray(km.matrices, km.n * 16);
       // Keep each vehicle's colour with it.

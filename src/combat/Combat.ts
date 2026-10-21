@@ -73,6 +73,7 @@ export class Combat {
       this.repulsorCooldown = 0.15;
       p.suit.drain(0.6);
       p.aimTimer = 0.7;
+      p.recoil = 1;
       const from = this.muzzle(p, aim, this.side);
       this.side = p.mode === "flight" ? -this.side : 1;
       const target = this.assistTarget ? this.leadPoint(from, this.assistTarget, 240) : this.aimPoint(camPos, aim);

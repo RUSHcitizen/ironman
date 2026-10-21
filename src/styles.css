@@ -572,3 +572,63 @@ html.rotated {
 .b-bar i, .b-bar u { position: absolute; inset: 0; transform-origin: left; }
 .b-bar u { background: rgba(255, 220, 200, 0.55); }
 .b-bar i { background: linear-gradient(90deg, #ff3b30, #ff8a50); z-index: 1; box-shadow: 0 0 8px #ff5148; transition: transform 0.12s; }
+
+/* ================= Clean, see-through touch controls =================
+   Icon-only, thin outlines, almost no fill; secondary actions smaller and
+   fainter; everything fades further when you're not touching the screen. */
+html.touch #touch .t-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: none;
+  opacity: 0.6;
+  transition: opacity 0.35s, transform 0.12s ease-out, background-color 0.15s, border-color 0.15s;
+}
+html.touch #touch .t-btn span { font-size: 21px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+html.touch #touch .t-btn small { display: none; }
+html.touch #touch .t-btn.on { opacity: 1; background: rgba(107, 233, 255, 0.25); border-color: rgba(107, 233, 255, 0.95); transform: scale(0.9); }
+/* Subtle colour hints instead of heavy coloured rings. */
+html.touch #touch .t-fire { border-color: rgba(255, 130, 100, 0.55); background: rgba(255, 90, 60, 0.07); }
+html.touch #touch .t-fire.on { background: rgba(255, 110, 80, 0.35); border-color: #ff8a70; }
+html.touch #touch .t-fly.active, html.touch #touch .t-sentry.active { border-color: rgba(255, 200, 110, 0.85); }
+html.touch #touch .t-beam.charging { background: rgba(107, 233, 255, 0.3); opacity: 1; }
+/* Right-thumb grid (offsets from the right / bottom safe edges). */
+html.touch #touch .t-down { right: calc(18px + var(--sr)); bottom: calc(16px + var(--sb)); width: 60px; height: 60px; }
+html.touch #touch .t-up { right: calc(18px + var(--sr)); bottom: calc(86px + var(--sb)); width: 60px; height: 60px; }
+html.touch #touch .t-fire { right: calc(88px + var(--sr)); bottom: calc(16px + var(--sb)); width: 72px; height: 72px; }
+html.touch #touch .t-msl { right: calc(98px + var(--sr)); bottom: calc(98px + var(--sb)); width: 52px; height: 52px; }
+html.touch #touch .t-fly { right: calc(170px + var(--sr)); bottom: calc(16px + var(--sb)); width: 56px; height: 56px; }
+html.touch #touch .t-trick { right: calc(160px + var(--sr)); bottom: calc(160px + var(--sb)); width: 44px; height: 44px; }
+html.touch #touch .t-cut { right: calc(104px + var(--sr)); bottom: calc(160px + var(--sb)); width: 44px; height: 44px; }
+html.touch #touch .t-sharpR { right: calc(174px + var(--sr)); bottom: calc(84px + var(--sb)); width: 46px; height: 46px; }
+html.touch #touch .t-sharpL { right: calc(232px + var(--sr)); bottom: calc(84px + var(--sb)); width: 46px; height: 46px; }
+html.touch #touch .t-flare { right: calc(236px + var(--sr)); bottom: calc(18px + var(--sb)); width: 46px; height: 46px; }
+/* Top row: small round icons. */
+html.touch #touch .t-suit, html.touch #touch .t-sentry, html.touch #touch .t-beam { width: 44px; height: 44px; top: calc(8px + var(--st)); bottom: auto; }
+html.touch #touch .t-suit { right: calc(62px + var(--sr)); }
+html.touch #touch .t-sentry { right: calc(114px + var(--sr)); }
+html.touch #touch .t-beam { right: calc(166px + var(--sr)); }
+/* These change meaning (SUIT OFF / EJECT / RECALL, SENTRY / BODY): keep a tiny label. */
+html.touch #touch .t-suit small, html.touch #touch .t-sentry small { display: block; font-size: 6.5px; letter-spacing: 0.04em; margin-top: 1px; opacity: 0.85; }
+html.touch #touch .t-suit span, html.touch #touch .t-sentry span, html.touch #touch .t-beam span { font-size: 16px; }
+/* Civilian: the sentry button moves back next to the stick-free right side. */
+html.touch #touch.civ .t-sentry { top: auto; right: calc(88px + var(--sr)); bottom: calc(16px + var(--sb)); width: 60px; height: 60px; }
+/* Secondary actions are fainter until used. */
+html.touch #touch .t-trick, html.touch #touch .t-cut, html.touch #touch .t-sharp, html.touch #touch .t-flare, html.touch #touch .t-msl { opacity: 0.45; }
+/* Idle: fade almost away so the city is unobstructed. */
+#touch.idle .t-btn { opacity: 0.18 !important; }
+#touch.idle .t-stick { opacity: 0 !important; }
+html.touch .t-stick:not(.active) { opacity: 0.2; }
+html.touch .t-stick { transition: opacity 0.3s; }
+/* Lighter HUD panels on phones. */
+html.touch .h-diag { background: rgba(4, 16, 28, 0.22); border-color: rgba(107, 233, 255, 0.18); }
+html.touch .h-alert { background: rgba(4, 16, 28, 0.25); }
+/* Phones: compact, translucent alerts tucked under the compass, a smaller
+   area banner, and only the two most recent alerts. */
+html.touch .h-alerts { top: calc(64px + var(--st)); max-width: min(44cqw, 360px); gap: 3px; }
+html.touch .h-alert { font-size: 10px; padding: 3px 8px; border-bottom-width: 1px; background: rgba(4, 16, 28, 0.2); }
+html.touch .h-alert small { display: none; }
+html.touch .h-alert:nth-child(n + 3) { display: none; }
+html.touch .h-area b { font-size: 16px !important; letter-spacing: 0.3em; }
+html.touch .h-area small { font-size: 8px; }
+html.touch .h-diag { transform: scale(0.85); transform-origin: top left; }

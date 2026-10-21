@@ -124,6 +124,11 @@ export class PlayerController {
   rocketTimer = 0;
   /** Unibeam pose (chest thrust forward, arms back). */
   beamTimer = 0;
+  /** Repulsor recoil (1 on a shot, decays) - animation only. */
+  recoil = 0;
+  /** Hit flinch (1 when hit, decays) and the side it came from (-1 left / +1 right). */
+  flinch = 0;
+  flinchSide = 0;
   nearMissStreak = 0;
   private nearMissTimer = 0;
   private nearMissCooldown = 0;
@@ -138,6 +143,7 @@ export class PlayerController {
   blackout = false;
   /** Killed (e.g. by a fall); waiting for the game to respawn us. */
   dead = false;
+  deadTime = 0;
   private zone: "air" | "thin" | "space" = "air";
   private oxygenWarned = 100;
 
@@ -169,6 +175,8 @@ export class PlayerController {
     this.transformTimer = 0;
     this.failed = false;
     this.freefall = this.blackout = this.dead = false;
+    this.deadTime = 0;
+    this.recoil = this.flinch = 0;
     this.suit.oxygen = 100;
     this.oxygenWarned = 100;
     this.zone = "air";
@@ -247,6 +255,8 @@ export class PlayerController {
     const part = SUIT_PARTS[Math.floor(Math.random() * SUIT_PARTS.length)];
     this.suit.damage(damage, [part, "chest"]);
     this.bus?.emit("playerHit", { damage });
+    this.flinch = Math.min(1, 0.4 + damage / 20);
+    this.flinchSide = Math.random() < 0.5 ? -1 : 1;
     if (this.suit.overallIntegrity < 15) {
       this.failed = true;
       this.bus?.emit("suitFailure", {});
@@ -334,6 +344,7 @@ export class PlayerController {
     if (this.dead) {
       this.vel.x = this.vel.y = this.vel.z = 0;
       this.thrust = 0;
+      this.deadTime += dt;
       return;
     }
     // View angles from look input.
@@ -375,6 +386,8 @@ export class PlayerController {
     if (this.aimTimer > 0) this.aimTimer -= dt;
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
     if (this.beamTimer > 0) this.beamTimer -= dt;
+    this.recoil = Math.max(0, this.recoil - dt * 7);
+    this.flinch = Math.max(0, this.flinch - dt * 3.5);
   }
 
   private planarInput(input: InputState): { x: number; z: number; mag: number } {

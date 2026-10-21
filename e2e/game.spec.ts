@@ -290,7 +290,7 @@ test.describe("touch controls (emulated)", () => {
     await expect(page.locator("#touch")).toBeVisible();
     for (const sel of [".t-up", ".t-fly", ".t-fire", ".t-msl", ".t-suit"]) {
       const box = (await page.locator(sel).boundingBox())!;
-      expect(box.width, sel).toBeGreaterThanOrEqual(48);
+      expect(box.width, sel).toBeGreaterThanOrEqual(44); // Apple HIG minimum touch target
     }
     const lift = page.locator(".t-up");
     await lift.dispatchEvent("pointerdown", { pointerId: 11, pointerType: "touch", isPrimary: true });
@@ -410,22 +410,102 @@ test("touch look/stick math maps screen to the sideways stage", async ({ browser
   const { defaultBrowserType: _d, ...phone } = devices["iPhone 13"];
   const ctx = await browser.newContext(phone);
   const page = await ctx.newPage();
+
   await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
   await page.locator("#l-start").tap();
   await page.waitForFunction(() => (window as unknown as { __GAME: { debugState(): { started: boolean } } }).__GAME.debugState().started);
   const yaw0 = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { viewYaw: number } } }).__GAME.debugState().viewYaw);
-  // Drag "right" in game terms = downward on the upright screen.
+  // Drag "right" in game terms: downward on the screen while drawn sideways.
+  await page.waitForTimeout(800);
+  const rot = await page.evaluate(() => document.body.classList.contains("rot"));
   const zone = page.locator(".t-right");
   const zb = (await zone.boundingBox())!;
   const x = zb.x + zb.width / 2, y = zb.y + zb.height / 2;
   await zone.dispatchEvent("pointerdown", { pointerId: 31, pointerType: "touch", clientX: x, clientY: y });
-  for (let k = 1; k <= 6; k++) await page.evaluate(([x, y]) => window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "touch", clientX: x, clientY: y })), [x, y + k * 12]);
+  for (let k = 1; k <= 6; k++) await page.evaluate(([x, y]) => window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "touch", clientX: x, clientY: y })), rot ? [x, y + k * 12] : [x + k * 12, y]);
   await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 31, pointerType: "touch" })));
-  await page.waitForTimeout(500);
+  // Software rendering here can be ~2 fps: wait for the next frames to apply the look.
+  await page.waitForFunction(
+    (y0) => {
+      const y = (window as unknown as { __GAME: { debugState(): { viewYaw: number } } }).__GAME.debugState().viewYaw;
+      return Math.abs(Math.atan2(Math.sin(y - y0), Math.cos(y - y0))) > 0.05;
+    },
+    yaw0,
+    { timeout: 30_000 },
+  );
   const yaw1 = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { viewYaw: number } } }).__GAME.debugState().viewYaw);
   expect(Math.atan2(Math.sin(yaw1 - yaw0), Math.cos(yaw1 - yaw0))).toBeGreaterThan(0.05);
   await ctx.close();
 });
 
+
+for (const [name, size] of [
+  ["iPhone X", { width: 812, height: 375 }],
+  ["iPhone 15", { width: 852, height: 393 }],
+] as const) {
+  test(`${name} (landscape, emulated): boots, Low preset, touch buttons on screen and not overlapping`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1" });
+    const page = await ctx.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("/");
+    await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
+    await page.locator("#l-start").tap();
+    await page.waitForFunction(() => (window as unknown as { __GAME: { debugState(): { started: boolean } } }).__GAME.debugState().started);
+    const q = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { quality: string } } }).__GAME.debugState().quality);
+    expect(q).toBe("low");
+    // Fly so the flight-only buttons show too.
+    await page.evaluate(() => (window as unknown as { __GAME: { teleport(...a: unknown[]): void } }).__GAME.teleport(2.5, 60, -300, 0, "hover"));
+    await page.waitForTimeout(400);
+    const boxes = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>("#touch .t-btn")]
+        .filter((b) => getComputedStyle(b).display !== "none")
+        .map((b) => {
+          const r = b.getBoundingClientRect();
+          return { n: b.className, x: r.x, y: r.y, w: r.width, h: r.height };
+        }),
+    );
+    expect(boxes.length).toBeGreaterThan(8);
+    for (const b of boxes) {
+      expect(b.x, b.n).toBeGreaterThanOrEqual(0);
+      expect(b.y, b.n).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.w, b.n).toBeLessThanOrEqual(size.width + 1);
+      expect(b.y + b.h, b.n).toBeLessThanOrEqual(size.height + 1);
+      expect(b.w, b.n).toBeGreaterThanOrEqual(44);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], c = boxes[j];
+        const overlap = a.x < c.x + c.w - 1 && c.x < a.x + a.w - 1 && a.y < c.y + c.h - 1 && c.y < a.y + a.h - 1;
+        expect(overlap, `${a.n} overlaps ${c.n}`).toBe(false);
+      }
+    }
+    expect(errors).toEqual([]);
+    await ctx.close();
+  });
+}
+
+test("Chromebook (emulated UA): starts on Low; flying across the 299 km² map keeps collider memory bounded", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, userAgent: "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" });
+  const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
+  await page.locator("#l-start").click();
+  type G = { __GAME: { teleport(...a: unknown[]): void; debugState(): { quality: string; colliderChunks: number; specChunks: number; pos: { x: number } } } };
+  await page.waitForFunction(() => (window as unknown as G).__GAME.debugState().quality !== undefined);
+  expect(await page.evaluate(() => (window as unknown as G).__GAME.debugState().quality)).toBe("low");
+  // Hop to the far corners of the city; old areas are evicted.
+  for (const [x, z] of [[7000, 7000], [-7000, 7000], [-7000, -7000], [7000, -7000], [0, 0]]) {
+    await page.evaluate(([x, z]) => (window as unknown as G).__GAME.teleport(x, 300, z, 0, "hover"), [x, z]);
+    await page.waitForTimeout(5600);
+  }
+  const s = await page.evaluate(() => (window as unknown as G).__GAME.debugState());
+  expect(s.colliderChunks).toBeLessThan(200);
+  expect(s.specChunks).toBeLessThan(260);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});

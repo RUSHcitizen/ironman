@@ -88,7 +88,9 @@ export class SettingsMenu {
     for (const seg of this.el.querySelectorAll<HTMLElement>(".m-seg[data-k]")) {
       const key = seg.dataset.k as keyof Settings["data"];
       for (const b of seg.querySelectorAll<HTMLButtonElement>("button")) {
-        b.addEventListener("click", () => this.settings.update({ [key]: b.dataset.v as Quality } as Partial<Settings["data"]>));
+        b.addEventListener("click", () =>
+          this.settings.update({ [key]: b.dataset.v as Quality, ...(key === "quality" ? { qualityPicked: true } : {}) } as Partial<Settings["data"]>),
+        );
       }
     }
     for (const input of this.el.querySelectorAll<HTMLInputElement>("input[data-k]")) {

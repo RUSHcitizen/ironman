@@ -8,6 +8,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
+| ![Titan, sentinels and a spider walker](docs/screenshots/27-titan-sentinels.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 | ![Night over the city](docs/screenshots/25-night.png) | ![Midas armour by day with a boss bar](docs/screenshots/26-day-midas-boss.png) |
 | ![Unibeam](docs/screenshots/22-unibeam.png) | ![Clouds and contrails](docs/screenshots/23-clouds-contrails.png) |
 | ![Banked turn](docs/screenshots/19-bank-turn.png) | ![Piloting the empty suit in sentry mode](docs/screenshots/21-sentry-remote.png) |
@@ -19,9 +20,42 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Warbot](docs/screenshots/04-warbot.png) |
 | ![Stepped out of the suit](docs/screenshots/07-civilian.png) | ![Sentry mode](docs/screenshots/11-sentry.png) |
 | ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Suit flying in](docs/screenshots/12-suit-inbound.png) |
-| ![Title screen](docs/screenshots/01-title.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
+| ![Title screen](docs/screenshots/01-title.png) | ![Settings menu](docs/screenshots/08-settings-menu.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 10 – a 5× bigger city, more enemies, cleaner phone controls, animation everywhere, device tuning
+
+- **A 5× bigger map:** 54 × 54 chunks, about **17.3 km × 17.3 km (299 km²)**, with 20 more named skyscraper districts spread over the outer city.
+  - Collision boxes and layout are now generated **lazily, per chunk**, the first time anything touches that area (you, the suit, enemies, raycasts).
+  - Areas more than 2.6 km away are evicted and regenerate on demand, so load time and memory don't grow with the map.
+  - Streaming only scans nearby chunks.
+- **Four more enemy types (20 in total):**
+  - **Sentinel:** an Ultron-style flying robot. It glows as it winds up, then rams you at about 220 km/h, peels away, and fires hand blasts in between. Dodge the dash.
+  - **Spider walker:** a six-legged street walker that lobs fans of three mortar shells.
+  - **Cloaker:** a stealth drone that's invisible (no lock-on, no radar blip, no target marker) until it shimmers into view to fire, or you hit it.
+  - **Titan:** a super-heavy boss mech, a 1.8× warbot with a bigger laser, stomp and missiles. It gets a boss bar.
+  - New incidents: Ultron sentinels, spider walkers, ghost squadron, and **TITAN AWAKENS**.
+- **Cleaner, see-through phone controls:**
+  - Icon-only buttons with thin outlines and almost no fill, about 60% opaque, glowing only while pressed. Secondary actions (trick, cut, sharp turns, flares, rockets) are smaller and fainter.
+  - The buttons sit in a compact right-thumb grid, all at least 44 pt. The top row (beam, sentry, suit) is small, and only buttons that change meaning keep a tiny label.
+  - After 4 seconds without a touch, the controls fade almost away and the stick hides, so the city is unobstructed. Touch anywhere and they're back.
+  - F.R.I.D.A.Y. alerts on phones are compact, translucent and tucked under the compass (latest two only), and the area banner is smaller.
+- **Animation for (almost) every move:**
+  - **Take-off:** a crouch-and-spring.
+  - **Repulsors:** recoil on every shot.
+  - **Taking a hit:** a flinch away from the impact.
+  - **Death:** the body slumps to the ground.
+  - **Idle:** weight shifts between legs.
+  - **Enemies:** hits make them swell briefly and knock light ones about.
+  - **Cars:** the nose dips under braking, squats when pulling away, and the car bounces slightly on the road.
+  - These add to the existing animation (walk/run cycles, landing crouch, hover sway, banking and steering arms, tricks, barrel rolls, suit latch / step-out / eject, skydive, Unibeam pose, head tracking, enemy warp-in and wreckage, pedestrian panic, and HUD / menu motion).
+- **Device tuning (Chromebook, iPhone 15, iPhone X):**
+  - Phones and Chromebooks (detected by "CrOS") start on Low.
+  - If a device holds about 57+ fps on Low for about 12 s, as an iPhone 15 or a fast Chromebook should, it steps up to Medium automatically. This never happens after a downgrade, or if you picked a quality yourself.
+  - Slow devices still step down.
+  - The bundle is compiled to ES2020 and checked for syntax newer than Safari 16. The iPhone X maxes out at iOS 16, and nothing needs newer.
+  - Memory is bounded as described above.
 
 ## Milestone 9 – phone rotation that always works, armour schemes, time of day, rescues
 
@@ -29,7 +63,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - If your phone's browser stays upright (most often because the system rotation lock is on, which a web page can't override on iPhone), the whole game is now drawn sideways in landscape. You just turn the phone and play.
   - Touch controls are mapped into the rotated screen, and the notch and home-bar safe areas are swapped to match.
   - If the browser does rotate, it switches back to a normal landscape layout automatically.
-  - On Android, tapping Engage also goes full-screen and locks to landscape.
+  - (Milestone 10 removed the full-screen + landscape-lock request on Android: in testing it could stop rendering, and the sideways mode already covers rotation lock.)
   - The HUD now measures the game area rather than the browser window, so it sizes correctly either way. This uses CSS container queries, with the old rules kept as a fallback for older browsers.
   - This replaces the old "Rotate your device" screen.
 - **Armour schemes** (menu → Armour): Classic red & gold, Mark II silver, War Machine gunmetal, Stealth black, and Midas gold, each with matching eye and reactor glow.
@@ -315,7 +349,7 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **59 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **63 unit tests** pass, covering:
   - City generation and collision.
   - Flight physics:
     - Civilian movement.
@@ -328,11 +362,13 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
     - **Tank shells arc and hurt.**
     - **Gunships circle-strafe at range.**
   - The autonomous suit (call, dock, sentry, offline).
+  - Milestone 10: the 17.28 km map with lazy collider generation and eviction (and regeneration on demand), the sentinel's wind-up and ram, spider mortar fans, cloakers hidden from lock-on until they fire or are hit, and the titan.
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **22 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **32 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
+  - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between far corners of the city keeps collider and layout memory bounded.**
   - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**
   - **A falling civilian caught mid-air; night time, armour schemes, `K` cinematic mode and the boss bar.**
   - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**
@@ -344,7 +380,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
 - The 59 km² city loads in about 1.7–4.6 s here (layout data and about 102k colliders up front, which take about 0.25 s to generate; meshes stream in around the camera).
 
 **Not yet tested:**
-- **Real iPhone Safari**, a real Chromebook, or any physical GPU.
+- **Real iPhone Safari** (iPhone X / iPhone 15), a real Chromebook, or any physical GPU. iPhone and Chromebook support is designed for and tested in Chromium emulation (screen sizes, touch, user agent), not on the devices. Emulation can't reproduce Safari's WebGL quirks, real thermal throttling or real memory limits.
 - **Real frame rates.** SwiftShader renders on the CPU, so on-screen frame rates here are meaningless. The denser city raised the triangle count, so on-device profiling is the top priority. If it struggles, the Low preset or a lower view distance will help.
 - **Real pointer-lock behaviour.** The drag-look fallback is what got tested.
 - Audio output (nobody has listened to it), gamepads (not supported), and WebGL context-loss recovery.

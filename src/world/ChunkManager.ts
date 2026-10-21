@@ -57,6 +57,18 @@ export class ChunkManager {
     this.world.provider = (cx, cz) => chunkColliders(this.spec(cx, cz));
   }
 
+  /** Forget layouts of far chunks that have no meshes loaded (memory bound). */
+  dropSpecs(coords: [number, number][]): void {
+    for (const [cx, cz] of coords) {
+      const key = ChunkManager.key(cx, cz);
+      if (!this.chunks.has(key)) this.specs.delete(key);
+    }
+  }
+
+  get specCount(): number {
+    return this.specs.size;
+  }
+
   /** Cached chunk layout (deterministic, generated on demand). */
   private spec(cx: number, cz: number): ChunkSpec {
     const key = ChunkManager.key(cx, cz);

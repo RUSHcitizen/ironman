@@ -2,6 +2,8 @@ export interface DeviceInfo {
   isTouch: boolean;
   isIOS: boolean;
   isMobile: boolean;
+  /** ChromeOS: GPUs vary a lot, so start on the Low preset. */
+  isChromebook: boolean;
   dpr: number;
 }
 
@@ -13,7 +15,7 @@ export function detectDevice(): DeviceInfo {
   const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
   const isTouch = coarse || nav.maxTouchPoints > 0 || "ontouchstart" in window;
   const isMobile = isIOS || /Android|Mobile/i.test(ua) || (coarse && Math.min(screen.width, screen.height) < 820);
-  return { isTouch, isIOS, isMobile, dpr: window.devicePixelRatio || 1 };
+  return { isTouch, isIOS, isMobile, isChromebook: /CrOS/.test(ua), dpr: window.devicePixelRatio || 1 };
 }
 
 /** Returns null if WebGL is usable, otherwise a human-readable reason. */

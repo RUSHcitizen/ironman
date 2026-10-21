@@ -433,7 +433,9 @@ export class EnemyRenderer {
     // Warp in: grow from nothing with a slight overshoot.
     const w = Math.min(1, e.age / 0.5);
     const grow = w >= 1 ? 1 : 1 + 2.4 * Math.pow(w - 1, 3) + 1.4 * Math.pow(w - 1, 2);
-    this.s.set(grow, grow, grow);
+    // Hit squash: a quick swell when struck.
+    const hit = grow * (1 + e.flash * 0.12);
+    this.s.set(hit, hit * (1 - e.flash * 0.06), hit);
     this.t.set(e.x, y, e.z);
     Matrix.ComposeToRef(this.s, this.q, this.t, this.m);
     this.m.copyToArray(km.bodyM, i * 16);
