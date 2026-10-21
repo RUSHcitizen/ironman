@@ -14,7 +14,8 @@ export type SuitUnitState = "worn" | "parked" | "sentry" | "inbound";
 
 const SENTRY_RANGE = 200;
 const INBOUND_SPEED = 80;
-const DOCK_DISTANCE = 2.6;
+/** The suit breaks apart and its pieces fly the last few metres onto the player. */
+const DOCK_DISTANCE = 7;
 
 /**
  * The armour as an independent unit when nobody is wearing it: it can stand
@@ -32,6 +33,8 @@ export class SuitUnit implements CombatTarget, AvatarState {
   bodyPitch = 0;
   bodyRoll = 0;
   rollSpin = 0;
+  readonly trickPitch = 0;
+  readonly trickYaw = 0;
   walkPhase = 0;
   landingTimer = 0;
   viewPitch = 0;
@@ -316,7 +319,7 @@ export class SuitUnit implements CombatTarget, AvatarState {
     this.viewPitch = 0;
     // Dock when close (or give up on a stuck path after a while).
     // Dock when close - also when a wall right next to the player is in the way.
-    if (d < DOCK_DISTANCE || (this.blocked && flat < 4 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
+    if ((d < DOCK_DISTANCE && Math.abs(this.pos.y - goal.y) < 5) || (this.blocked && flat < 8 && Math.abs(this.pos.y - goal.y) < 4) || this.inboundTime > 30) {
       this.state = "worn";
       this.vel.x = this.vel.y = this.vel.z = 0;
       return true;

@@ -26,7 +26,7 @@ async function frames(page: Page, n = 8): Promise<void> {
 }
 
 async function run(page: Page, src: string): Promise<void> {
-  await page.evaluate((src) => new Function("g", src)((window as unknown as { __AEGIS: G }).__AEGIS), src);
+  await page.evaluate((src) => new Function("g", src)((window as unknown as { __GAME: G }).__GAME), src);
 }
 
 test("desktop screenshots", async ({ page, isMobile }) => {
@@ -39,8 +39,9 @@ test("desktop screenshots", async ({ page, isMobile }) => {
 
   await page.locator("#l-start").click();
   await page.locator("#loading").waitFor({ state: "hidden" });
-  await run(page, "g.avatar.armorT = 99;");
-  await frames(page, 6);
+  await frames(page, 14);
+  await page.screenshot({ path: `${OUT}/13-suit-up-latch.png` });
+  await frames(page, 50);
   await page.screenshot({ path: `${OUT}/02-apex-tower-pad.png` });
 
   // Repulsor fight with a drone swarm above an avenue.
@@ -52,6 +53,12 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await frames(page, 7);
   await page.screenshot({ path: `${OUT}/03-combat-drones.png` });
   await page.keyboard.up("KeyX");
+
+  // New enemy types: gunship, shield drone (bubble), tank and sniper.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 40, -500, 0, "hover"); g.player.viewPitch = 0.05;
+    g.spawnEnemy("gunship", 90, 20, 0); g.spawnEnemy("shielder", 50, 5, -10); g.spawnEnemy("drone", 55, 3, -14); g.spawnEnemy("tank", 70, -40, 4); g.spawnEnemy("sniper", 60, -40, 20);`);
+  await frames(page, 30);
+  await page.screenshot({ path: `${OUT}/14-new-enemies.png` });
 
   // Warbot on the street.
   await run(page, `g.enemies.clear(); g.teleport(2.5, 14, -520, 0, "hover"); g.player.viewPitch = -0.08; g.spawnEnemy("warbot", 45, 0, 0); g.spawnEnemy("drone", 40, 10, 12);`);
@@ -96,13 +103,21 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await frames(page, 6);
   await page.screenshot({ path: `${OUT}/11-sentry.png` });
 
-  // Call the suit from across the city.
+  // Call the suit from across the city - pieces latch on one by one.
   await page.keyboard.press("KeyV");
   await frames(page, 3);
   await run(page, `g.enemies.clear(); g.teleport(11, 0.15, -300, 0); g.player.viewYaw = 0; g.player.viewPitch = 0.18;`);
   await page.keyboard.press("KeyG");
   await frames(page, 26);
   await page.screenshot({ path: `${OUT}/12-suit-inbound.png` });
+  for (let k = 0; k < 60; k++) {
+    await frames(page, 2);
+    if (await page.evaluate(() => (window as unknown as { __GAME: { avatar: { latching: boolean } } }).__GAME.avatar.latching)) break;
+  }
+  await frames(page, 10);
+  await run(page, `g.player.viewYaw += Math.PI * 0.8;`);
+  await frames(page, 3);
+  await page.screenshot({ path: `${OUT}/15-called-suit-latching.png` });
   await frames(page, 60);
 
   await page.keyboard.press("Escape");

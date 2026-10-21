@@ -1,4 +1,4 @@
-import type { InputState } from "../input/InputState";
+import type { InputState, TrickRequest } from "../input/InputState";
 import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import { SuitSystems, SUIT_PARTS } from "./SuitSystems";
@@ -7,25 +7,37 @@ import { WORLD_LIMIT, ALTITUDE_CEILING, ISLAND_MIN, ISLAND_MAX } from "../world/
 
 export type FlightMode = "ground" | "hover" | "flight";
 
+export type TrickKind = "loop" | "corkscrew" | "flip" | "backflip" | "spin";
+
+const TRICKS: Record<TrickKind, { dur: number; label: string; evade: boolean }> = {
+  loop: { dur: 2.0, label: "LOOP-THE-LOOP", evade: false },
+  corkscrew: { dur: 1.0, label: "CORKSCREW", evade: true },
+  flip: { dur: 0.75, label: "FRONT FLIP", evade: false },
+  backflip: { dur: 0.85, label: "BACKFLIP", evade: false },
+  spin: { dur: 0.65, label: "360 SPIN", evade: false },
+};
+
 export const TUNING = {
   walkSpeed: 8,
   civilianWalk: 3.4,
   civilianSprint: 7,
   hoverSpeed: 18,
   hoverVertical: 11,
-  cruiseSpeed: 62,
-  afterburnerSpeed: 165,
-  sonicSpeed: 150,
+  cruiseSpeed: 48,
+  afterburnerSpeed: 125,
+  sonicSpeed: 112,
   minFlightSpeed: 18,
   gravity: 22,
-  turnRate: 1.9,
-  pitchRate: 1.3,
+  turnRate: 1.5,
+  pitchRate: 1.1,
   radius: 0.45,
   height: 1.95,
   stepUp: 0.4,
   rollTime: 0.55,
   rollCooldown: 0.75,
   transformTime: 1.3,
+  /** Piece-by-piece suit-up when the called suit latches on. */
+  latchTime: 2.4,
 };
 
 /**
@@ -54,6 +66,16 @@ export class PlayerController {
   rollTimer = 0;
   rollDir = 0;
   private rollCooldown = 0;
+  /** Visual trick rotations (radians) layered on the body pose. */
+  trickPitch = 0;
+  trickYaw = 0;
+  trick: { kind: TrickKind; t: number; dur: number; fx: number; fy: number; fz: number; pitch0: number } | null = null;
+  styleCombo = 0;
+  private styleTimer = 0;
+  /** Smoothed steering rates for fluid flight. */
+  private yawRate = 0;
+  private pitchRate = 0;
+  private lookRate = 0;
   flightSpeed = 0;
   /** 0..1 thruster output, drives VFX and audio. */
   thrust = 0;
@@ -92,6 +114,9 @@ export class PlayerController {
     this.viewPitch = -0.15;
     this.bodyPitch = this.bodyRoll = 0;
     this.rollSpin = this.rollTimer = 0;
+    this.trick = null;
+    this.trickPitch = this.trickYaw = 0;
+    this.yawRate = this.pitchRate = this.lookRate = 0;
     this.flightSpeed = 0;
     this.afterburner = false;
     this.landingTimer = 0;
@@ -112,9 +137,9 @@ export class PlayerController {
     return this.suited && this.transformTimer <= 0 && !this.failed;
   }
 
-  /** Invulnerable while barrel-rolling. */
+  /** Invulnerable while barrel-rolling (or corkscrewing). */
   get evading(): boolean {
-    return this.rollTimer > 0;
+    return this.rollTimer > 0 || (this.trick !== null && TRICKS[this.trick.kind].evade);
   }
 
   /** Centre of mass, used as the target for enemy fire. */
@@ -174,10 +199,10 @@ export class PlayerController {
   }
 
   /** Armour assembles around the civilian (after the suit docks). */
-  beginSuitUp(): boolean {
+  beginSuitUp(duration: number = TUNING.transformTime): boolean {
     if (this.transformTimer > 0 || this.suited) return false;
     this.transformToSuited = true;
-    this.transformTimer = TUNING.transformTime;
+    this.transformTimer = duration;
     this.vel.x = this.vel.z = 0;
     this.bus?.emit("suitTransform", { toSuited: true });
     return true;
@@ -214,6 +239,7 @@ export class PlayerController {
     else if (this.mode === "hover") this.updateHover(dt, input);
     else this.updateFlight(dt, input);
     this.updateRoll(dt, input);
+    this.updateTricks(dt, input.trick);
 
     this.integrate(dt);
     this.updateBoundaries(dt);
@@ -294,10 +320,10 @@ export class PlayerController {
     const tx = move.x * TUNING.hoverSpeed;
     const tz = move.z * TUNING.hoverSpeed;
     const ty = hasEnergy ? vy * TUNING.hoverVertical : vy > 0 ? 1 : -3;
-    const k = damp(3.5, dt);
+    const k = damp(2.8, dt);
     this.vel.x += (tx - this.vel.x) * k;
     this.vel.z += (tz - this.vel.z) * k;
-    this.vel.y += (ty - this.vel.y) * damp(4, dt);
+    this.vel.y += (ty - this.vel.y) * damp(3.5, dt);
 
     this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 6, dt);
     // Lean into horizontal motion.
@@ -318,17 +344,20 @@ export class PlayerController {
   }
 
   private updateFlight(dt: number, input: InputState): void {
-    // Tighter turns at lower speed, wider arcs when screaming along.
-    const turnRate = TUNING.turnRate * (1.25 - Math.min(0.55, this.flightSpeed / 300));
-    this.viewYaw = wrapAngle(this.viewYaw + input.moveX * turnRate * dt);
-    const pitchIn = (input.ascend ? 1 : 0) - (input.descend ? 1 : 0);
-    this.viewPitch = clamp(this.viewPitch + pitchIn * TUNING.pitchRate * dt, -85 * DEG, 85 * DEG);
+    // Smoothed steering: rates ease in and out, so turns carve instead of snap.
+    const turnRate = TUNING.turnRate * (1.25 - Math.min(0.5, this.flightSpeed / 250));
+    this.yawRate += (input.moveX * turnRate - this.yawRate) * damp(3.5, dt);
+    this.viewYaw = wrapAngle(this.viewYaw + this.yawRate * dt);
+    const pitchIn = ((input.ascend ? 1 : 0) - (input.descend ? 1 : 0)) * TUNING.pitchRate;
+    this.pitchRate += (pitchIn - this.pitchRate) * damp(3.5, dt);
+    this.viewPitch = clamp(this.viewPitch + this.pitchRate * dt, -85 * DEG, 85 * DEG);
+    this.lookRate += (input.lookX / Math.max(dt, 1e-3) - this.lookRate) * damp(5, dt);
 
     const braking = input.moveY < -0.25;
     this.afterburner = input.moveY > 0.25 && this.suit.energy > 0;
     if (this.afterburner && !this.wasAfterburner) {
       // Afterburner kick.
-      this.flightSpeed += 18;
+      this.flightSpeed += 12;
       this.bus?.emit("boost", {});
     }
     this.wasAfterburner = this.afterburner;
@@ -336,35 +365,97 @@ export class PlayerController {
     if (this.afterburner) target = TUNING.afterburnerSpeed;
     // Gravity assist: dives build speed, climbs bleed it.
     const sp = Math.sin(this.viewPitch);
-    target += sp < 0 ? -sp * 55 : -sp * (this.afterburner ? 10 : 25);
+    target += sp < 0 ? -sp * 45 : -sp * (this.afterburner ? 8 : 20);
     if (braking) target = 0;
-    const accel = this.afterburner ? 70 : braking ? 60 : sp < -0.2 ? 40 : 28;
+    const accel = this.afterburner ? 45 : braking ? 40 : sp < -0.2 ? 30 : 20;
     this.flightSpeed = moveTowards(this.flightSpeed, target, accel * dt);
 
     if (this.flightSpeed > TUNING.sonicSpeed && !this.sonicDone) {
       this.sonicDone = true;
       this.bus?.emit("sonicBoom", { ...this.pos });
       this.alert("Sound barrier: sonic boom", "success");
-    } else if (this.flightSpeed < TUNING.sonicSpeed - 30) this.sonicDone = false;
+    } else if (this.flightSpeed < TUNING.sonicSpeed - 25) this.sonicDone = false;
 
     const cp = Math.cos(this.viewPitch);
-    const dx = Math.sin(this.viewYaw) * cp, dy = sp, dz = Math.cos(this.viewYaw) * cp;
-    const k = damp(4, dt);
+    let dx = Math.sin(this.viewYaw) * cp, dy = sp, dz = Math.cos(this.viewYaw) * cp;
+    let rate = 2.6; // momentum: velocity eases toward the heading
+    const tr = this.trick;
+    if (tr && tr.kind === "loop") {
+      // Loop-the-loop: the flight path itself rotates through 360 degrees.
+      const u = tr.t / tr.dur;
+      const phi = Math.PI * 2 * (u * u * (3 - 2 * u));
+      const c = Math.cos(phi), s = Math.sin(phi);
+      dx = tr.fx * c;
+      dz = tr.fz * c;
+      dy = tr.fy * c + s;
+      const l = Math.hypot(dx, dy, dz) || 1;
+      dx /= l;
+      dy /= l;
+      dz /= l;
+      rate = 12;
+      this.trickPitch = -phi;
+    }
+    const k = damp(rate, dt);
     this.vel.x += (dx * this.flightSpeed - this.vel.x) * k;
     this.vel.y += (dy * this.flightSpeed - this.vel.y) * k;
     this.vel.z += (dz * this.flightSpeed - this.vel.z) * k;
 
-    // Body lies along the flight path; bank hard into turns.
-    const turn = input.moveX * turnRate + (input.lookX / Math.max(dt, 1e-3)) * 0.3;
-    this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 9, dt);
-    this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(7, dt);
-    this.bodyRoll += (clamp(-turn * 0.6, -1.35, 1.35) - this.bodyRoll) * damp(5, dt);
-    this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 3);
+    // Body lies along the flight path; bank into the turn you are making.
+    const turn = this.yawRate + this.lookRate * 0.35;
+    this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 6, dt);
+    this.bodyPitch += (Math.PI / 2 - this.viewPitch - this.bodyPitch) * damp(5, dt);
+    this.bodyRoll += (clamp(-turn * 0.6, -1.3, 1.3) - this.bodyRoll) * damp(3, dt);
+    this.thrust = moveTowards(this.thrust, this.afterburner ? 1 : braking ? 0.3 : 0.72, dt * 2.5);
 
     if (input.toggleFlight || (braking && this.flightSpeed < TUNING.minFlightSpeed)) {
       this.afterburner = false;
       this.wasAfterburner = false;
+      this.yawRate = this.pitchRate = 0;
       this.setMode("hover");
+    }
+  }
+
+  /** Mid-air tricks: loops, corkscrews, flips and spins, chained into a style combo. */
+  private updateTricks(dt: number, req: TrickRequest | null): void {
+    if (this.styleTimer > 0) {
+      this.styleTimer -= dt;
+      if (this.styleTimer <= 0) this.styleCombo = 0;
+    }
+    if (req && !this.trick && this.suited && this.mode !== "ground" && this.suit.energy > 4) {
+      const kind: TrickKind =
+        req === "auto" ? (this.mode === "flight" ? "loop" : "flip") : req === "spin" && this.mode === "flight" ? "corkscrew" : req === "flip" && this.mode === "flight" ? "loop" : req;
+      const sp = Math.hypot(this.vel.x, this.vel.z) || 1;
+      this.trick = { kind, t: 0, dur: TRICKS[kind].dur, fx: this.vel.x / sp, fy: 0, fz: this.vel.z / sp, pitch0: this.viewPitch };
+      if (kind === "loop" || kind === "corkscrew") {
+        // Loops need speed; keep at least cruise.
+        this.flightSpeed = Math.max(this.flightSpeed, TUNING.cruiseSpeed);
+      }
+      if (kind === "flip" || kind === "backflip") this.vel.y += 6;
+      this.suit.drain(4);
+    }
+    const tr = this.trick;
+    if (!tr) return;
+    tr.t += dt;
+    const u = Math.min(1, tr.t / tr.dur);
+    const e = u * u * (3 - 2 * u);
+    if (tr.kind === "flip") this.trickPitch = e * Math.PI * 2;
+    else if (tr.kind === "backflip") this.trickPitch = -e * Math.PI * 2;
+    else if (tr.kind === "spin") this.trickYaw = e * Math.PI * 2;
+    else if (tr.kind === "corkscrew") {
+      this.rollSpin = -e * Math.PI * 4;
+      // Spiral slightly around the flight path.
+      const s = Math.sin(u * Math.PI * 2) * 6;
+      this.vel.x += Math.cos(this.viewYaw) * s * dt * 10;
+      this.vel.z -= Math.sin(this.viewYaw) * s * dt * 10;
+    }
+    if (u >= 1 || (tr.kind === "loop" && this.mode !== "flight")) {
+      this.trick = null;
+      this.trickPitch = this.trickYaw = 0;
+      if (tr.kind === "corkscrew") this.rollSpin = 0;
+      this.styleCombo = this.styleTimer > 0 ? this.styleCombo + 1 : 1;
+      this.styleTimer = 3;
+      this.suit.charge(3 * this.styleCombo);
+      this.bus?.emit("trick", { name: TRICKS[tr.kind].label, combo: this.styleCombo });
     }
   }
 
@@ -387,7 +478,7 @@ export class PlayerController {
       const t = 1 - this.rollTimer / TUNING.rollTime;
       const ease = t * t * (3 - 2 * t);
       this.rollSpin = -this.rollDir * ease * Math.PI * 2;
-    } else this.rollSpin = 0;
+    } else if (!this.trick || this.trick.kind !== "corkscrew") this.rollSpin = 0;
   }
 
   /** Reward flying fast and close to buildings. */

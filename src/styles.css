@@ -278,7 +278,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
 .overlay[hidden] { display: none; }
 .overlay.out { opacity: 0; pointer-events: none; }
 .l-panel { width: min(460px, 100%); text-align: center; display: grid; gap: 14px; justify-items: center; }
-.l-panel h1 { margin: 0; font-weight: 200; font-size: clamp(30px, 7vw, 54px); letter-spacing: 0.4em; padding-left: 0.4em; color: #fff; text-shadow: 0 0 20px rgba(107, 233, 255, 0.5); }
+.l-panel h1 { margin: 0; font-weight: 200; font-size: clamp(28px, 6vw, 50px); letter-spacing: 0.3em; padding-left: 0.3em; white-space: nowrap; color: #fff; text-shadow: 0 0 20px rgba(107, 233, 255, 0.5); }
 .l-panel h1 span { display: block; font-size: 0.28em; letter-spacing: 0.6em; color: var(--cyan); margin-top: 6px; }
 .l-logo { position: relative; width: 70px; height: 70px; }
 .l-logo i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--cyan); border-right-color: transparent; animation: spin 2.4s linear infinite; }
@@ -328,8 +328,9 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px s
 }
 .h-target b { position: absolute; left: -16px; top: -24px; width: 32px; height: 3px; background: rgba(255, 80, 60, 0.25); }
 .h-target b u { display: block; height: 100%; background: #ff5a46; transform-origin: left; }
-.h-target.k-warbot i { left: -28px; top: -28px; width: 56px; height: 56px; }
-.h-target.k-warbot b { left: -28px; top: -38px; width: 56px; height: 4px; }
+.h-target.k-warbot i, .h-target.k-gunship i, .h-target.k-tank i { left: -28px; top: -28px; width: 56px; height: 56px; }
+.h-target.k-warbot b, .h-target.k-gunship b, .h-target.k-tank b { left: -28px; top: -38px; width: 56px; height: 4px; }
+.h-target.k-shielder i { border-color: rgba(190, 120, 255, 0.95); }
 .h-target.assist i { border-color: #fff; }
 .h-target.locked i {
   -webkit-mask: none; mask: none; border-color: var(--amber); transform: rotate(45deg) scale(0.85);
@@ -395,3 +396,8 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 .t-sentry.active { background: rgba(107, 233, 255, 0.35); color: #fff; }
 #touch.civ .t-sentry { display: grid; }
 .h-marker.m-suit i { border-color: #ff5148; background: rgba(255, 81, 72, 0.35); border-radius: 50%; transform: none; }
+
+/* Trick button: only while airborne in the suit. */
+.t-trick { display: none; right: calc(206px + var(--sr)); bottom: calc(120px + var(--sb)); width: 62px; height: 62px; border-color: #c48bff; color: #dcb8ff; }
+#touch[data-mode="hover"]:not(.civ) .t-trick, #touch[data-mode="flight"]:not(.civ) .t-trick { display: grid; }
+@media (max-height: 380px) { .t-trick { width: 54px; height: 54px; right: calc(176px + var(--sr)); bottom: calc(100px + var(--sb)); } }

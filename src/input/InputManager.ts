@@ -186,6 +186,7 @@ export class InputManager {
     s.rockets = this.rocketClick || this.hit("KeyR") || t.consume("msl");
     s.toggleSuit = this.hit("KeyG") || t.consume("suit");
     s.sentry = this.hit("KeyV") || t.consume("sentry");
+    s.trick = this.hit("KeyT") ? "flip" : this.hit("KeyB") ? "backflip" : this.hit("KeyH") ? "spin" : t.consume("trick") ? "auto" : null;
     s.roll = this.hit("KeyQ") ? -1 : this.hit("KeyE") ? 1 : this.keyRoll || t.consumeRoll();
     s.menu = this.hit("Escape", "KeyP");
     this.pressed.clear();

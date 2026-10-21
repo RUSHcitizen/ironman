@@ -4,7 +4,9 @@ import { nearestTarget, type CombatTarget } from "./Targets";
 import { ENEMY_STATS, type Enemy, type EnemyManager, type EnemyWeapons } from "./Enemies";
 import { dist, norm, segmentPointDistance, steer, type V3 } from "./math3";
 
-export type ProjectileKind = "bolt" | "enemyBolt" | "rocket" | "missile";
+export type ProjectileKind = "bolt" | "enemyBolt" | "rocket" | "missile" | "shell";
+
+const SHELL_GRAVITY = 14;
 
 export interface Projectile {
   kind: ProjectileKind;
@@ -147,6 +149,13 @@ export class ProjectileSystem implements EnemyWeapons {
     this.beams.push({ a: { ...from }, b: { ...to }, kind, t: 0, life: kind === "laser" ? 0.35 : 0 });
   }
 
+  shell(from: V3, vel: V3, damage: number): void {
+    const speed = Math.hypot(vel.x, vel.y, vel.z) || 1;
+    this.add({ kind: "shell", ...from, dx: vel.x / speed, dy: vel.y / speed, dz: vel.z / speed, speed, maxSpeed: 1e9, accel: 0, turn: 0, life: 7, damage, target: null, homing: null });
+    this.fx.push({ kind: "spark", ...from, size: 2.2, t: 0, life: 0.2, yaw: 0, pitch: 0 });
+    this.bus?.emit("weapon", { kind: "missile", ...from });
+  }
+
   shockwave(at: V3, radius: number): void {
     this.fx.push({ kind: "shock", ...at, size: radius, t: 0, life: 0.6, yaw: 0, pitch: 0 });
     this.bus?.emit("explosion", { ...at, size: radius * 0.6 });
@@ -164,11 +173,19 @@ export class ProjectileSystem implements EnemyWeapons {
       if (!pr.alive) continue;
       pr.life -= dt;
       if (pr.life <= 0) {
-        if (pr.kind === "rocket" || pr.kind === "missile") this.detonate(pr);
+        if (pr.kind === "rocket" || pr.kind === "missile" || pr.kind === "shell") this.detonate(pr);
         pr.alive = false;
         continue;
       }
       pr.speed = Math.min(pr.maxSpeed, pr.speed + pr.accel * dt);
+      if (pr.kind === "shell") {
+        // Ballistic arc.
+        const vx = pr.dx * pr.speed, vy = pr.dy * pr.speed - SHELL_GRAVITY * dt, vz = pr.dz * pr.speed;
+        pr.speed = Math.hypot(vx, vy, vz) || 1;
+        pr.dx = vx / pr.speed;
+        pr.dy = vy / pr.speed;
+        pr.dz = vz / pr.speed;
+      }
       // Homing.
       if (pr.kind === "rocket" && pr.target) {
         if (!pr.target.alive) pr.target = null;
@@ -198,7 +215,7 @@ export class ProjectileSystem implements EnemyWeapons {
       const to = { x: pr.x + pr.dx * step, y: pr.y + pr.dy * step, z: pr.z + pr.dz * step };
 
       // Smoke / plasma trails for rockets.
-      if (pr.kind === "rocket" || pr.kind === "missile") {
+      if (pr.kind === "rocket" || pr.kind === "missile" || pr.kind === "shell") {
         pr.trail -= dt;
         if (pr.trail <= 0 && this.puffs.length < MAX_PUFFS) {
           pr.trail = 0.04;
@@ -244,7 +261,7 @@ export class ProjectileSystem implements EnemyWeapons {
       }
       // Shoot down hostile missiles.
       for (const m of this.projectiles) {
-        if (!m.alive || m.kind !== "missile") continue;
+        if (!m.alive || (m.kind !== "missile" && m.kind !== "shell")) continue;
         if (segmentPointDistance(from, to, m) < 1.3) {
           m.alive = false;
           this.hitsThisFrame++;
@@ -256,8 +273,8 @@ export class ProjectileSystem implements EnemyWeapons {
     } else {
       for (const t of this.targets) {
         if (!t.targetable) continue;
-        if (segmentPointDistance(from, to, t.center) < (pr.kind === "missile" ? 1.6 : 1.05)) {
-          if (pr.kind === "missile") this.detonate(pr, to);
+        if (segmentPointDistance(from, to, t.center) < (pr.kind === "enemyBolt" ? 1.05 : 1.7)) {
+          if (pr.kind !== "enemyBolt") this.detonate(pr, to);
           else t.takeHit(pr.damage);
           return true;
         }
@@ -268,7 +285,7 @@ export class ProjectileSystem implements EnemyWeapons {
     const hit = this.world.raycast(from.x, from.y, from.z, pr.dx, pr.dy, pr.dz, len0);
     if (hit < len0) {
       const at = { x: from.x + pr.dx * hit, y: from.y + pr.dy * hit, z: from.z + pr.dz * hit };
-      if (pr.kind === "rocket" || pr.kind === "missile") this.detonate(pr, at);
+      if (pr.kind !== "bolt" && pr.kind !== "enemyBolt") this.detonate(pr, at);
       else this.fx.push({ kind: "spark", ...at, size: pr.kind === "bolt" ? 1.4 : 0.9, t: 0, life: 0.12, yaw: 0, pitch: 0 });
       return true;
     }
@@ -277,6 +294,7 @@ export class ProjectileSystem implements EnemyWeapons {
 
   private detonate(pr: Projectile, at: V3 = pr): void {
     if (pr.kind === "rocket") this.explode(at, 4.5, pr.damage, false);
+    else if (pr.kind === "shell") this.explode(at, 5.5, pr.damage, true);
     else this.explode(at, 3.5, pr.damage, true);
   }
 }

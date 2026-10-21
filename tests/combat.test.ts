@@ -97,3 +97,55 @@ describe("combat", () => {
     expect(telegraphed || s.proj.projectiles.some((p) => p.kind === "missile") || s.player.suit.overallIntegrity < 100).toBe(true);
   });
 });
+
+describe("new enemy types", () => {
+  it("a shield drone cuts damage to nearby allies until it is destroyed", () => {
+    const s = setup();
+    const trooper = s.enemies.spawn("trooper", 0, 0, 80);
+    const shield = s.enemies.spawn("shielder", 4, 6, 82);
+    s.enemies.update(1 / 60, [s.player]);
+    expect(trooper.shielded).toBe(true);
+    s.enemies.damage(trooper, 20);
+    expect(trooper.hp).toBeCloseTo(45 - 5);
+    s.enemies.damage(shield, 1000);
+    s.enemies.update(1 / 60, [s.player]);
+    expect(trooper.shielded).toBe(false);
+    s.enemies.damage(trooper, 20);
+    expect(trooper.hp).toBeCloseTo(40 - 20);
+  });
+
+  it("snipers telegraph with a laser before their heavy shot", () => {
+    const s = setup();
+    s.enemies.spawn("sniper", 0, 0, 120);
+    let telegraph = false;
+    let shot = false;
+    for (let k = 0; k < 60 * 10 && !shot; k++) {
+      run(s, 1 / 60);
+      if (s.proj.beams.some((b) => b.kind === "telegraph")) telegraph = true;
+      if (s.proj.projectiles.some((p) => p.kind === "enemyBolt" && p.speed > 200)) shot = true;
+    }
+    expect(telegraph).toBe(true);
+    expect(shot).toBe(true);
+  });
+
+  it("tanks lob arcing shells that hurt on impact", () => {
+    const s = setup();
+    s.enemies.spawn("tank", 0, 0, 90);
+    let sawShell = false;
+    for (let k = 0; k < 60 * 12; k++) {
+      run(s, 1 / 60);
+      if (s.proj.projectiles.some((p) => p.kind === "shell")) sawShell = true;
+    }
+    expect(sawShell).toBe(true);
+    expect(s.player.suit.overallIntegrity).toBeLessThan(100);
+  });
+
+  it("gunships circle-strafe and fire on the player", () => {
+    const s = setup();
+    const g = s.enemies.spawn("gunship", 0, 40, 100);
+    run(s, 8);
+    expect(g.alive).toBe(true);
+    expect(Math.hypot(g.x, g.z)).toBeGreaterThan(40);
+    expect(s.player.suit.overallIntegrity).toBeLessThan(100);
+  });
+});

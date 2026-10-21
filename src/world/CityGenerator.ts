@@ -118,6 +118,7 @@ const LANDMARK_AREAS: [number, number, string][] = [
   [20, 150, "Midtown Core"],
   [260, -1500, "Financial Spire"],
   [-600, 700, "Northpark"],
+  [-1300, 2200, "Harbor Heights"],
 ];
 
 /** District name for a chunk. */
@@ -142,8 +143,9 @@ export function skylineFactor(x: number, z: number): number {
   const downtown = (1 - Math.hypot(x - 260, z + 1500) / 600) * 1.15;
   const east = (1 - Math.hypot(x - 1500, z - 1300) / 480) * 0.9;
   const west = (1 - Math.hypot(x + 1700, z + 500) / 420) * 0.8;
+  const north = (1 - Math.hypot(x + 1300, z - 2200) / 500) * 0.95;
   // Everywhere else is still a dense low/mid-rise city, never empty.
-  return clamp(Math.max(midtown, downtown, east, west, 0.08), 0, 1.15);
+  return clamp(Math.max(midtown, downtown, east, west, north, 0.08), 0, 1.15);
 }
 
 export function blockKind(i: number, j: number): BlockKind {

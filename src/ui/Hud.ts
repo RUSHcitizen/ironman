@@ -31,7 +31,7 @@ function cardinal(deg: number): string {
 }
 
 /**
- * ARIA heads-up display (DOM overlay). Per-frame work is limited to CSS
+ * F.R.I.D.A.Y. heads-up display (DOM overlay). Per-frame work is limited to CSS
  * transforms; text readouts refresh at ~15 Hz to stay cheap on mobile.
  */
 export class Hud {
@@ -63,7 +63,7 @@ export class Hud {
         <div class="h-compass"><div class="h-tape"></div><div class="h-markers"></div><div class="h-needle"></div></div>
         <div class="h-heading"><b class="v-heading">000</b><span class="v-card">N</span></div>
       </div>
-      <div class="h-area"><small>ARIA · ENTERING</small><b class="v-area"></b></div>
+      <div class="h-area"><small>F.R.I.D.A.Y. · ENTERING</small><b class="v-area"></b></div>
       <div class="h-reticle">
         <svg viewBox="-50 -50 100 100" aria-hidden="true">
           <circle r="30" class="r-ring"/>
@@ -253,7 +253,7 @@ export class Hud {
   alert(text: string, level: AlertLevel = "info", ttl = 4.5): void {
     const el = document.createElement("div");
     el.className = `h-alert a-${level}`;
-    el.innerHTML = `<small>ARIA</small><span></span>`;
+    el.innerHTML = `<small>F.R.I.D.A.Y.</small><span></span>`;
     el.querySelector("span")!.textContent = text;
     this.alertsEl.prepend(el);
     while (this.alertsEl.children.length > 4) this.alertsEl.lastElementChild!.remove();

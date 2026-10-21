@@ -7,7 +7,7 @@ import type { EventBus, GameEvents } from "../core/EventBus";
 import type { CollisionWorld } from "../world/Collision";
 import type { WorldMaterials } from "../world/Materials";
 import type { PlayerController } from "../player/PlayerController";
-import type { EnemyKind, EnemyManager } from "../combat/Enemies";
+import { AIR_KINDS, type EnemyKind, type EnemyManager } from "../combat/Enemies";
 import type { HudMarker } from "../ui/Hud";
 import { Rng } from "../core/math";
 import { DISTRICT_MIN, DISTRICT_MAX } from "../world/WorldConfig";
@@ -31,6 +31,11 @@ const TEMPLATES: Template[] = [
   { title: "Kamikaze drone wave", detail: "Explosive drones inbound - keep moving", place: "air", squad: ["kamikaze", "kamikaze", "kamikaze", "kamikaze", "drone", "drone"], minLevel: 1 },
   { title: "Rooftop missile nest", detail: "Troopers with homing launchers", place: "roof", squad: ["trooper", "trooper", "trooper", "trooper", "drone"], minLevel: 2 },
   { title: "WARBOT RAMPAGE", detail: "Heavy assault mech - dodge the laser", place: "street", squad: ["warbot", "drone", "drone"], minLevel: 3 },
+  { title: "Sniper nest", detail: "Watch for the red laser - keep moving", place: "roof", squad: ["sniper", "sniper", "trooper"] },
+  { title: "Shielded strike team", detail: "Take out the shield drone first", place: "air", squad: ["shielder", "drone", "drone", "drone"], minLevel: 1 },
+  { title: "Gunship assault", detail: "Heavy VTOL gunship over the district", place: "air", squad: ["gunship", "drone", "drone"], minLevel: 1 },
+  { title: "Armoured convoy", detail: "Hover tanks shelling the avenue", place: "street", squad: ["tank", "tank", "trooper", "trooper"], minLevel: 2 },
+  { title: "All-out assault", detail: "Gunship, shield drone and a tank", place: "street", squad: ["gunship", "shielder", "tank", "drone", "drone", "sniper"], minLevel: 4 },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
   { title: "Rooftop distress beacon", detail: "Civilian signal from a rooftop", place: "roof", squad: [] },
 ];
@@ -45,7 +50,7 @@ interface Incident {
 }
 
 /**
- * Free-roam incidents. ARIA dispatches a nearby incident, marks it on the
+ * Free-roam incidents. F.R.I.D.A.Y. dispatches a nearby incident, marks it on the
  * compass and in the world (beam + ring); neutralise every hostile, or reach
  * the beacon for assist calls, to complete it.
  */
@@ -181,18 +186,20 @@ export class CityEvents {
 
   private placeSquad(t: Template, x: number, y: number, z: number, top: number, group: number): void {
     for (const kind of t.squad) {
-      if (kind === "drone" || kind === "kamikaze") {
+      if (AIR_KINDS.has(kind)) {
         const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(4, 16);
-        this.enemies.spawn(kind, x + Math.cos(a) * r, Math.max(y, top + 18) + this.rng.range(-4, 6), z + Math.sin(a) * r, group);
+        const lift = kind === "gunship" ? 35 : 18;
+        this.enemies.spawn(kind, x + Math.cos(a) * r, Math.max(y, top + lift) + this.rng.range(-4, 6), z + Math.sin(a) * r, group);
         continue;
       }
       // Ground units: find a nearby spot at the same surface height that is not inside a building.
       for (let k = 0; k < 20; k++) {
-        const r = kind === "warbot" ? 0 : this.rng.range(2, t.place === "roof" ? 9 : 14);
+        const r = kind === "warbot" ? 0 : kind === "tank" ? this.rng.range(0, 25) : this.rng.range(2, t.place === "roof" ? 9 : 14);
         const a = this.rng.range(0, Math.PI * 2);
         const gx = x + Math.cos(a) * r, gz = z + Math.sin(a) * r;
         const s = this.world.surfaceBelow(gx, top + 1, gz, 0.4);
-        const blocked = this.world.overlaps(gx - 0.5, s + 0.4, gz - 0.5, gx + 0.5, s + 1.8, gz + 0.5);
+        const half = kind === "tank" || kind === "warbot" ? 2.4 : 0.5;
+        const blocked = this.world.overlaps(gx - half, s + 0.4, gz - half, gx + half, s + 1.8, gz + half);
         if (Math.abs(s - top) < 0.6 && !blocked) {
           this.enemies.spawn(kind, gx, s, gz, group);
           break;

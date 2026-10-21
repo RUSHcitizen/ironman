@@ -30,7 +30,7 @@ export interface SettingsData {
   showFps: boolean;
 }
 
-const KEY = "aegis.settings.v1";
+const KEY = "ironman.settings.v1";
 
 export function defaultSettings(isMobile: boolean): SettingsData {
   return {

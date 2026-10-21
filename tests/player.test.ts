@@ -161,4 +161,50 @@ describe("PlayerController", () => {
     sim(dive, 3);
     expect(dive.flightSpeed).toBeGreaterThan(level.flightSpeed + 15);
   });
+
+  it("loop-the-loop: the flight path loops and returns near the starting altitude", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 200, -400, Math.PI);
+    p.mode = "flight";
+    p.flightSpeed = 48;
+    p.viewPitch = 0;
+    p.vel.z = -48;
+    sim(p, 0.5);
+    const y0 = p.pos.y;
+    let maxY = y0;
+    sim(p, 0.02, {}, { trick: "flip" });
+    expect(p.trick?.kind).toBe("loop");
+    for (let k = 0; k < 140; k++) {
+      sim(p, 1 / 60);
+      maxY = Math.max(maxY, p.pos.y);
+    }
+    expect(p.trick).toBeNull();
+    expect(maxY - y0).toBeGreaterThan(10);
+    expect(Math.abs(p.pos.y - y0)).toBeLessThan(6);
+    expect(p.mode).toBe("flight");
+  });
+
+  it("hover flips spin the body and chained tricks build a style combo", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, 0);
+    sim(p, 1.5, { ascend: true }, { takeoff: true });
+    sim(p, 0.3, {}, { trick: "flip" });
+    expect(Math.abs(p.trickPitch)).toBeGreaterThan(0.5);
+    sim(p, 0.6);
+    expect(p.trickPitch).toBe(0);
+    expect(p.styleCombo).toBe(1);
+    sim(p, 0.8, {}, { trick: "spin" });
+    expect(p.styleCombo).toBe(2);
+  });
+
+  it("corkscrew in flight is a double roll that dodges fire", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 200, -400, Math.PI);
+    p.mode = "flight";
+    p.flightSpeed = 48;
+    sim(p, 0.1, {}, { trick: "spin" });
+    expect(p.trick?.kind).toBe("corkscrew");
+    expect(p.evading).toBe(true);
+    expect(p.takeHit(10)).toBe(false);
+  });
 });

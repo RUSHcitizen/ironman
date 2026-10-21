@@ -11,6 +11,8 @@ export interface DebugState {
   kills: number;
   rockets: number;
   suitState: string;
+  trick: string | null;
+  styleCombo: number;
   suitPos: { x: number; y: number; z: number };
   mouseMode: boolean;
   pointerLocked: boolean;
@@ -38,14 +40,14 @@ export async function game<A>(page: Page, fn: (g: GameHandle, arg: A) => void, a
   await page.evaluate(
     ([src, a]) => {
       const f = new Function("g", "arg", `return (${src})(g, arg);`);
-      f((window as unknown as { __AEGIS: unknown }).__AEGIS, a);
+      f((window as unknown as { __GAME: unknown }).__GAME, a);
     },
     [fn.toString(), arg] as const,
   );
 }
 
 export async function state(page: Page): Promise<DebugState> {
-  return page.evaluate(() => (window as unknown as { __AEGIS: GameHandle }).__AEGIS.debugState());
+  return page.evaluate(() => (window as unknown as { __GAME: GameHandle }).__GAME.debugState());
 }
 
 /**
@@ -60,14 +62,14 @@ export async function boot(page: Page, opts: { keepSettings?: boolean } = {}): P
     await page.addInitScript(() => {
       if (!sessionStorage.getItem("e2e-init")) {
         sessionStorage.setItem("e2e-init", "1");
-        localStorage.setItem("aegis.settings.v1", JSON.stringify({ quality: "low", autoQuality: false }));
+        localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false }));
       }
     });
   }
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
   await page.locator("#l-start").click();
-  await page.waitForFunction(() => (window as unknown as { __AEGIS: GameHandle }).__AEGIS.debugState().started);
+  await page.waitForFunction(() => (window as unknown as { __GAME: GameHandle }).__GAME.debugState().started);
   return errors;
 }
 

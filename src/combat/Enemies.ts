@@ -4,7 +4,13 @@ import { nearestTarget, type CombatTarget } from "./Targets";
 import { Rng } from "../core/math";
 import { dist, len, norm, type V3 } from "./math3";
 
-export type EnemyKind = "drone" | "kamikaze" | "trooper" | "warbot";
+export type EnemyKind = "drone" | "kamikaze" | "trooper" | "warbot" | "gunship" | "sniper" | "shielder" | "tank";
+
+/** Flying kinds (spawned in the air, not on a surface). */
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder"]);
+
+/** Allies within this range of a shield drone take reduced damage. */
+export const SHIELD_RADIUS = 22;
 
 export interface EnemyStats {
   hp: number;
@@ -20,6 +26,10 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   kamikaze: { hp: 14, radius: 0.9, centerY: 0, range: 300, score: 75 },
   trooper: { hp: 45, radius: 1.0, centerY: 1.1, range: 230, score: 150 },
   warbot: { hp: 340, radius: 2.9, centerY: 3.2, range: 340, score: 1000 },
+  gunship: { hp: 220, radius: 3.2, centerY: 0, range: 330, score: 600 },
+  sniper: { hp: 35, radius: 1.0, centerY: 1.1, range: 380, score: 250 },
+  shielder: { hp: 60, radius: 1.3, centerY: 0, range: 260, score: 300 },
+  tank: { hp: 280, radius: 2.9, centerY: 1.4, range: 300, score: 700 },
 };
 
 /** Placeholder target when nothing is engageable: enemies just patrol. */
@@ -72,6 +82,8 @@ export interface Enemy {
   aimX: number;
   aimY: number;
   aimZ: number;
+  /** Protected by a nearby shield drone this frame. */
+  shielded: boolean;
 }
 
 /** How enemies hurt things - implemented by the projectile system. */
@@ -80,6 +92,8 @@ export interface EnemyWeapons {
   missile(from: V3, dir: V3, damage: number): void;
   explode(at: V3, size: number, damage: number, hurtsPlayer: boolean): void;
   beam(from: V3, to: V3, kind: "telegraph" | "laser"): void;
+  /** Ballistic explosive shell (tank). */
+  shell(from: V3, vel: V3, damage: number): void;
   shockwave(at: V3, radius: number): void;
 }
 
@@ -87,6 +101,10 @@ export interface EnemyWeapons {
  * Hostile units and their behaviours. Pure simulation (no rendering) so it can
  * be unit-tested headlessly. Enemies ignore the player while out of the suit.
  */
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
 export class EnemyManager {
   readonly enemies: Enemy[] = [];
   kills = 0;
@@ -148,6 +166,7 @@ export class EnemyManager {
       aimX: x,
       aimY: y,
       aimZ: z,
+      shielded: false,
     };
     this.enemies.push(e);
     return e;
@@ -171,7 +190,7 @@ export class EnemyManager {
       e.vz += -Math.sin(e.yaw) * s * 24;
       e.vy += this.rng.range(-4, 8);
       e.dodgeCooldown = 2.2;
-    } else if (e.kind === "trooper" && e.state !== "hop" && this.rng.chance(0.25)) {
+    } else if ((e.kind === "trooper" || e.kind === "sniper") && e.state !== "hop" && this.rng.chance(0.25)) {
       this.startHop(e);
       e.dodgeCooldown = 3;
     }
@@ -179,6 +198,7 @@ export class EnemyManager {
 
   damage(e: Enemy, amount: number): void {
     if (!e.alive) return;
+    if (e.shielded) amount *= 0.25;
     e.hp -= amount;
     e.flash = 1;
     e.aware = true;
@@ -186,7 +206,8 @@ export class EnemyManager {
       e.alive = false;
       this.kills++;
       const c = this.center(e);
-      const size = e.kind === "warbot" ? 9 : e.kind === "kamikaze" ? 5 : 3.2;
+      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank";
+      const size = big ? 9 : e.kind === "kamikaze" ? 5 : 3.2;
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : 0, true);
       this.bus?.emit("kill", { kind: e.kind, total: this.kills });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
@@ -197,6 +218,11 @@ export class EnemyManager {
 
   /** Each enemy engages the nearest targetable target (player in the suit, or the sentry suit). */
   update(dt: number, targets: readonly CombatTarget[]): void {
+    // Shield drones protect every other hostile near them.
+    const shields = this.enemies.filter((e) => e.alive && e.kind === "shielder");
+    for (const e of this.enemies) {
+      e.shielded = shields.some((s) => s !== e && Math.hypot(s.x - e.x, s.y - e.y, s.z - e.z) < SHIELD_RADIUS);
+    }
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const p = nearestTarget(targets, e) ?? IDLE_TARGET;
@@ -228,6 +254,18 @@ export class EnemyManager {
           break;
         case "warbot":
           this.updateWarbot(e, dt, p, d);
+          break;
+        case "gunship":
+          this.updateGunship(e, dt, p, d);
+          break;
+        case "sniper":
+          this.updateSniper(e, dt, p, d);
+          break;
+        case "shielder":
+          this.updateShielder(e, dt, p, d);
+          break;
+        case "tank":
+          this.updateTank(e, dt, p, d);
           break;
       }
     }
@@ -339,7 +377,7 @@ export class EnemyManager {
     e.burstTimer = interval;
     e.burstLeft--;
     const from = this.center(e);
-    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : 0;
+    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : e.kind === "gunship" ? -1 : 0;
     this.weapons?.bolt(from, this.aimAt(from, p, speed, spread), speed, damage);
   }
 
@@ -538,6 +576,170 @@ export class EnemyManager {
       }
       default:
         this.toWalk(e);
+    }
+  }
+
+  /** Heavy VTOL gunship: wide circle-strafe, chaingun bursts and missile salvos. */
+  private updateGunship(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.orbit += dt * 0.15;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 40, e.anchor.y + Math.sin(e.phase * 0.4) * 3, e.anchor.z + Math.sin(e.orbit) * 40, 10, dt, 1);
+      this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 1.5);
+      this.flyMove(e, dt, 10);
+      return;
+    }
+    e.moveTimer -= dt;
+    if (e.moveTimer <= 0) {
+      e.moveTimer = this.rng.range(5, 9);
+      if (this.rng.chance(0.4)) e.strafe *= -1;
+    }
+    e.orbit += e.strafe * dt * 0.22;
+    const radius = 80 + Math.sin(e.phase * 0.3) * 15;
+    this.steerTo(e, t.x + Math.cos(e.orbit) * radius, t.y + 22 + Math.sin(e.phase * 0.5) * 6, t.z + Math.sin(e.orbit) * radius, 18, dt, 1.2);
+    this.faceTowards(e, t, dt, 2);
+    this.flyMove(e, dt, 10);
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0 && e.los) {
+      e.burstLeft = 8;
+      e.fireTimer = this.rng.range(2.6, 3.6);
+    }
+    this.burst(e, dt, p, 95, 3, 0.07, 0.045);
+    e.missileTimer -= dt;
+    if (e.missileTimer <= 0 && e.los && d > 40) {
+      e.missileTimer = this.rng.range(8, 11);
+      for (const side of [-1, 1]) {
+        const from = { x: e.x + Math.cos(e.yaw) * side * 3, y: e.y - 0.5, z: e.z - Math.sin(e.yaw) * side * 3 };
+        this.weapons?.missile(from, norm({ x: t.x - from.x, y: t.y - from.y, z: t.z - from.z }), 12);
+      }
+    }
+  }
+
+  /** Rooftop sniper: paints you with a lagging laser, then one heavy shot. */
+  private updateSniper(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
+    const t = p.center;
+    if (e.state === "hop" || !e.aware) {
+      // Shares the trooper's jet-hop and idle behaviour.
+      if (e.state !== "charge") this.updateTrooperMotion(e, dt, t);
+      if (!e.aware) e.charge = 0;
+      return;
+    }
+    this.faceTowards(e, t, dt, 5);
+    const eye = { x: e.x, y: e.y + 1.6, z: e.z };
+    if (e.state !== "charge") {
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0 && e.los) {
+        e.state = "charge";
+        e.stateTimer = 2.0;
+        e.aimX = t.x;
+        e.aimY = t.y;
+        e.aimZ = t.z;
+      }
+      return;
+    }
+    e.stateTimer -= dt;
+    e.charge = 1 - e.stateTimer / 2.0;
+    const k = Math.min(1, dt * 1.6);
+    e.aimX += (t.x - e.aimX) * k;
+    e.aimY += (t.y - e.aimY) * k;
+    e.aimZ += (t.z - e.aimZ) * k;
+    this.weapons?.beam(eye, { x: e.aimX, y: e.aimY, z: e.aimZ }, "telegraph");
+    if (e.stateTimer <= 0) {
+      this.weapons?.bolt(eye, norm({ x: e.aimX - eye.x, y: e.aimY - eye.y, z: e.aimZ - eye.z }), 260, 16);
+      e.charge = 0;
+      e.state = "engage";
+      e.fireTimer = this.rng.range(2.5, 4);
+      if (this.rng.chance(0.35)) this.startHop(e);
+    }
+  }
+
+  /** Trooper-style idle sway / jet-hop physics, reused by snipers. */
+  private updateTrooperMotion(e: Enemy, dt: number, t: V3): void {
+    e.jet = Math.max(0, e.jet - dt * 1.5);
+    if (e.state === "hop") {
+      e.vy -= 14 * dt;
+      e.jet = Math.max(e.jet, e.vy > 0 ? 1 : 0.5);
+      const nx = e.x + e.vx * dt, nz = e.z + e.vz * dt;
+      if (!this.world.overlaps(nx - 0.4, e.y + 0.4, nz - 0.4, nx + 0.4, e.y + 1.8, nz + 0.4)) {
+        e.x = nx;
+        e.z = nz;
+      } else e.vx = e.vz = 0;
+      e.y += e.vy * dt;
+      const floor = this.world.surfaceBelow(e.x, e.y + 0.5, e.z, 0.4);
+      if (e.y <= floor && e.vy <= 0) {
+        e.y = e.ground = floor;
+        e.vx = e.vz = e.vy = 0;
+        e.state = "engage";
+      }
+      if (e.aware) this.faceTowards(e, t, dt, 8);
+    } else e.yaw += Math.sin(e.phase * 0.5) * dt * 0.4;
+  }
+
+  /** Shield drone: hangs back near its allies and projects a damage-reducing bubble. */
+  private updateShielder(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
+    const t = p.center;
+    // Centre of the other members of its squad (or its anchor).
+    let n = 0, cx = 0, cy = 0, cz = 0;
+    for (const o of this.enemies) {
+      if (!o.alive || o === e || o.group !== e.group || o.kind === "shielder") continue;
+      n++;
+      cx += o.x;
+      cy += o.y + ENEMY_STATS[o.kind].centerY;
+      cz += o.z;
+    }
+    const hx = n ? cx / n : e.anchor.x, hy = n ? cy / n + 6 : e.anchor.y, hz = n ? cz / n : e.anchor.z;
+    // Stay on the far side of the squad from the attacker.
+    let gx = hx, gz = hz;
+    if (e.aware) {
+      const away = norm({ x: hx - t.x, y: 0, z: hz - t.z });
+      gx += away.x * 10;
+      gz += away.z * 10;
+    }
+    this.steerTo(e, gx + Math.cos(e.phase) * 3, hy + Math.sin(e.phase * 1.3) * 2, gz + Math.sin(e.phase) * 3, 20, dt, 2);
+    this.faceTowards(e, t, dt, 3);
+    this.flyMove(e, dt, 6);
+    // Weak pulse shot now and then.
+    e.fireTimer -= dt;
+    if (e.aware && e.fireTimer <= 0 && e.los) {
+      e.fireTimer = this.rng.range(3, 5);
+      e.burstLeft = 1;
+    }
+    this.burst(e, dt, p, 70, 3, 0.1, 0.05);
+  }
+
+  /** Hover tank: stalks along the street and lobs arcing explosive shells. */
+  private updateTank(e: Enemy, dt: number, p: CombatTarget, _d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.yaw += dt * 0.15;
+      return;
+    }
+    this.faceTowards(e, t, dt, 1.4);
+    const flat = Math.hypot(t.x - e.x, t.z - e.z);
+    if (flat > 55) {
+      const sp = 5 * dt;
+      const fx = Math.sin(e.yaw) * sp, fz = Math.cos(e.yaw) * sp;
+      const tryMove = (mx: number, mz: number) => {
+        const nx = e.x + mx, nz = e.z + mz;
+        if (this.world.overlaps(nx - 2.2, e.ground + 0.5, nz - 2.2, nx + 2.2, e.ground + 3, nz + 2.2)) return false;
+        if (Math.abs(this.world.surfaceBelow(nx, e.ground + 0.5, nz, 1) - e.ground) > 0.6) return false;
+        e.x = nx;
+        e.z = nz;
+        return true;
+      };
+      if (!tryMove(fx, fz)) tryMove(fz * e.strafe, -fx * e.strafe) || (e.strafe *= -1);
+    }
+    // Turret glows before each shot.
+    e.fireTimer -= dt;
+    e.charge = clamp01(1 - e.fireTimer / 0.8);
+    if (e.fireTimer <= 0 && e.los) {
+      e.fireTimer = this.rng.range(3, 4.2);
+      const from = { x: e.x + Math.sin(e.yaw) * 3, y: e.y + 2.2, z: e.z + Math.cos(e.yaw) * 3 };
+      // Ballistic solution with some lead.
+      const T = clamp01(Math.hypot(t.x - from.x, t.z - from.z) / 140) * 2.6 + 0.6;
+      const ax = t.x + p.vel.x * T * 0.5, ay = t.y + p.vel.y * T * 0.5, az = t.z + p.vel.z * T * 0.5;
+      const g = 14;
+      this.weapons?.shell(from, { x: (ax - from.x) / T, y: (ay - from.y + 0.5 * g * T * T) / T, z: (az - from.z) / T }, 15);
     }
   }
 

@@ -33,6 +33,8 @@ export interface GameEvents extends Record<string, unknown> {
   boost: Record<string, never>;
   sonicBoom: { x: number; y: number; z: number };
   roll: { dir: number };
+  trick: { name: string; combo: number };
+  suitLatch: { x: number; y: number; z: number; part: number };
   nearMiss: { streak: number };
   playerHit: { damage: number };
   evaded: Record<string, never>;

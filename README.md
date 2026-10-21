@@ -1,17 +1,48 @@
-# AEGIS: Skyline Protocol
+# Iron Man (unofficial fan game)
 
-An original, browser-native 3D open-world superhero flight game. You pilot a red-and-gold powered-armour suit through a compact New York–inspired district at dusk, guided by **ARIA**, the suit's onboard AI.
+A browser-native 3D open-world superhero flight game in the style of Iron Man. You fly a red-and-gold suit through a huge New York-style city, fight hostile machines, step out and walk the streets as a civilian, and call your suit back so it latches on piece by piece. F.R.I.D.A.Y. runs the HUD.
+
+> **Unofficial fan project.** Not affiliated with, endorsed by or sponsored by Marvel, Disney or any rights holder. "Iron Man" and "F.R.I.D.A.Y." are trademarks of their respective owners, used here only to identify the fan tribute. All models, textures and sounds are generated procedurally by this code; no assets from films or games are included. Publishing it publicly under these names carries trademark risk, so consider an original title for a public release.
 
 Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is generated procedurally at runtime, so there are no downloaded or proprietary assets. It builds to static files for **Cloudflare** (Workers static assets or Pages), at $0.
 
 | | |
 |---|---|
-| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Warbot](docs/screenshots/04-warbot.png) |
+| ![Suit pieces latching on](docs/screenshots/13-suit-up-latch.png) | ![Called suit latching on](docs/screenshots/15-called-suit-latching.png) |
+| ![New enemy types](docs/screenshots/14-new-enemies.png) | ![Warbot](docs/screenshots/04-warbot.png) |
+| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Title screen](docs/screenshots/01-title.png) |
 | ![Stepped out of the suit](docs/screenshots/07-civilian.png) | ![Sentry mode](docs/screenshots/11-sentry.png) |
 | ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Suit flying in](docs/screenshots/12-suit-inbound.png) |
 | ![City from 420 m](docs/screenshots/06-city-overview.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 4 – latch-on suit-up, new enemies, fluid flight and tricks, 33 km²
+
+- **Suit-up, piece by piece.**
+  - When the called suit gets within about 7 m, it breaks apart in mid-air.
+  - Each armour piece starts exactly where it was on the flying suit and flies onto your body in sequence: boots, shins, thighs, pelvis, torso, arms and gloves, helmet last.
+  - Each piece overshoots and snaps into place with a spark and a metallic clank.
+  - The opening suit-up on Engage swirls pieces in from all around you.
+- **Four new enemy types:**
+  - **Gunship:** a heavy VTOL with ducted fans. It circle-strafes at 70–95 m, fires 8-round chaingun bursts and launches twin missiles.
+  - **Sniper:** a hooded rooftop marksman. It paints you with a red laser that lags behind your movement, fires a heavy shot after 2 s, then often jet-hops to a new perch.
+  - **Shield drone:** projects a purple bubble that cuts damage to every hostile within 22 m by 75%. It hangs back behind its squad, so kill it first.
+  - **Hover tank:** stalks along the streets and lobs arcing explosive shells with a lead-aimed ballistic solution. The turret glows before each shot. You can shoot shells down mid-air.
+  - New incidents: sniper nest, shielded strike team, gunship assault, armoured convoy, and an all-out assault.
+- **More fluid, slightly slower flight.**
+  - Cruise 48 m/s, afterburner 125 m/s (about 450 km/h).
+  - Steering rates ease in and out, and velocity carries momentum, so turns carve.
+  - Banking follows your actual turn, and the camera trails the aim a little in flight.
+  - Hover is a touch floatier.
+- **Mid-air tricks**, chained into a style combo that refills power:
+  - `T`: front flip in hover / loop-the-loop in flight (the flight path really loops).
+  - `B`: backflip.
+  - `H`: 360° spin in hover / corkscrew in flight (a double roll that also dodges fire).
+  - `Q` / `E`: barrel rolls, as before.
+  - Touch: a TRICK button appears while airborne.
+- **Even bigger map:** 18 × 18 chunks, about **5.8 km × 5.8 km (33 km²)**, with 81 districts and a fifth skyscraper cluster (Harbor Heights).
+- Renamed to **Iron Man**, with **F.R.I.D.A.Y.** as the suit AI.
 
 ## Milestone 3 – the suit has a mind of its own, a 20 km² city
 
@@ -43,7 +74,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - **Kamikaze drones:** weaving dives that explode on contact. Shoot them first or roll away.
   - **Jet-pack troopers:** strafe along rooftops and streets without falling off, **jet-hop** to new positions (sometimes to dodge your fire), fire bursts, and launch **homing missiles**.
   - **Warbot** (unlocks after three incidents): a walking assault mech that stomps toward you firing bursts, launches 4-missile salvos, charges a **telegraphed laser** (the red aiming line lags behind you, so keep moving), and **ground-slams a shockwave** if you get close at street level.
-- **Incidents.** ARIA dispatches combat incidents (drone swarms, rooftop gangs, street robberies, kamikaze waves, missile nests, Warbot rampages) plus occasional rescue calls. Each is marked by a beam, a ring and a compass marker, and progress shows as "Hostiles 2/5". Clearing one repairs the suit, recharges power and reloads rockets. If integrity falls below 15%, the suit fails and ARIA flies you back to Apex Tower.
+- **Incidents.** F.R.I.D.A.Y. dispatches combat incidents (drone swarms, rooftop gangs, street robberies, kamikaze waves, missile nests, Warbot rampages) plus occasional rescue calls. Each is marked by a beam, a ring and a compass marker, and progress shows as "Hostiles 2/5". Clearing one repairs the suit, recharges power and reloads rockets. If integrity falls below 15%, the suit fails and F.R.I.D.A.Y. flies you back to Apex Tower.
 - **More fun flying:**
   - **Barrel rolls** (`Q`/`E`, double-tap `A`/`D`, or double-tap the right side of the touchscreen): a sideways dash with brief invulnerability that also **breaks missile locks**.
   - **Dives build speed and climbs bleed it.** The afterburner now has a kick and a higher top speed (about 590 km/h).
@@ -60,8 +91,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Armoured hero**: a procedurally modelled suit with a joint hierarchy. Poses blend between walk, hover, flight and a "superhero landing" crouch, with boot and palm thruster flames, an arc reactor glow, a suit-up assembly animation on start, and a blob shadow.
 - **Movement**: walking in armour, takeoff, hover (strafe, ascend, descend, hold altitude), high-speed flight with banking, an afterburner, braking back into hover, and landing on streets or rooftops (hard landings at speed). Wall impacts damage the suit. Stabilisers catch you if you walk off a roof, hover engages automatically over water, and soft limits apply to the airspace boundary and altitude ceiling.
 - **Third-person camera**: smoothed follow, shoulder offset, speed-based distance and FOV, banking roll, impact shake, and pull-in when buildings get in the way.
-- **ARIA HUD**: compass tape with map markers, heading, speed (km/h + Mach), altitude, AGL and vertical speed, suit integrity diagnostics (per-part silhouette), power bar, mode indicator, area-name banners, and dynamically generated alerts.
-- **Optional city incidents**: ARIA spawns incidents nearby, each with a beam and ring in the world and an amber compass marker. Reach one to resolve it.
+- **F.R.I.D.A.Y. HUD**: compass tape with map markers, heading, speed (km/h + Mach), altitude, AGL and vertical speed, suit integrity diagnostics (per-part silhouette), power bar, mode indicator, area-name banners, and dynamically generated alerts.
+- **Optional city incidents**: F.R.I.D.A.Y. spawns incidents nearby, each with a beam and ring in the world and an amber compass marker. Reach one to resolve it.
 - **Controls**: keyboard and mouse (drag-look, or click to pointer-lock), plus a touch layout with a floating virtual stick, a camera drag area, and large UP / DOWN / FLY buttons.
 - **Settings menu**: graphics quality (low / medium / high), auto-reduce quality on low FPS, mouse and touch sensitivity, invert Y, volume, FPS counter, and return to Apex Tower. Settings persist in `localStorage`.
 - **Robustness**: loading screen with progress, a recoverable error screen when WebGL is unavailable, a WebGL context-loss notice, a rotate-to-landscape hint on phones, safe-area insets, and no pinch-zoom or scroll hijack.
@@ -78,6 +109,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Toggle flight / hover | `Shift` or `F` | FLY |
 | Afterburner / brake (in flight) | `W` / `S` | Stick up / down |
 | Barrel roll / dodge | `Q` / `E`, or double-tap `A` / `D` | Double-tap the right side |
+| Tricks: flip or loop / backflip / spin or corkscrew | `T` / `B` / `H` | TRICK (flip in hover, loop in flight) |
 | Repulsors (hold) | Left mouse or `X` | BLAST |
 | Micro-rockets (lock-on) | Right mouse or `R` | MSL |
 | Step out of the suit (landed) / call it back | `G` | SUIT · CALL SUIT |
@@ -153,7 +185,7 @@ src/
                           rig, poses, transformation), SuitSystems, SpeedFx
   camera/                 ThirdPersonCamera
   input/                  InputManager (keyboard/mouse/touch → InputState), TouchControls
-  ui/                     Hud (ARIA HUD), SettingsMenu
+  ui/                     Hud (F.R.I.D.A.Y. HUD), SettingsMenu
   combat/                 Targets (anything enemies can attack: player or sentry suit), Enemies (AI), Projectiles (bolts, rockets, missiles, explosions), Combat (player weapons,
                           lock-on, aim assist) - all pure logic, unit-tested - plus EnemyRenderer/ProjectileRenderer
   gameplay/               CityEvents (combat incidents, rescue calls, markers)
@@ -177,24 +209,25 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **32 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **39 unit tests** pass, covering:
   - City generation and collision.
-  - Flight physics, civilian movement and rolls.
-  - Combat and enemy behaviours.
-  - The autonomous suit:
-    - It docks after flying 200 m around a tall building.
-    - It follows a walking civilian.
-    - Sentry mode kills hostiles while enemies ignore the civilian.
-    - A wrecked sentry goes offline and refuses calls.
-- **12 browser tests** pass on the desktop and emulated-mobile projects, including:
-  - Mouse drag-look.
-  - The full flight sequence.
-  - Repulsors and rockets.
-  - Suit off and back on.
-  - **Step out → sentry kills a drone → walk away → call the suit → it flies in and docks.**
-  - The settings menu, the WebGL error screen, and the touch layout (including CALL SUIT / SENTRY).
-- JavaScript cost at Medium on this container: about **1.2 ms per frame** of game logic, with 80 vehicles, 120 pedestrians and about 34k colliders. Building a newly streamed chunk takes about 4–5 ms, capped at one chunk per frame.
-- The scene draws about 510k triangles at Medium in a typical street view.
+  - Flight physics:
+    - Civilian movement.
+    - **The loop-the-loop returns to about its starting altitude.**
+    - **Hover flips reset cleanly and chained tricks build the combo.**
+    - **A corkscrew dodges fire.**
+  - Combat and every enemy type:
+    - **Shield drones cut ally damage until destroyed.**
+    - **Snipers always telegraph before firing.**
+    - **Tank shells arc and hurt.**
+    - **Gunships circle-strafe at range.**
+  - The autonomous suit (call, dock, sentry, offline).
+- **13 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Hover flip and flight loop in the real game.**
+  - Mouse drag-look, the flight sequence, and weapons.
+  - Suit off/on and the full step-out → sentry → call → dock flow (now with the piece-by-piece latch).
+  - The touch layout and the WebGL error screen.
+- The 33 km² city loads in about 2.5 s here (layout data and about 50k colliders up front; meshes stream in around the camera).
 
 **Not yet tested:**
 - **Real iPhone Safari**, a real Chromebook, or any physical GPU.
@@ -213,4 +246,4 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
 
 ## License
 
-MIT for the code. All assets are generated at runtime by this code. This is an original work: no trademarked characters, names, logos or assets are used.
+MIT for the code. All assets are generated at runtime by this code. The names "Iron Man" and "F.R.I.D.A.Y." belong to their owners and are not covered by the MIT licence; this is an unofficial, non-commercial fan project.

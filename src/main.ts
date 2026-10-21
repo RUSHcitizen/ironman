@@ -83,7 +83,7 @@ async function boot(): Promise<void> {
   const bar = $("l-progress");
   const status = $("l-status");
   const game = new Game(engine, canvas, $("ui"), settings, device);
-  (window as unknown as { __AEGIS: Game }).__AEGIS = game;
+  (window as unknown as { __GAME: Game }).__GAME = game;
   await game.init(async (f, label) => {
     bar.style.transform = `scaleX(${f})`;
     status.textContent = label;

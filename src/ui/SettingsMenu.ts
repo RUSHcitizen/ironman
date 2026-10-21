@@ -22,7 +22,7 @@ export class SettingsMenu {
     this.el.setAttribute("aria-label", "Settings");
     this.el.innerHTML = `
       <div class="m-panel">
-        <header><small>ARIA · SYSTEMS</small><h2>Paused</h2></header>
+        <header><small>F.R.I.D.A.Y. · SYSTEMS</small><h2>Paused</h2></header>
         <button class="m-primary" data-a="resume">Resume</button>
         <section>
           <label>Graphics quality</label>

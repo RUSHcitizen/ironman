@@ -26,6 +26,8 @@ export interface AvatarState {
   bodyPitch: number;
   bodyRoll: number;
   rollSpin: number;
+  trickPitch: number;
+  trickYaw: number;
   walkPhase: number;
   landingTimer: number;
   viewPitch: number;
@@ -67,6 +69,12 @@ export class ArmorModel {
   private armorIn = true;
   private armorShown = true;
   private civ: AbstractMesh[] = [];
+  /** Hierarchy nodes in creation (parent-first) order. */
+  private nodes: TransformNode[] = [];
+  /** Piece-by-piece latch suit-up: per-part local start positions. */
+  private latch: { t: number; starts: Vector3[]; landed: boolean[]; lastDelay: number } | null = null;
+  /** Called when a piece clamps on (world position, part index). */
+  onLatch: ((world: Vector3, index: number) => void) | null = null;
   private civShown = false;
   private crouch = 0;
   readonly meshes: AbstractMesh[] = [];
@@ -97,6 +105,7 @@ export class ArmorModel {
     this.pivot.parent = this.root;
     this.pivot.position.y = 1.0;
     this.pivot.rotationQuaternion = Quaternion.Identity();
+    this.nodes.push(this.root, this.pivot);
 
     const add = (m: Mesh, parent: TransformNode, mat: StandardMaterial, x: number, y: number, z: number, delay: number) => {
       m.parent = parent;
@@ -119,6 +128,7 @@ export class ArmorModel {
       n.parent = parent;
       n.position.set(x, y, z);
       this.joints[name] = { node: n, x: 0, z: 0 };
+      this.nodes.push(n);
       return n;
     };
 
@@ -187,6 +197,8 @@ export class ArmorModel {
     }
 
     if (this.withCivilian) this.buildCivilian();
+    // Remember every part's rest transform (used by the suit-up animations).
+    for (const part of this.parts) part.mesh.metadata = { s: part.mesh.scaling.clone(), p: part.mesh.position.clone() };
 
     // Blob shadow (cheap on every quality level).
     const st = new DynamicTexture("blob", { width: 64, height: 64 }, scene, false);
@@ -328,7 +340,89 @@ export class ArmorModel {
   }
 
   playSuitUp(): void {
-    this.startTransform(true);
+    this.latchFrom(null);
+  }
+
+  /** Refresh world matrices top-down so absolute positions are current this frame. */
+  refreshWorld(): void {
+    for (const n of this.nodes) n.computeWorldMatrix(true);
+    for (const part of this.parts) part.mesh.computeWorldMatrix(true);
+  }
+
+  /** Current world position of every armour piece (for handing pieces over). */
+  pieceWorldPositions(): Vector3[] {
+    this.refreshWorld();
+    return this.parts.map((p) => p.mesh.getAbsolutePosition().clone());
+  }
+
+  /**
+   * Suit-up where each armour piece flies in and clamps onto the body, from
+   * the given world positions (the arriving suit) or from all around (null).
+   * Feet first, helmet last.
+   */
+  latchFrom(worldStarts: Vector3[] | null): void {
+    this.armorT = -1;
+    this.refreshWorld();
+    const starts: Vector3[] = [];
+    this.parts.forEach((part, i) => {
+      const parent = part.mesh.parent as TransformNode;
+      const rest = (part.mesh.metadata as { p: Vector3 }).p;
+      let world = worldStarts?.[i];
+      if (!world) {
+        // Scatter around the body: pieces swirl in from 3-7 m away.
+        const a = i * 2.39996 + Math.random() * 0.5;
+        const r = 3 + Math.random() * 4;
+        const restWorld = Vector3.TransformCoordinates(rest, parent.getWorldMatrix());
+        world = restWorld.add(new Vector3(Math.cos(a) * r, 1 + Math.random() * 3, Math.sin(a) * r));
+      }
+      const inv = parent.getWorldMatrix().clone().invert();
+      starts.push(Vector3.TransformCoordinates(world, inv));
+      part.mesh.setEnabled(true);
+      part.mesh.scaling.copyFrom((part.mesh.metadata as { s: Vector3 }).s);
+      part.mesh.position.copyFrom(starts[i]);
+    });
+    this.armorShown = true;
+    this.setCivilian(this.withCivilian);
+    this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1 };
+  }
+
+  get latching(): boolean {
+    return this.latch !== null;
+  }
+
+  private updateLatch(dt: number): void {
+    const l = this.latch;
+    if (!l) return;
+    l.t += dt;
+    const flight = 0.42;
+    let done = true;
+    this.parts.forEach((part, i) => {
+      const m = part.mesh;
+      const rest = (m.metadata as { p: Vector3 }).p;
+      const start = l.starts[i];
+      const t0 = part.delay * 1.75;
+      const u = clamp((l.t - t0) / flight, 0, 1);
+      if (u < 1) done = false;
+      // Ease-out-back: overshoot slightly, then snap into place.
+      const c1 = 1.9;
+      const e = u <= 0 ? 0 : 1 + (c1 + 1) * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
+      const arc = Math.sin(u * Math.PI) * 0.35;
+      m.position.set(start.x + (rest.x - start.x) * e, start.y + (rest.y - start.y) * e + arc, start.z + (rest.z - start.z) * e);
+      if (u >= 1 && !l.landed[i]) {
+        l.landed[i] = true;
+        // One clank per body section, not per mesh.
+        if (Math.abs(part.delay - l.lastDelay) > 0.04) {
+          l.lastDelay = part.delay;
+          m.computeWorldMatrix(true);
+          this.onLatch?.(m.getAbsolutePosition().clone(), i);
+        }
+      }
+    });
+    if (done) {
+      for (const part of this.parts) part.mesh.position.copyFrom((part.mesh.metadata as { p: Vector3 }).p);
+      this.setCivilian(false);
+      this.latch = null;
+    }
   }
 
   /** Animate the armour on (assemble) or off (peel away). */
@@ -371,11 +465,11 @@ export class ArmorModel {
     this.time += dt;
     const t = this.time;
     this.root.position.set(p.pos.x, p.pos.y, p.pos.z);
-    Quaternion.RotationYawPitchRollToRef(p.bodyYaw, p.bodyPitch, p.bodyRoll + p.rollSpin, this.pivot.rotationQuaternion!);
+    Quaternion.RotationYawPitchRollToRef(p.bodyYaw + p.trickYaw, p.bodyPitch + p.trickPitch, p.bodyRoll + p.rollSpin, this.pivot.rotationQuaternion!);
     // Keep visuals consistent if state changed without an animation (respawn etc.).
-    if (this.armorT < 0) {
+    if (this.armorT < 0 && !this.latch) {
       if (this.armorShown !== p.suited) this.setArmorVisible(p.suited);
-      this.setCivilian(!p.suited);
+      this.setCivilian(!p.suited && this.withCivilian);
     }
 
     // Pose selection.
@@ -507,6 +601,7 @@ export class ArmorModel {
     this.shadow.visibility = sh;
 
     this.updateArmorAnim(dt);
+    this.updateLatch(dt);
   }
 
   private updateArmorAnim(dt: number): void {
@@ -515,7 +610,6 @@ export class ArmorModel {
     const total = 1.3;
     for (const part of this.parts) {
       const m = part.mesh;
-      if (!m.metadata) m.metadata = { s: m.scaling.clone(), p: m.position.clone() };
       const s0 = m.metadata.s as Vector3;
       const p0 = m.metadata.p as Vector3;
       // Assemble from the feet up; peel away from the head down.

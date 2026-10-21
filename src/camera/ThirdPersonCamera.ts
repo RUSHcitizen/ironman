@@ -3,7 +3,7 @@ import { TargetCamera } from "@babylonjs/core/Cameras/targetCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { PlayerController } from "../player/PlayerController";
 import type { CollisionWorld } from "../world/Collision";
-import { clamp, damp, lerp } from "../core/math";
+import { clamp, damp, dampAngle, lerp } from "../core/math";
 
 /**
  * Smooth third-person follow camera. Aim angles come from the player
@@ -17,6 +17,9 @@ export class ThirdPersonCamera {
   private shake = 0;
   private roll = 0;
   private fovKick = 0;
+  private camYaw = 0;
+  private camPitch = 0;
+  private initAngles = false;
   private initialised = false;
 
   constructor(scene: Scene) {
@@ -32,6 +35,7 @@ export class ThirdPersonCamera {
   /** Jump straight to the follow position (after teleports / respawn). */
   snap(): void {
     this.initialised = false;
+    this.initAngles = false;
     this.dist = 6;
   }
 
@@ -64,7 +68,16 @@ export class ThirdPersonCamera {
     this.pivot.y += (ty - this.pivot.y) * (flight ? damp(30, dt) : damp(9, dt));
     this.pivot.z += (tz - this.pivot.z) * pk;
 
-    const yaw = p.viewYaw, pitch = p.viewPitch;
+    // In flight the camera trails the aim slightly, so turns feel fluid.
+    if (!this.initAngles) {
+      this.camYaw = p.viewYaw;
+      this.camPitch = p.viewPitch;
+      this.initAngles = true;
+    }
+    const angRate = flight ? 9 : 30;
+    this.camYaw = dampAngle(this.camYaw, p.viewYaw, angRate, dt);
+    this.camPitch += (p.viewPitch - this.camPitch) * damp(angRate, dt);
+    const yaw = this.camYaw, pitch = this.camPitch;
     const cp = Math.cos(pitch);
     const dx = Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = Math.cos(yaw) * cp;
 

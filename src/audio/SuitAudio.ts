@@ -3,7 +3,7 @@ import type { PlayerController } from "../player/PlayerController";
 
 /**
  * Fully synthesised audio (no files): filtered noise for thrusters & wind and
- * short blips for ARIA alerts. Must be unlocked from a user gesture (iOS).
+ * short blips for F.R.I.D.A.Y. alerts. Must be unlocked from a user gesture (iOS).
  */
 export class SuitAudio {
   private ctx: AudioContext | null = null;
@@ -37,9 +37,15 @@ export class SuitAudio {
     bus.on("boost", () => this.noiseBurst(0.45, 1500, 0.3, false));
     bus.on("roll", () => this.zap(300, 900, 0.3, "sine", 0.06));
     bus.on("nearMiss", () => this.blip(1100));
-    bus.on("suitTransform", () => {
-      for (let k = 0; k < 6; k++) setTimeout(() => this.zap(800 + k * 120, 400, 0.08, "square", 0.04), k * 140);
+    bus.on("suitTransform", (e) => {
+      if (!e.toSuited) for (let k = 0; k < 4; k++) setTimeout(() => this.zap(700 - k * 80, 300, 0.08, "square", 0.04), k * 90);
     });
+    // Metallic clank as each armour section clamps on.
+    bus.on("suitLatch", () => {
+      this.zap(320 + Math.random() * 80, 140, 0.09, "square", 0.08);
+      this.noiseBurst(0.12, 3200, 0.12, false);
+    });
+    bus.on("trick", () => this.noiseBurst(0.5, 1200, 0.22, false));
     document.addEventListener("visibilitychange", () => {
       if (!this.ctx) return;
       if (document.hidden) void this.ctx.suspend();

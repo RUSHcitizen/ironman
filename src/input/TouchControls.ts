@@ -1,4 +1,4 @@
-type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry";
+type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry" | "trick";
 
 /**
  * On-screen touch controls built from DOM elements and Pointer Events
@@ -41,6 +41,7 @@ export class TouchControls {
       <button class="t-btn t-fire" data-b="fire" aria-label="Repulsor blast (hold)"><span>✺</span><small>BLAST</small></button>
       <button class="t-btn t-msl" data-b="msl" aria-label="Fire micro-rockets"><span>➶</span><small>MSL</small></button>
       <button class="t-btn t-suit" data-b="suit" aria-label="Exit or call the suit"><span>⛨</span><small>SUIT</small></button>
+      <button class="t-btn t-trick" data-b="trick" aria-label="Mid-air trick"><span>↻</span><small>TRICK</small></button>
       <button class="t-btn t-sentry" data-b="sentry" aria-label="Toggle sentry mode"><span>⛯</span><small>SENTRY</small></button>
     `;
     parent.appendChild(this.el);

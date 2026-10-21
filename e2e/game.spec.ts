@@ -53,6 +53,19 @@ test.describe("desktop controls", () => {
     await page.keyboard.up("KeyC");
   });
 
+  test("mid-air tricks: hover flip and a flight loop build the style combo", async ({ page }) => {
+    await boot(page);
+    await game(page, (g) => g.teleport(2.5, 60, -300, 0, "hover"));
+    await page.keyboard.press("KeyT");
+    await until(page, (s) => s.trick === "flip");
+    await until(page, (s) => s.trick === null && s.styleCombo >= 1);
+    await game(page, (g) => g.teleport(2.5, 200, -300, 0, "flight", 48));
+    await page.keyboard.press("KeyT");
+    await until(page, (s) => s.trick === "loop");
+    await until(page, (s) => s.trick === null, 90_000);
+    await expect(page.locator(".h-popup")).toContainText(/LOOP|FLIP/);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {
@@ -113,7 +126,7 @@ test.describe("desktop controls", () => {
     expect((await state(page)).paused).toBe(true);
     await page.locator('[data-k="quality"] button[data-v="medium"]').click();
     expect((await state(page)).quality).toBe("medium");
-    const stored = await page.evaluate(() => localStorage.getItem("aegis.settings.v1"));
+    const stored = await page.evaluate(() => localStorage.getItem("ironman.settings.v1"));
     expect(stored).toContain('"quality":"medium"');
     await page.locator('[data-a="resume"]').click();
     await expect(page.locator("#menu")).toBeHidden();

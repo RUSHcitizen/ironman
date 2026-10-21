@@ -128,6 +128,11 @@ export class ProjectileRenderer {
       const [yaw, pitch] = orient(p.dx, p.dy, p.dz);
       if (p.kind === "bolt") this.bolts.push(p.x, p.y, p.z, yaw, pitch, 0, 0.22, 0.22, 3.2, 0.5, 1.6, 2.0);
       else if (p.kind === "enemyBolt") this.bolts.push(p.x, p.y, p.z, yaw, pitch, 0, 0.28, 0.28, 1.8, 2.0, 0.35, 0.15);
+      else if (p.kind === "shell") {
+        // Glowing plasma shell.
+        const [fy, fp] = face(p.x, p.y, p.z);
+        this.fireballs.push(p.x, p.y, p.z, fy, fp, 0, 0.9, 0.9, 0.9, 1.8, 0.7, 0.2);
+      }
       else {
         const s = p.kind === "missile" ? 1.6 : 1;
         this.rocketBodies.push(p.x, p.y, p.z, yaw, pitch, 0, s, s, s);

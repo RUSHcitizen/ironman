@@ -19,10 +19,15 @@ export interface InputState {
   toggleSuit: boolean;
   /** Toggle sentry mode for the empty suit. */
   sentry: boolean;
+  /** Mid-air trick requested this frame. */
+  trick: TrickRequest | null;
   /** -1 roll left, +1 roll right, 0 none. */
   roll: number;
   menu: boolean;
 }
+
+/** "auto" picks a loop in flight / front flip in hover (touch TRICK button). */
+export type TrickRequest = "auto" | "flip" | "backflip" | "spin";
 
 export function emptyInput(): InputState {
   return {
@@ -39,6 +44,7 @@ export function emptyInput(): InputState {
     rockets: false,
     toggleSuit: false,
     sentry: false,
+    trick: null,
     roll: 0,
     menu: false,
   };

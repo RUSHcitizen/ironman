@@ -19,7 +19,7 @@ import { ChunkManager } from "../world/ChunkManager";
 import { TrafficSystem } from "../world/Traffic";
 import { PedestrianSystem } from "../world/Pedestrians";
 import { CHUNK_SIZE, HERO_BLOCK, BLOCK_SIZE, blockOrigin } from "../world/WorldConfig";
-import { PlayerController } from "../player/PlayerController";
+import { PlayerController, TUNING } from "../player/PlayerController";
 import { ArmorModel } from "../player/ArmorModel";
 import { SpeedFx } from "../player/SpeedFx";
 import { SuitUnit } from "../player/SuitUnit";
@@ -30,7 +30,7 @@ import { Hud, type HudMarker, type HudTarget } from "../ui/Hud";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SuitAudio } from "../audio/SuitAudio";
 import { CityEvents } from "../gameplay/CityEvents";
-import { EnemyManager, ENEMY_STATS, type EnemyKind } from "../combat/Enemies";
+import { EnemyManager, ENEMY_STATS, AIR_KINDS, type EnemyKind } from "../combat/Enemies";
 import { ProjectileSystem } from "../combat/Projectiles";
 import { Combat, MAX_ROCKETS, aimDirection } from "../combat/Combat";
 import { EnemyRenderer } from "../combat/EnemyRenderer";
@@ -113,7 +113,7 @@ export class Game {
     this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
-    await progress(0.15, "Surveying 20 km² of city");
+    await progress(0.15, "Surveying 33 km² of city");
     this.chunks.registerWorld();
     await progress(0.3, "Constructing nearby districts");
     this.chunks.loadAround(SPAWN.x, SPAWN.z, this.settings.preset.viewDistance);
@@ -133,6 +133,10 @@ export class Game {
     this.suitUnit = new SuitUnit(this.world, this.player.suit, this.enemies, this.projectiles, this.bus);
     this.targets.push(this.player, this.suitUnit);
     this.suitAvatar = new ArmorModel(scene, false);
+    this.avatar.onLatch = (w, i) => {
+      this.projectiles.fx.push({ kind: "spark", x: w.x, y: w.y, z: w.z, size: 0.9, t: 0, life: 0.18, yaw: 0, pitch: 0 });
+      this.bus.emit("suitLatch", { x: w.x, y: w.y, z: w.z, part: i });
+    };
     this.combat = new Combat(this.world, this.enemies, this.projectiles, this.bus);
     this.enemyRenderer = new EnemyRenderer(scene, this.mats);
     this.projRenderer = new ProjectileRenderer(scene, this.mats);
@@ -207,8 +211,8 @@ export class Game {
     bus.on("landed", (e) => this.cam.addShake(e.hard ? 0.7 : 0.15));
     bus.on("suitTransform", (e) => {
       if (e.toSuited) {
-        this.avatar.startTransform(true);
-        bus.emit("alert", { text: "Suit docking - armour assembling", level: "info", ttl: 3 });
+        if (!this.avatar.latching) this.avatar.startTransform(true);
+        bus.emit("alert", { text: "Suit's here, boss - locking on", level: "info", ttl: 3 });
       } else {
         this.stepOutOfSuit();
         bus.emit("alert", { text: "Stepped out of the suit · G to call it · V for sentry mode", level: "info", ttl: 4 });
@@ -229,6 +233,7 @@ export class Game {
       this.cam.addKick(0.2);
       this.hud.popup("SONIC BOOM");
     });
+    bus.on("trick", (e) => this.hud.popup(e.combo > 1 ? `${e.name} ×${e.combo}` : e.name));
     bus.on("nearMiss", (e) => this.hud.popup(e.streak > 1 ? `CLOSE CALL ×${e.streak}` : "CLOSE CALL"));
     bus.on("kill", (e) => this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${ENEMY_STATS[e.kind as EnemyKind].score}`));
     bus.on("weapon", (w) => {
@@ -298,7 +303,7 @@ export class Game {
     this.input.touch.setVisible(!this.input.mouseMode);
     this.avatar.playSuitUp();
     this.setPaused(false);
-    this.bus.emit("alert", { text: "Good evening. All suit systems nominal.", level: "info", ttl: 5 });
+    this.bus.emit("alert", { text: "Evening, boss. All suit systems online.", level: "info", ttl: 5 });
     this.bus.emit("alert", {
       text: this.input.mouseMode ? "Click to capture the mouse · LMB repulsors · RMB rockets · G suit off" : "LIFT to take off · BLAST / MSL to fight · SUIT to walk as a civilian",
       level: "info",
@@ -352,7 +357,7 @@ export class Game {
     const p = this.player;
     const s = Math.sin(p.viewYaw), c = Math.cos(p.viewYaw);
     const x = p.pos.x + s * forward + c * right, z = p.pos.z + c * forward - s * right;
-    const y = kind === "trooper" || kind === "warbot" ? this.world.surfaceBelow(x, p.pos.y + up + 1, z, 0.4) : p.pos.y + up;
+    const y = AIR_KINDS.has(kind) ? p.pos.y + up : this.world.surfaceBelow(x, p.pos.y + up + 1, z, 0.4);
     this.enemies.spawn(kind, x, y, z, 0);
   }
 
@@ -437,9 +442,11 @@ export class Game {
     p.update(dt, input);
     this.avatar.update(dt, p);
     if (this.suitUnit.update(dt, p)) {
-      // Suit arrived: it wraps around the civilian.
+      // Suit arrived: it breaks apart and each piece flies onto the civilian.
+      const starts = this.suitAvatar.pieceWorldPositions();
       this.suitAvatar.setVisible(false);
-      p.beginSuitUp();
+      this.avatar.latchFrom(starts);
+      p.beginSuitUp(TUNING.latchTime);
     }
     if (this.suitUnit.state !== "worn") this.suitAvatar.update(dt, this.suitUnit);
     this.updateSuitStatus();
@@ -609,6 +616,8 @@ export class Game {
       kills: this.enemies.kills,
       rockets: this.combat.rockets,
       suitState: this.suitUnit.state,
+      trick: p.trick?.kind ?? null,
+      styleCombo: p.styleCombo,
       suitPos: { ...this.suitUnit.pos },
       mouseMode: this.input.mouseMode,
       pointerLocked: this.input.isPointerLocked,

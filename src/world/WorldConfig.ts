@@ -11,17 +11,17 @@ export const BLOCK_SIZE = BLOCK_PITCH - ROAD_WIDTH; // 64, includes sidewalk rin
 export const CHUNK_BLOCKS = 4;
 export const CHUNK_SIZE = BLOCK_PITCH * CHUNK_BLOCKS; // 320
 
-/** Inclusive chunk range of the playable city (14x14 chunks = 4.48 km square). */
-export const DISTRICT = { minChunk: -7, maxChunk: 6 };
+/** Inclusive chunk range of the playable city (18x18 chunks = 5.76 km square). */
+export const DISTRICT = { minChunk: -9, maxChunk: 8 };
 
-export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -2240
-export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 2240
+export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -2880
+export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 2880
 /** Promenade margin outside the outermost roads before the shoreline. */
 export const ISLAND_MARGIN = ROAD_WIDTH / 2 + 14;
 export const ISLAND_MIN = DISTRICT_MIN - ISLAND_MARGIN;
 export const ISLAND_MAX = DISTRICT_MAX + ISLAND_MARGIN;
 export const WATER_Y = -1.2;
-/** Soft boundary (square, beyond the shoreline) - ARIA steers the player back. */
+/** Soft boundary (square, beyond the shoreline) - F.R.I.D.A.Y. steers the player back. */
 export const WORLD_LIMIT = ISLAND_MAX + 260;
 export const ALTITUDE_CEILING = 900;
 
