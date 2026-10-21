@@ -338,6 +338,27 @@ test.describe("touch controls (emulated)", () => {
     expect(errors).toEqual([]);
   });
 
+  test("phone: F.R.I.D.A.Y. alerts show one at a time and don't overlap the mission text or area banner", async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as unknown as { __GAME: { events: { spawnNow(p: unknown, t: string): void }; player: unknown; bus: { emit(t: string, p: unknown): void } } }).__GAME;
+      g.events.spawnNow(g.player, "Rogue drone swarm");
+      for (const text of ["Thin air - switching to internal oxygen", "Flares! 2 missile locks broken", "EMP hit - power drained to 54%"]) g.bus.emit("alert", { text, level: "warn" });
+      g.bus.emit("areaChanged", { name: "Riverside Point" });
+    });
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => {
+      const vis = [...document.querySelectorAll<HTMLElement>(".h-alert")].filter((e) => getComputedStyle(e).display !== "none");
+      const box = (e: Element | null) => (e ? e.getBoundingClientRect() : null);
+      return { count: vis.length, alert: box(vis[0]), obj: box(document.querySelector(".h-objective")), area: box(document.querySelector(".h-area b")) };
+    });
+    expect(r.count).toBe(1);
+    const hit = (a: DOMRect | null, b: DOMRect | null) => !!a && !!b && a.width > 0 && b.width > 0 && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    expect(hit(r.alert, r.obj), "alert vs mission text").toBe(false);
+    expect(hit(r.alert, r.area), "alert vs area banner").toBe(false);
+    expect(hit(r.area, r.obj), "area banner vs mission text").toBe(false);
+  });
+
   test("SUIT button switches to the civilian and back", async ({ page }) => {
     await boot(page);
     await tap(page, ".t-suit", 21);

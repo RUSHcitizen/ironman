@@ -625,16 +625,28 @@ html.touch .h-diag { background: rgba(4, 16, 28, 0.22); border-color: rgba(107, 
 html.touch .h-alert { background: rgba(4, 16, 28, 0.25); }
 /* Phones: compact, translucent alerts tucked under the compass, a smaller
    area banner, and only the two most recent alerts. */
-html.touch .h-alerts { top: calc(64px + var(--st)); max-width: min(44cqw, 360px); gap: 3px; }
-html.touch .h-alert { font-size: 10px; padding: 3px 8px; border-bottom-width: 1px; background: rgba(4, 16, 28, 0.2); }
-html.touch .h-alert small { display: none; }
-html.touch .h-alert:nth-child(n + 3) { display: none; }
-html.touch .h-area b { font-size: 16px !important; letter-spacing: 0.3em; }
-html.touch .h-area small { font-size: 8px; }
 html.touch .h-diag { transform: scale(0.85); transform-origin: top left; }
-html.touch .h-area { top: calc(122px + var(--st)); }
 
 /* Rocket pips pop as they reload. */
 .v-pips i { transition: opacity 0.25s, background-color 0.25s, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
 .v-pips i.on { transform: scaleY(1); }
 .v-pips i:not(.on) { transform: scaleY(0.6); }
+
+/* ---- Phones: F.R.I.D.A.Y. alerts never pile up or overlap ----
+   One alert at a time (the newest), a single compact line under the compass;
+   the mission text keeps to a narrow column on the right; the area banner
+   sits between them. (#hud prefix: beats the generic "#hud small" rule.) */
+html.touch #hud .h-alerts { top: calc(58px + var(--st)); left: 50%; right: auto; transform: translateX(-50%); max-width: min(46cqw, 380px); gap: 0; align-items: center; }
+html.touch #hud .h-alert {
+  font-size: 10px; padding: 3px 10px; background: rgba(4, 16, 28, 0.35); border: 0; border-bottom: 1px solid var(--cyan);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(46cqw, 380px); text-align: center;
+}
+html.touch #hud .h-alert small { display: none; }
+html.touch #hud .h-alert span { display: inline; }
+html.touch #hud .h-alert:nth-child(n + 2) { display: none; }
+html.touch #hud .h-objective { top: calc(58px + var(--st)); right: calc(12px + var(--sr)); left: auto; max-width: min(30cqw, 260px); text-align: right; }
+html.touch #hud .h-objective small { font-size: 8px; letter-spacing: 0.2em; }
+html.touch #hud .h-objective b { font-size: 9px; line-height: 1.3; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html.touch #hud .h-area { top: calc(84px + var(--st)); max-width: 40cqw; }
+html.touch #hud .h-area b { font-size: 15px; letter-spacing: 0.25em; white-space: nowrap; }
+html.touch #hud .h-area small { display: none; }
