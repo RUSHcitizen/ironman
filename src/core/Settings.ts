@@ -12,12 +12,18 @@ export interface QualityPreset {
   cars: number;
   pedestrians: number;
   antialias: boolean;
+  /** Bloom + FXAA post-processing (glowing thrusters, beams, windows). */
+  bloom: boolean;
+  /** Billboard clouds in the sky layer. */
+  clouds: number;
+  /** Vapour contrails from the boots in fast flight. */
+  contrails: boolean;
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
-  low: { pixelRatio: 1, viewDistance: 520, propDistance: 140, shadows: false, particles: 0, cars: 40, pedestrians: 60, antialias: false },
-  medium: { pixelRatio: 1.5, viewDistance: 800, propDistance: 220, shadows: false, particles: 120, cars: 80, pedestrians: 120, antialias: true },
-  high: { pixelRatio: 2, viewDistance: 1100, propDistance: 320, shadows: true, particles: 260, cars: 130, pedestrians: 200, antialias: true },
+  low: { pixelRatio: 1, viewDistance: 520, propDistance: 140, shadows: false, particles: 0, cars: 40, pedestrians: 60, antialias: false, bloom: false, clouds: 50, contrails: false },
+  medium: { pixelRatio: 1.5, viewDistance: 800, propDistance: 220, shadows: false, particles: 120, cars: 80, pedestrians: 120, antialias: true, bloom: false, clouds: 110, contrails: true },
+  high: { pixelRatio: 2, viewDistance: 1100, propDistance: 320, shadows: true, particles: 260, cars: 130, pedestrians: 200, antialias: true, bloom: true, clouds: 180, contrails: true },
 };
 
 export interface SettingsData {

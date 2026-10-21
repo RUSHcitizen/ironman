@@ -21,6 +21,10 @@ export class ThirdPersonCamera {
   private camPitch = 0;
   private initAngles = false;
   private initialised = false;
+  /** Smoothed framing values so mode changes ease instead of snapping. */
+  private headS = 1.65;
+  private liftS = 0.45;
+  private shoulderS = 0.9;
 
   constructor(scene: Scene) {
     this.camera = new TargetCamera("cam", new Vector3(0, 5, -10), scene);
@@ -37,6 +41,7 @@ export class ThirdPersonCamera {
     this.initialised = false;
     this.initAngles = false;
     this.dist = 6;
+    this.headS = -1;
   }
 
   /** Momentary FOV punch (boosts, sonic boom). */
@@ -55,8 +60,10 @@ export class ThirdPersonCamera {
   update(dt: number, p: PlayerController, world: CollisionWorld): void {
     const speed = p.speed;
     const flight = p.mode === "flight";
-    const headY = !p.suited ? 1.55 : flight ? 0.9 : p.mode === "hover" ? 1.75 : 1.65;
-    const tx = p.pos.x, ty = p.pos.y + headY, tz = p.pos.z;
+    const headWant = !p.suited ? 1.55 : flight ? 0.9 : p.mode === "hover" ? 1.75 : 1.65;
+    if (this.headS < 0) this.headS = headWant;
+    this.headS += (headWant - this.headS) * damp(4, dt);
+    const tx = p.pos.x, ty = p.pos.y + this.headS, tz = p.pos.z;
     if (!this.initialised) {
       this.pivot.set(tx, ty, tz);
       this.initialised = true;
@@ -84,10 +91,11 @@ export class ThirdPersonCamera {
 
     let want = !p.suited ? 3.6 : p.mode === "ground" ? 5.2 : p.mode === "hover" ? 7 : 5.4 + clamp(speed / 165, 0, 1) * 2.4;
     // Raise the camera a little in flight so the horizon stays readable.
-    const lift = flight ? 1.0 : 0.45;
-    // Shoulder offset on foot / hover.
     // Over-the-shoulder offset keeps the crosshair clear of the hero for aiming.
-    const shoulder = flight ? 0 : !p.suited ? 0.35 : p.mode === "hover" ? 1.25 : 0.9;
+    this.liftS += ((flight ? 1.0 : 0.45) - this.liftS) * damp(3, dt);
+    this.shoulderS += ((flight ? 0 : !p.suited ? 0.35 : p.mode === "hover" ? 1.25 : 0.9) - this.shoulderS) * damp(3, dt);
+    const lift = this.liftS;
+    const shoulder = this.shoulderS;
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
 
     const ox = this.pivot.x + rx * shoulder;

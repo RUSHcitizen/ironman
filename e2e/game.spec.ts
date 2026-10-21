@@ -142,6 +142,25 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
+  test("Unibeam (Z) wipes out a line of drones; flares (J); the radar shows hostiles", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => {
+      g.teleport(2.5, 40, -300, 0, "hover");
+      g.player.viewPitch = 0;
+    });
+    await game(page, (g) => {
+      g.spawnEnemy("drone", 50, 1.5, 0);
+      g.spawnEnemy("drone", 90, 1.5, 0);
+    });
+    await expect(page.locator(".h-radar")).toBeVisible();
+    const k0 = (await state(page)).kills;
+    await page.keyboard.press("KeyZ");
+    await until(page, (s) => s.kills >= k0 + 1);
+    await page.keyboard.press("KeyJ");
+    await expect(page.locator(".h-alerts")).toContainText(/Flares/);
+    expect(errors).toEqual([]);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {
@@ -255,6 +274,23 @@ test.describe("touch controls (emulated)", () => {
 
     await page.locator(".h-menu").tap();
     await expect(page.locator("#menu")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("touch: SHARP turn buttons in flight, BEAM and FLARE", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 200, -300, 0, "flight", 60));
+    await expect(page.locator(".t-sharpR")).toBeVisible();
+    await expect(page.locator(".t-sharpL")).toBeVisible();
+    const y0 = (await state(page)).viewYaw;
+    await tap(page, ".t-sharpR", 21);
+    const turned = await until(page, (s) => Math.abs(Math.atan2(Math.sin(s.viewYaw - y0), Math.cos(s.viewYaw - y0))) > 1.4);
+    expect(Math.atan2(Math.sin(turned.viewYaw - y0), Math.cos(turned.viewYaw - y0))).toBeGreaterThan(0);
+    const e0 = (await state(page)).energy;
+    await tap(page, ".t-beam", 22);
+    await until(page, (s) => s.energy < e0 - 15);
+    await tap(page, ".t-flare", 23);
+    await expect(page.locator(".v-beam")).toContainText("s");
     expect(errors).toEqual([]);
   });
 

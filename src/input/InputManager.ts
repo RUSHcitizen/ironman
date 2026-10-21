@@ -201,7 +201,9 @@ export class InputManager {
     // Shift toggles flight when tapped on its own (released without A / D).
     s.toggleFlight = this.shiftTap || this.hit("KeyF") || t.consume("fly");
     this.shiftTap = false;
-    s.sharpTurn = this.keySharp;
+    s.sharpTurn = this.keySharp || t.consumeSharp();
+    s.beam = this.hit("KeyZ") || t.consume("beam");
+    s.flares = this.hit("KeyJ") || t.consume("flare");
     this.keySharp = 0;
     s.fire = (this.pointerLocked && (this.mouseButtons & 1) !== 0) || this.down("KeyX") || t.fire;
     s.rockets = this.rocketClick || this.hit("KeyR") || t.consume("msl");

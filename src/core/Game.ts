@@ -27,7 +27,7 @@ import type { CombatTarget } from "../combat/Targets";
 import type { AvatarState } from "../player/ArmorModel";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
 import { InputManager } from "../input/InputManager";
-import { Hud, type HudMarker, type HudTarget } from "../ui/Hud";
+import { Hud, type HudMarker, type HudTarget, type RadarBlip } from "../ui/Hud";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SuitAudio } from "../audio/SuitAudio";
 import { CityEvents } from "../gameplay/CityEvents";
@@ -37,6 +37,13 @@ import { Combat, MAX_ROCKETS, aimDirection } from "../combat/Combat";
 import { EnemyRenderer } from "../combat/EnemyRenderer";
 import { ProjectileRenderer } from "../combat/ProjectileRenderer";
 import { DEG } from "./math";
+import { Clouds } from "../world/Clouds";
+import { Progress as HeroProgress, RANKS } from "../gameplay/Progress";
+
+const rankLow = (i: number) => RANKS[i][0];
+import { Contrails } from "../player/Contrails";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 
 export type Progress = (fraction: number, label: string) => Promise<void>;
 
@@ -77,6 +84,10 @@ export class Game {
   private suitMarker: HudMarker = { id: "suit", label: "SUIT", x: 0, z: 0, kind: "suit" };
   private lastSuitState = "worn";
   private shadowGen: ShadowGenerator | null = null;
+  private clouds!: Clouds;
+  progress!: HeroProgress;
+  private contrails!: Contrails;
+  private pipeline: DefaultRenderingPipeline | null = null;
   private paused = true;
   private started = false;
   private visTimer = 0;
@@ -168,8 +179,13 @@ export class Game {
     this.enemyRenderer = new EnemyRenderer(scene, this.mats);
     this.projRenderer = new ProjectileRenderer(scene, this.mats);
     this.speedFx = new SpeedFx(scene, this.mats);
+    this.clouds = new Clouds(scene);
+    this.contrails = new Contrails(this.projectiles, this.avatar.bootAnchors());
+    this.setupGrading();
     this.events = new CityEvents(scene, this.mats, this.world, this.bus, this.enemies);
+    this.progress = new HeroProgress(this.bus);
     this.events.onComplete = (combat) => {
+      this.progress.add(combat ? 500 : 200);
       this.player.suit.repair(combat ? 40 : 15);
       this.player.suit.charge(50);
       this.combat.refill();
@@ -238,10 +254,24 @@ export class Game {
 
   private wireEvents(): void {
     const bus = this.bus;
-    bus.on("modeChanged", () => this.syncTouchMode());
+    bus.on("modeChanged", (e) => {
+      this.syncTouchMode();
+      // Take-off blast kicks up dust when leaving the ground.
+      const p = this.player;
+      if (e.mode !== "ground" && p.agl < 3 && p.suited) this.projectiles.dust({ x: p.pos.x, y: p.pos.y - p.agl, z: p.pos.z }, e.mode === "flight" ? 0.7 : 0.45);
+    });
+    bus.on("unibeam", (e) => {
+      if (!e.charging) {
+        this.cam.addShake(0.5);
+        this.cam.addKick(0.15);
+        this.hud.popup("UNIBEAM");
+      }
+    });
     bus.on("impact", (e) => this.cam.addShake(Math.min(1, e.speed / 60)));
     bus.on("landed", (e) => {
       this.cam.addShake(e.hard ? 0.7 : 0.15);
+      const p = this.player;
+      this.projectiles.dust({ x: p.pos.x, y: p.pos.y, z: p.pos.z }, e.hard ? 0.9 : 0.35);
       this.updateHint();
     });
     bus.on("suitTransform", (e) => {
@@ -270,7 +300,15 @@ export class Game {
     });
     bus.on("trick", (e) => this.hud.popup(e.combo > 1 ? `${e.name} ×${e.combo}` : e.name));
     bus.on("nearMiss", (e) => this.hud.popup(e.streak > 1 ? `CLOSE CALL ×${e.streak}` : "CLOSE CALL"));
-    bus.on("kill", (e) => this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${ENEMY_STATS[e.kind as EnemyKind].score}`));
+    bus.on("kill", (e) => {
+      const score = ENEMY_STATS[e.kind as EnemyKind].score;
+      this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${score}`);
+      this.progress.add(score);
+    });
+    bus.on("rankUp", (e) => {
+      this.hud.popup(`RANK UP · ${e.name}`);
+      this.cam.addKick(0.12);
+    });
     bus.on("weapon", (w) => {
       if (w.kind !== "repulsor") this.peds.panic(w.x, w.z, w.kind === "laser" ? 60 : 35);
     });
@@ -284,6 +322,9 @@ export class Game {
       this.hud.showDeath(e.cause === "water" ? "IMPACT · WATER" : "FATAL FALL", `Hit at ${fast} km/h · F.R.I.D.A.Y. is bringing you back to Avengers Tower`);
       this.cam.addShake(1.2);
       this.bus.emit("impact", { speed: e.speed });
+      const pp = this.player.pos;
+      this.projectiles.dust({ x: pp.x, y: pp.y, z: pp.z }, 1);
+      this.projectiles.fx.push({ kind: "shock", x: pp.x, y: pp.y + 0.3, z: pp.z, size: 14, t: 0, life: 0.6, yaw: 0, pitch: 0 });
       this.peds.panic(this.player.pos.x, this.player.pos.z, 60);
       this.failTimer = 2.6;
     });
@@ -469,6 +510,7 @@ export class Game {
       p.vel.z = Math.cos(yaw) * speed;
     }
     this.syncTouchMode();
+    this.contrails?.reset();
     this.chunks.loadAround(x, z, Math.min(400, this.settings.preset.viewDistance));
     this.traffic.scatter(x, z);
     this.peds.scatter(x, z);
@@ -535,11 +577,46 @@ export class Game {
     this.peds.setCount(q.pedestrians);
     this.avatar.setParticles(q.particles);
     this.setShadows(q.shadows);
+    this.clouds.setCount(q.clouds);
+    this.contrails.enabled = q.contrails;
+    this.setBloom(q.bloom);
     this.hud.setShowFps(s.showFps);
     this.audio.setVolume(s.volume);
     this.visTimer = 0;
     this.chunks.updateVisibility(this.cam.position.x, this.cam.position.z, q.viewDistance);
     this.bus.emit("qualityChanged", { quality: s.quality });
+  }
+
+  /** Filmic colour grading: ACES tone mapping, a touch more contrast, vignette. */
+  private setupGrading(): void {
+    const ip = this.scene.imageProcessingConfiguration;
+    ip.toneMappingEnabled = true;
+    ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+    ip.exposure = 1.25;
+    ip.contrast = 1.12;
+    ip.vignetteEnabled = true;
+    ip.vignetteWeight = 1.4;
+    ip.vignetteStretch = 0.4;
+    ip.vignetteCameraFov = 0.9;
+  }
+
+  /** High quality: bloom (glowing thrusters, beams, windows) and FXAA. */
+  private setBloom(on: boolean): void {
+    if (!on) {
+      this.pipeline?.dispose();
+      this.pipeline = null;
+      return;
+    }
+    if (this.pipeline) return;
+    const pl = new DefaultRenderingPipeline("post", false, this.scene, [this.cam.camera]);
+    pl.bloomEnabled = true;
+    pl.bloomThreshold = 0.72;
+    pl.bloomWeight = 0.45;
+    pl.bloomKernel = 48;
+    pl.bloomScale = 0.5;
+    pl.fxaaEnabled = true;
+    pl.imageProcessingEnabled = true;
+    this.pipeline = pl;
   }
 
   private setShadows(on: boolean): void {
@@ -624,6 +701,8 @@ export class Game {
     this.enemyRenderer.update(this.enemies);
     this.projRenderer.update(this.projectiles, camPos);
     this.speedFx.update(camPos, p);
+    this.clouds.update(dt, camPos);
+    this.contrails.update(dt, p.suited && !this.remote && (p.mode === "flight" || (p.mode === "hover" && p.speed > 40)), p.speed, p.pos.y);
     if (this.failTimer > 0) {
       this.failTimer -= dt;
       if (this.failTimer <= 0) {
@@ -667,10 +746,39 @@ export class Game {
     this.hud.update(dt, p);
     this.updateTargetsHud(camPos);
     this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 1);
+    this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
+    this.input.touch.setCharging(this.combat.beamCharge >= 0);
+    this.updateThrusterWash(dt);
+    this.updateRadar(dt);
+    const rank = this.progress.rank;
+    const lo = rankLow(rank.index);
+    this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
     this.input.touch.setRockets(this.combat.rockets);
     this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
     this.audio.update(p);
     this.autoQuality(dt);
+  }
+
+  private radarBlips: RadarBlip[] = [];
+  private updateRadar(dt: number): void {
+    const b = this.radarBlips;
+    b.length = 0;
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" });
+    }
+    for (const m of this.hud.markers) b.push({ x: m.x, z: m.z, kind: m.kind === "event" ? "event" : m.kind === "suit" ? "suit" : "poi" });
+    this.hud.updateRadar(dt, this.player, b);
+  }
+
+  private washTimer = 0;
+  /** Hovering low: the boot thrusters blow dust off the ground below. */
+  private updateThrusterWash(dt: number): void {
+    const p = this.player;
+    this.washTimer -= dt;
+    if (this.washTimer > 0 || !p.suited || p.mode === "ground" || p.agl > 7 || p.thrust < 0.2) return;
+    this.washTimer = 0.18;
+    this.projectiles.dust({ x: p.pos.x, y: p.pos.y - p.agl, z: p.pos.z }, 0.12 * (1 - p.agl / 7) + 0.05);
   }
 
   private updateTargetsHud(camPos: Vector3): void {

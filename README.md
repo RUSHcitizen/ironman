@@ -21,6 +21,28 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 8 – Unibeam, flares, radar, hero ranks, and a big polish pass
+
+- **Touch sharp turns:** ↰ / ↱ SHARP buttons sit above the move stick while you're hovering or flying (the touch version of `Shift`+`A` / `Shift`+`D`).
+- **New abilities:**
+  - **Unibeam** (`Z` / BEAM): the arc reactor charges for about half a second (rising whine, glowing chest), then fires a beam up to 700 m along your aim. It deals 180 damage to everything on the line and also burns missiles and shells out of the air. It costs 25% power and has a 4 s cooldown. The suit throws its chest forward and its arms back while firing.
+  - **Flares** (`J` / FLARE): burning decoys spray out behind you. Every missile tracking you within 300 m chases a flare instead and blows up on it. 6 s cooldown.
+- **Radar minimap** (top left): forward is up, 450 m range, with a sweeping scan line. Flying hostiles show as triangles and ground units as squares (big ones larger). Mission, suit and tower markers sit on the edge when they're out of range.
+- **Hero rank:** kills and missions earn XP toward ROOKIE → VIGILANTE → DEFENDER → AVENGER → GUARDIAN → LEGEND → INVINCIBLE. A progress bar sits in the weapons panel, F.R.I.D.A.Y. calls out each rank-up, and your XP is saved between sessions.
+- **Graphics:**
+  - **Colour grading** (ACES tone mapping, a touch more contrast, a soft vignette) on every quality level.
+  - **Bloom + FXAA** on High: thrusters, beams, windows and the pad ring glow.
+  - **Cloud layer:** sunlit billboard clouds between 600 and 1,400 m that drift slowly and fade as you fly through them (50 / 110 / 180 clouds by quality).
+  - **Contrails:** white vapour streams from the boots at high speed and in thin air (Medium and High).
+- **Animation and effects:**
+  - Destroyed enemies throw tumbling, glowing wreckage that bounces on the street, plus showers of embers.
+  - Enemies warp in: they grow from nothing with a slight overshoot and a bright flash, instead of popping in.
+  - Landings and take-offs kick up a ring of dust. A hard landing adds a dust shockwave, and hovering low blasts dust off the ground below you.
+  - The head and torso turn toward where you're looking.
+  - In a banked turn the lower arm tucks in, the upper arm flares out like a wing, and the legs trail outward.
+  - The camera eases between modes (height, shoulder offset, look point) instead of snapping.
+  - HUD: mode changes pulse, gauges slide smoothly, the menu fades and pops in, the reticle eases into its flight size, and touch buttons glow when pressed.
+
 ## Milestone 7 – more enemies, a 59 km² city, faster rescues, sharp turns, phone rotation fix
 
 - **Four new enemy types:**
@@ -37,7 +59,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Sharp turns: `Shift`+`A` / `Shift`+`D`.**
   - In flight: snap the heading about 90° in 0.6 s with a hard bank just past vertical; the flight path really follows. It costs a little speed and power.
   - In hover: a quick 90° pivot.
-  - `Shift` on its own still toggles flight, but now on release, and only if you didn't use it for a sharp turn. Keyboard only for now.
+  - `Shift` on its own still toggles flight, but now on release, and only if you didn't use it for a sharp turn. On touch, use the SHARP buttons (Milestone 8).
 - **Phone rotation fix.**
   - In portrait on small phones, the "Rotate your device" and title text was wider than the screen (414 px on a 320 px iPhone SE). On iPhone, content wider than the screen widens Safari's page layout, which then breaks rotating to landscape.
   - Titles now wrap and fit, the rotate screen is opaque, and the orientation check and canvas resize run again a moment after rotating (phones report the new size late).
@@ -177,7 +199,9 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Step out (landed) / eject (in the air) / call the suit back / recall a piloted suit | `G` | SUIT OFF · EJECT · CALL SUIT · RECALL |
 | Sentry: pilot the empty suit / back to your body (suit guards you) | `V` | SENTRY · BODY |
 | Bank and turn in flight | `A` / `D` (or mouse) | Stick left / right |
-| Sharp 90° turn (flight / hover) | `Shift`+`A` / `Shift`+`D` | — |
+| Sharp 90° turn (flight / hover) | `Shift`+`A` / `Shift`+`D` | ↰ / ↱ SHARP |
+| Unibeam (chest laser) | `Z` | BEAM |
+| Countermeasure flares | `J` | FLARE |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -273,7 +297,7 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **55 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **59 unit tests** pass, covering:
   - City generation and collision.
   - Flight physics:
     - Civilian movement.
@@ -286,9 +310,11 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
     - **Tank shells arc and hurt.**
     - **Gunships circle-strafe at range.**
   - The autonomous suit (call, dock, sentry, offline).
+  - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **20 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **22 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
   - **Phone rotation: nothing overflows the screen in portrait, and rotating to landscape clears the rotate hint and keeps Engage on screen.**
   - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**
   - **Space (oxygen drain, black sky), cutting thrust with `H`, and a fatal fall that returns you to Avengers Tower.**

@@ -46,6 +46,17 @@ export class SuitAudio {
       this.noiseBurst(0.12, 3200, 0.12, false);
     });
     bus.on("trick", () => this.noiseBurst(0.5, 1200, 0.22, false));
+    // Unibeam: a rising whine while charging, then a deep blast.
+    bus.on("unibeam", (e) => {
+      if (e.charging) this.zap(200, 1800, 0.45, "sawtooth", 0.08);
+      else {
+        this.zap(900, 60, 0.9, "sawtooth", 0.25);
+        this.noiseBurst(0.8, 600, 0.45, true);
+      }
+    });
+    bus.on("flares", () => {
+      for (let k = 0; k < 5; k++) setTimeout(() => this.noiseBurst(0.18, 2600, 0.12, false), k * 60);
+    });
     document.addEventListener("visibilitychange", () => {
       if (!this.ctx) return;
       if (document.hidden) void this.ctx.suspend();

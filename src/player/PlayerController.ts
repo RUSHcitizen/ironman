@@ -122,6 +122,8 @@ export class PlayerController {
   /** Seconds the firing pose stays raised (set by the combat system). */
   aimTimer = 0;
   rocketTimer = 0;
+  /** Unibeam pose (chest thrust forward, arms back). */
+  beamTimer = 0;
   nearMissStreak = 0;
   private nearMissTimer = 0;
   private nearMissCooldown = 0;
@@ -372,6 +374,7 @@ export class PlayerController {
     if (this.landingTimer > 0) this.landingTimer -= dt;
     if (this.aimTimer > 0) this.aimTimer -= dt;
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
+    if (this.beamTimer > 0) this.beamTimer -= dt;
   }
 
   private planarInput(input: InputState): { x: number; z: number; mag: number } {

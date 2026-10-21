@@ -443,3 +443,63 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
   .l-panel h1 { white-space: normal; letter-spacing: 0.15em; padding-left: 0.15em; font-size: clamp(22px, 8vw, 34px); overflow-wrap: anywhere; }
   #rotate .l-panel h1 { letter-spacing: 0.06em; padding-left: 0; }
 }
+
+/* Sharp-turn buttons sit above the move stick; beam above UP; flares by the sharp turns. */
+.t-sharp, .t-beam, .t-flare { display: none; width: 58px; height: 58px; }
+.t-sharp span, .t-beam span, .t-flare span { font-size: 20px; }
+.t-sharp small, .t-beam small, .t-flare small { font-size: 8px; letter-spacing: 0.08em; }
+.t-sharpL { left: calc(18px + var(--sl)); bottom: calc(196px + var(--sb)); }
+.t-sharpR { left: calc(84px + var(--sl)); bottom: calc(196px + var(--sb)); }
+.t-flare { left: calc(150px + var(--sl)); bottom: calc(196px + var(--sb)); border-color: #ffd36b; color: #ffe3a0; }
+.t-beam { right: calc(24px + var(--sr)); bottom: calc(210px + var(--sb)); border-color: #a8f4ff; color: #e4fbff; box-shadow: 0 0 12px rgba(107, 233, 255, 0.35); }
+.t-beam.charging { background: rgba(107, 233, 255, 0.25); }
+#touch[data-mode="hover"]:not(.civ) .t-sharp, #touch[data-mode="flight"]:not(.civ) .t-sharp { display: grid; }
+#touch:not(.civ) .t-beam, #touch:not(.civ) .t-flare { display: grid; }
+@media (max-height: 380px) {
+  .t-sharp, .t-beam, .t-flare { width: 50px; height: 50px; }
+  .t-sharpL, .t-sharpR, .t-flare { bottom: calc(168px + var(--sb)); }
+  .t-sharpR { left: calc(74px + var(--sl)); }
+  .t-flare { left: calc(130px + var(--sl)); }
+  .t-beam { bottom: calc(180px + var(--sb)); }
+}
+/* Every touch button gives a little press feedback. */
+.t-btn { transition: transform 0.12s ease-out, background-color 0.15s, box-shadow 0.2s; }
+.t-btn.on { box-shadow: 0 0 18px rgba(107, 233, 255, 0.55); }
+
+.v-beam.charging { color: #a8f4ff; text-shadow: 0 0 10px #6be9ff; }
+
+/* ---------------- Motion polish ---------------- */
+#hud { transition: opacity 0.5s ease-out; }
+#menu.on { animation: menuFade 0.25s ease-out; }
+#menu.on .m-panel { animation: menuPop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@keyframes menuFade { from { opacity: 0; } }
+@keyframes menuPop { from { opacity: 0; transform: translateY(14px) scale(0.96); } }
+.v-energy, .v-oxy, .v-speedbar, .v-altbar { transition: transform 0.22s ease-out, background-color 0.3s; }
+.h-diag [data-p] { transition: fill 0.4s, stroke 0.4s; }
+.h-mode b.pulse { animation: modePulse 0.45s ease-out; }
+@keyframes modePulse { 0% { transform: scale(1.18); text-shadow: 0 0 14px var(--cyan); } 100% { transform: scale(1); } }
+.h-civ { transition: opacity 0.4s; }
+.h-hypoxia { transition: opacity 0.4s; }
+.h-reticle { transition: opacity 0.3s, transform 0.25s ease-out; }
+#hud[data-mode="flight"] .h-reticle { transform: translate(-50%, -50%) scale(1.08); }
+/* Radar (minimap). */
+.h-radar {
+  position: absolute; left: calc(14px + var(--sl)); top: calc(14px + var(--st));
+  width: calc(132px * var(--s)); height: calc(132px * var(--s)); border-radius: 50%;
+  border: 1px solid var(--cyan-2); background: radial-gradient(circle, rgba(4, 20, 34, 0.55), rgba(4, 16, 28, 0.25));
+  box-shadow: 0 0 14px rgba(107, 233, 255, 0.15) inset; overflow: hidden;
+}
+.h-radar canvas { width: 100%; height: 100%; display: block; }
+.h-radar::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(107, 233, 255, 0.22), transparent 18%);
+  animation: sweep 3s linear infinite;
+}
+@keyframes sweep { to { transform: rotate(360deg); } }
+#hud.civ .h-radar { display: none; }
+html.touch .h-radar { width: calc(104px * var(--s)); height: calc(104px * var(--s)); top: calc(54px + var(--st)); }
+
+.d-xp { height: 3px; background: rgba(255, 181, 71, 0.2); margin-top: 3px; overflow: hidden; }
+.d-xp i { display: block; height: 100%; background: var(--amber); transform-origin: left; transition: transform 0.4s ease-out; }
+.v-rank { color: var(--amber) !important; }
+.v-rank.pulse { animation: modePulse 0.6s ease-out; }

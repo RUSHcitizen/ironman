@@ -4,9 +4,12 @@ import type { PlayerController } from "../player/PlayerController";
 import type { InputState } from "../input/InputState";
 import { ENEMY_STATS, type Enemy, type EnemyManager } from "./Enemies";
 import type { ProjectileSystem } from "./Projectiles";
-import { dist, norm, type V3 } from "./math3";
+import { dist, norm, segmentPointDistance, type V3 } from "./math3";
 
 export const MAX_ROCKETS = 8;
+/** Unibeam: chest laser, charged briefly then fired down the aim line. */
+export const UNIBEAM = { cost: 25, charge: 0.45, cooldown: 4, damage: 180, reach: 700, width: 2.2 };
+export const FLARE_COOLDOWN = 6;
 const LOCK_CONE = 0.4; // ~23 degrees
 const LOCK_RANGE = 450;
 
@@ -25,6 +28,10 @@ export class Combat {
   private side = 1;
   private lockTimer = 0;
   aimAssist = 0.07; // radians; larger on touch
+  /** Unibeam charge progress (seconds, -1 = idle) and cooldown. */
+  beamCharge = -1;
+  beamCooldown = 0;
+  flareCooldown = 0;
 
   constructor(
     private world: CollisionWorld,
@@ -53,7 +60,14 @@ export class Combat {
       this.locks = armed ? this.findLocks(camPos, aim) : [];
       this.assistTarget = this.locks.find((e) => this.angleTo(camPos, aim, e) < this.aimAssist) ?? null;
     }
-    if (!armed) return;
+    this.beamCooldown -= dt;
+    this.flareCooldown -= dt;
+    if (!armed) {
+      this.beamCharge = -1;
+      return;
+    }
+    this.updateUnibeam(dt, input.beam, p, camPos, aim);
+    if (input.flares) this.popFlares(p);
 
     if (input.fire && this.repulsorCooldown <= 0 && p.suit.energy > 1) {
       this.repulsorCooldown = 0.15;
@@ -91,6 +105,66 @@ export class Combat {
     }
   }
 
+  private updateUnibeam(dt: number, pressed: boolean, p: PlayerController, camPos: V3, aim: V3): void {
+    if (pressed && this.beamCharge < 0) {
+      if (this.beamCooldown > 0) this.bus?.emit("alert", { text: `Unibeam recharging · ${this.beamCooldown.toFixed(1)} s`, level: "warn", ttl: 1.5 });
+      else if (p.suit.energy < UNIBEAM.cost) this.bus?.emit("alert", { text: `Unibeam needs ${UNIBEAM.cost}% power`, level: "warn", ttl: 2 });
+      else this.beamCharge = 0;
+    }
+    if (this.beamCharge < 0) return;
+    this.beamCharge += dt;
+    p.beamTimer = Math.max(p.beamTimer, 0.35);
+    const chest = this.chest(p, aim);
+    this.projectiles.fx.push({ kind: "charge", ...chest, size: 0.4 + (this.beamCharge / UNIBEAM.charge) * 1.4, t: 0, life: 0.05, yaw: 0, pitch: 0 });
+    if (this.beamCharge < UNIBEAM.charge) {
+      if (this.beamCharge - dt <= 0) this.bus?.emit("unibeam", { ...chest, charging: true });
+      return;
+    }
+    // Fire: everything along the aim line takes a huge hit.
+    this.beamCharge = -1;
+    this.beamCooldown = UNIBEAM.cooldown;
+    p.suit.drain(UNIBEAM.cost);
+    p.beamTimer = 0.6;
+    const end = this.aimPoint(camPos, aim, UNIBEAM.reach);
+    const len = dist(chest, end);
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      const c = this.enemies.center(e);
+      if (segmentPointDistance(chest, end, c) < ENEMY_STATS[e.kind].radius + UNIBEAM.width) {
+        this.enemies.damage(e, UNIBEAM.damage);
+        this.projectiles.hitsThisFrame++;
+      }
+    }
+    for (const m of this.projectiles.projectiles) {
+      if (m.alive && (m.kind === "missile" || m.kind === "shell") && segmentPointDistance(chest, end, m) < UNIBEAM.width + 1) {
+        m.alive = false;
+        this.projectiles.explode({ x: m.x, y: m.y, z: m.z }, 3, 0, false);
+      }
+    }
+    this.projectiles.beam(chest, end, "unibeam");
+    this.projectiles.fx.push({ kind: "spark", ...end, size: 5, t: 0, life: 0.35, yaw: 0, pitch: 0 });
+    if (len < UNIBEAM.reach - 1) this.projectiles.fx.push({ kind: "fire", ...end, size: 3.5, t: 0, life: 0.6, yaw: 0, pitch: 0 });
+    this.bus?.emit("unibeam", { ...chest, charging: false });
+    this.bus?.emit("weapon", { kind: "laser", ...chest });
+  }
+
+  private popFlares(p: PlayerController): void {
+    if (this.flareCooldown > 0) {
+      this.bus?.emit("alert", { text: `Flares reloading · ${this.flareCooldown.toFixed(1)} s`, level: "warn", ttl: 1.5 });
+      return;
+    }
+    this.flareCooldown = FLARE_COOLDOWN;
+    const broken = this.projectiles.flares(p.center, p.vel, p);
+    this.bus?.emit("flares", { count: broken });
+    this.bus?.emit("alert", { text: broken > 0 ? `Flares! ${broken} missile lock${broken > 1 ? "s" : ""} broken` : "Flares deployed", level: broken > 0 ? "success" : "info", ttl: 2 });
+  }
+
+  private chest(p: PlayerController, aim: V3): V3 {
+    const c = p.center;
+    const up = p.mode === "flight" ? 0 : 0.35;
+    return { x: c.x + aim.x * 0.5, y: c.y + up + aim.y * 0.5, z: c.z + aim.z * 0.5 };
+  }
+
   private angleTo(camPos: V3, aim: V3, e: Enemy): number {
     const c = this.enemies.center(e);
     const d = norm({ x: c.x - camPos.x, y: c.y - camPos.y, z: c.z - camPos.z });
@@ -121,9 +195,9 @@ export class Combat {
   }
 
   /** Where the camera ray meets the world (or a far point). */
-  private aimPoint(camPos: V3, aim: V3): V3 {
-    const hit = this.world.raycast(camPos.x, camPos.y, camPos.z, aim.x, aim.y, aim.z, 400);
-    const d = Math.min(hit, 400);
+  private aimPoint(camPos: V3, aim: V3, reach = 400): V3 {
+    const hit = this.world.raycast(camPos.x, camPos.y, camPos.z, aim.x, aim.y, aim.z, reach);
+    const d = Math.min(hit, reach);
     return { x: camPos.x + aim.x * d, y: camPos.y + aim.y * d, z: camPos.z + aim.z * d };
   }
 

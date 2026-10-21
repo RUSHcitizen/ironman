@@ -6,6 +6,7 @@ import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
@@ -73,6 +74,8 @@ export class ProjectileRenderer {
   private fireballs: Batch;
   private rings: Batch;
   private puffs: Batch;
+  private debris: Batch;
+  private beamTubes: Batch;
 
   constructor(scene: Scene, mats: WorldMaterials) {
     const add = mats.additive("fxAdd", Color3.White(), 1);
@@ -115,6 +118,15 @@ export class ProjectileRenderer {
     const puff = CreatePlane("puff", { size: 2 }, scene);
     puff.material = spriteMat;
     this.puffs = new Batch(puff, 320);
+    // Tumbling wreckage chunks (lit, tinted per instance).
+    const chunk = g.merge("debris", [g.box(1, 0.6, 0.8, [0.3, 0.3, 0.33]), g.box(0.5, 0.9, 0.3, [0.2, 0.2, 0.22], 0.3, 0.2, 0)]);
+    chunk.material = mats.propLit;
+    this.debris = new Batch(chunk, 200);
+    // Round tubes for lasers and the Unibeam (a box looks like a slab side-on).
+    const tube = CreateCylinder("beamTube", { diameter: 1, height: 1, tessellation: 12, cap: 0 }, scene);
+    tube.bakeTransformIntoVertices(Matrix.RotationX(Math.PI / 2));
+    tube.material = add;
+    this.beamTubes = new Batch(tube, 24);
   }
 
   update(ps: ProjectileSystem, cam: { x: number; y: number; z: number }): void {
@@ -148,9 +160,15 @@ export class ProjectileRenderer {
       const [yaw, pitch] = orient(dx / l, dy / l, dz / l);
       const mx = (b.a.x + b.b.x) / 2, my = (b.a.y + b.b.y) / 2, mz = (b.a.z + b.b.z) / 2;
       if (b.kind === "telegraph") this.bolts.push(mx, my, mz, yaw, pitch, 0, 0.12, 0.12, l, 1.2, 0.1, 0.05);
-      else {
+      else if (b.kind === "unibeam") {
+        // Thick white-cyan core inside a wide soft cyan sheath, shrinking out.
         const k = 1 - b.t / b.life;
-        this.bolts.push(mx, my, mz, yaw, pitch, 0, 1.6 * k + 0.2, 1.6 * k + 0.2, l, 3 * k, 0.6 * k, 0.4 * k);
+        const w = 0.25 + 0.35 * k;
+        this.beamTubes.push(mx, my, mz, yaw, pitch, 0, w, w, l, 1.3 * k + 0.3, 1.8 * k + 0.3, 2.0 * k + 0.3);
+        this.beamTubes.push(mx, my, mz, yaw, pitch, 0, w * 2.4, w * 2.4, l, 0.08 * k, 0.35 * k, 0.55 * k);
+      } else {
+        const k = 1 - b.t / b.life;
+        this.beamTubes.push(mx, my, mz, yaw, pitch, 0, 1.6 * k + 0.2, 1.6 * k + 0.2, l, 3 * k, 0.6 * k, 0.4 * k);
       }
     }
     for (const f of ps.fx) {
@@ -169,6 +187,14 @@ export class ProjectileRenderer {
         const r = f.size * (1.2 - u * 0.6);
         const [yaw, pitch] = face(f.x, f.y, f.z);
         this.fireballs.push(f.x, f.y, f.z, yaw, pitch, 0, r, r, r, 1.0 * fade, 1.2 * fade, 1.4 * fade);
+      } else if (f.kind === "charge") {
+        // Unibeam charging at the arc reactor.
+        const [yaw, pitch] = face(f.x, f.y, f.z);
+        const r = f.size * (0.9 + Math.random() * 0.2);
+        this.fireballs.push(f.x, f.y, f.z, yaw, pitch, 0, r, r, r, 0.7, 1.6, 2.0);
+      } else if (f.kind === "dust") {
+        const r = f.size * (0.3 + u * 0.9);
+        this.rings.push(f.x, f.y + 0.3, f.z, 0, 0, 0, r, 0.6 + u, r, 0.35 * fade, 0.32 * fade, 0.28 * fade);
       } else if (f.kind === "shock") {
         const r = f.size * u;
         this.rings.push(f.x, f.y, f.z, 0, 0, 0, r, r * 0.6 + 1, r, 2 * fade, 0.9 * fade, 0.3 * fade);
@@ -185,6 +211,34 @@ export class ProjectileRenderer {
       if (pf.hot) this.puffs.push(pf.x, pf.y, pf.z, yaw, pitch, 0, r, r, r, k * 1.1, k * 0.8, k * 0.55);
       else this.puffs.push(pf.x, pf.y, pf.z, yaw, pitch, 0, r, r, r, k * 1.1, k * 0.45, k * 0.35);
     }
-    for (const b of [this.bolts, this.rocketBodies, this.flames, this.fireballs, this.rings, this.puffs]) b.flush();
+    for (const p of ps.particles) {
+      const u = p.t / p.life;
+      if (p.kind === "debris") {
+        const s = p.size * 2 * (u > 0.8 ? (1 - u) / 0.2 : 1);
+        const glow = Math.max(0, 1 - u * 2.5);
+        this.debris.push(p.x, p.y, p.z, p.spin, p.spin * 0.7, p.spin * 0.4, s, s, s, 0.5 + glow * 2, 0.45 + glow * 0.6, 0.45);
+      } else {
+        const [yaw, pitch] = face(p.x, p.y, p.z);
+        const fade = 1 - u;
+        if (p.kind === "flare") {
+          const r = p.size * (0.8 + Math.random() * 0.3);
+          this.fireballs.push(p.x, p.y, p.z, yaw, pitch, 0, r, r, r, 1.3 * fade + 0.2, 1.0 * fade + 0.15, 0.6 * fade);
+        } else if (p.kind === "ember") {
+          const r = p.size * fade;
+          this.fireballs.push(p.x, p.y, p.z, yaw, pitch, 0, r, r, r, 2 * fade, 0.9 * fade, 0.3 * fade);
+        } else if (p.kind === "vapour") {
+          // Contrail puff: starts thin, swells and fades. Size holds strength.
+          const r = 0.12 + u * 0.9;
+          const k = 0.09 * p.size * fade;
+          this.puffs.push(p.x, p.y, p.z, yaw, pitch, 0, r, r, r, k * 0.95, k, k * 1.1);
+        } else {
+          // Dust: soft, low-intensity warm grey.
+          const r = p.size * (0.6 + u * 1.6);
+          const k = 0.11 * fade;
+          this.puffs.push(p.x, p.y, p.z, yaw, pitch, u, r, r, r, k, k * 0.95, k * 0.85);
+        }
+      }
+    }
+    for (const b of [this.bolts, this.rocketBodies, this.flames, this.fireballs, this.rings, this.puffs, this.debris, this.beamTubes]) b.flush();
   }
 }

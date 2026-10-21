@@ -25,11 +25,32 @@ export interface Projectile {
   target: Enemy | null;
   /** Enemy missiles: the friendly target being homed on (null = lock lost). */
   homing: CombatTarget | null;
+  /** Flare this missile has been decoyed onto. */
+  decoy?: Particle | null;
   trail: number;
   alive: boolean;
 }
 
-export type FxKind = "fire" | "shock" | "sonic" | "spark";
+export type FxKind = "fire" | "shock" | "sonic" | "spark" | "dust" | "charge";
+
+/** Free-flying physical particles: wreckage, flares, dust and embers. */
+export interface Particle {
+  kind: "debris" | "flare" | "dust" | "ember" | "vapour";
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  t: number;
+  life: number;
+  size: number;
+  /** Tumble (debris). */
+  spin: number;
+  smoke: number;
+}
+
+const MAX_PARTICLES = 420;
 
 export interface Fx {
   kind: FxKind;
@@ -47,7 +68,7 @@ export interface Fx {
 export interface Beam {
   a: V3;
   b: V3;
-  kind: "telegraph" | "laser";
+  kind: "telegraph" | "laser" | "unibeam";
   t: number;
   life: number;
 }
@@ -73,6 +94,7 @@ export class ProjectileSystem implements EnemyWeapons {
   readonly fx: Fx[] = [];
   readonly beams: Beam[] = [];
   readonly puffs: Puff[] = [];
+  readonly particles: Particle[] = [];
   /** Player hits this frame (for the HUD hit marker). */
   hitsThisFrame = 0;
 
@@ -145,8 +167,67 @@ export class ProjectileSystem implements EnemyWeapons {
     }
   }
 
-  beam(from: V3, to: V3, kind: "telegraph" | "laser"): void {
-    this.beams.push({ a: { ...from }, b: { ...to }, kind, t: 0, life: kind === "laser" ? 0.35 : 0 });
+  beam(from: V3, to: V3, kind: "telegraph" | "laser" | "unibeam"): void {
+    this.beams.push({ a: { ...from }, b: { ...to }, kind, t: 0, life: kind === "laser" ? 0.35 : kind === "unibeam" ? 0.55 : 0 });
+  }
+
+  private particle(p: Omit<Particle, "t" | "spin" | "smoke">): void {
+    if (this.particles.length >= MAX_PARTICLES) return;
+    this.particles.push({ ...p, t: 0, spin: Math.random() * 6, smoke: Math.random() * 0.1 });
+  }
+
+  /** Wreckage chunks and embers flung out of a destroyed unit. */
+  wreck(at: V3, size: number): void {
+    const n = Math.min(14, 4 + Math.round(size * 1.2));
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, up = Math.random();
+      const sp = 6 + Math.random() * (8 + size * 2);
+      this.particle({ kind: "debris", ...at, vx: Math.cos(a) * sp, vy: 4 + up * sp, vz: Math.sin(a) * sp, life: 2.2 + Math.random() * 1.6, size: 0.15 + Math.random() * size * 0.07 });
+    }
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 10 + Math.random() * 18;
+      this.particle({ kind: "ember", ...at, vx: Math.cos(a) * sp, vy: Math.random() * sp, vz: Math.sin(a) * sp, life: 0.5 + Math.random() * 0.6, size: 0.25 });
+    }
+  }
+
+  /** One contrail puff (strength 0..1 sets its opacity). */
+  vapour(at: V3, strength: number): void {
+    this.particle({ kind: "vapour", ...at, vx: 0, vy: 0, vz: 0, life: 0.9, size: strength });
+  }
+
+  /** Ring of dust kicked up by a landing or take-off. */
+  dust(at: V3, strength: number): void {
+    const n = Math.round(6 + strength * 14);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.3;
+      const sp = 3 + strength * 9 * (0.6 + Math.random() * 0.6);
+      this.particle({ kind: "dust", x: at.x + Math.cos(a) * 0.6, y: at.y + 0.2, z: at.z + Math.sin(a) * 0.6, vx: Math.cos(a) * sp, vy: 0.6 + Math.random() * 1.5, vz: Math.sin(a) * sp, life: 0.9 + strength * 0.8, size: 0.8 + strength * 1.2 });
+    }
+    if (strength > 0.6) this.fx.push({ kind: "dust", ...at, size: 6 + strength * 8, t: 0, life: 0.6, yaw: 0, pitch: 0 });
+  }
+
+  /**
+   * Countermeasure flares: burning decoys spray out behind the target and
+   * every missile homing on it within range chases one instead.
+   */
+  flares(from: V3, vel: V3, target: CombatTarget): number {
+    const made: Particle[] = [];
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2;
+      const before = this.particles.length;
+      this.particle({ kind: "flare", ...from, vx: vel.x * 0.4 + Math.cos(a) * 16, vy: vel.y * 0.4 + 4 + Math.random() * 6, vz: vel.z * 0.4 + Math.sin(a) * 16, life: 3.2, size: 0.35 });
+      if (this.particles.length > before) made.push(this.particles[this.particles.length - 1]);
+    }
+    let broken = 0;
+    for (const m of this.projectiles) {
+      if (!m.alive || m.kind !== "missile" || m.homing !== target || made.length === 0) continue;
+      if (dist(m, from) > 300) continue;
+      m.homing = null;
+      m.decoy = made[broken % made.length];
+      broken++;
+    }
+    return broken;
   }
 
   shell(from: V3, vel: V3, damage: number): void {
@@ -206,6 +287,21 @@ export class ProjectileSystem implements EnemyWeapons {
           pr.dy = d.y;
           pr.dz = d.z;
         }
+      } else if (pr.kind === "missile" && pr.decoy) {
+        // Chasing a flare: blow up on it.
+        const f = pr.decoy;
+        if (f.t >= f.life) pr.decoy = null;
+        else {
+          const d = steer({ x: pr.dx, y: pr.dy, z: pr.dz }, norm({ x: f.x - pr.x, y: f.y - pr.y, z: f.z - pr.z }), pr.turn * 2 * dt);
+          pr.dx = d.x;
+          pr.dy = d.y;
+          pr.dz = d.z;
+          if (dist(pr, f) < 3) {
+            this.detonate(pr);
+            pr.alive = false;
+            continue;
+          }
+        }
       } else if (pr.kind === "missile" && pr.homing) {
         const h = pr.homing;
         if (h.evading || !h.targetable) {
@@ -249,6 +345,40 @@ export class ProjectileSystem implements EnemyWeapons {
     compact(this.beams, (b) => b.t < b.life || (b.kind === "telegraph" && b.t === dt));
     for (const pf of this.puffs) pf.t += dt;
     compact(this.puffs, (pf) => pf.t < pf.life);
+    this.updateParticles(dt);
+  }
+
+  private updateParticles(dt: number): void {
+    for (const p of this.particles) {
+      p.t += dt;
+      const g = p.kind === "debris" ? 22 : p.kind === "flare" ? 9 : p.kind === "ember" ? 12 : p.kind === "vapour" ? 0 : -0.6;
+      const drag = p.kind === "dust" ? 2.6 : p.kind === "flare" ? 0.9 : 0.25;
+      p.vy -= g * dt;
+      const k = Math.max(0, 1 - drag * dt);
+      p.vx *= k;
+      p.vy *= k;
+      p.vz *= k;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.spin += dt * (4 + Math.hypot(p.vx, p.vz) * 0.3);
+      if (p.kind === "debris" || p.kind === "flare") {
+        // Smoke trail behind burning debris and flares.
+        p.smoke -= dt;
+        if (p.smoke <= 0 && this.puffs.length < MAX_PUFFS && p.t < p.life * 0.7) {
+          p.smoke = p.kind === "flare" ? 0.05 : 0.12;
+          this.puffs.push({ x: p.x, y: p.y, z: p.z, t: 0, life: p.kind === "flare" ? 0.9 : 0.7, hot: p.kind === "flare" });
+        }
+        const floor = this.world.terrainHeight(p.x, p.z);
+        if (p.y < floor + p.size) {
+          p.y = floor + p.size;
+          p.vy = Math.abs(p.vy) * 0.3;
+          p.vx *= 0.5;
+          p.vz *= 0.5;
+        }
+      }
+    }
+    compact(this.particles, (p) => p.t < p.life);
   }
 
   /** Returns true if the projectile was consumed. */

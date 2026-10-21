@@ -34,6 +34,13 @@ function cardinal(deg: number): string {
  * F.R.I.D.A.Y. heads-up display (DOM overlay). Per-frame work is limited to CSS
  * transforms; text readouts refresh at ~15 Hz to stay cheap on mobile.
  */
+export interface RadarBlip {
+  x: number;
+  z: number;
+  kind: "hostile" | "air" | "event" | "suit" | "poi";
+  big?: boolean;
+}
+
 export class Hud {
   readonly el: HTMLElement;
   private q = <T extends HTMLElement = HTMLElement>(sel: string) => this.el.querySelector(sel) as T;
@@ -41,7 +48,7 @@ export class Hud {
   private compassW = 0;
   private markersEl: HTMLElement;
   private markerEls = new Map<string, HTMLElement>();
-  private markers: HudMarker[] = [];
+  markers: HudMarker[] = [];
   private textTimer = 0;
   private alertsEl: HTMLElement;
   private areaTimer: number | undefined;
@@ -103,12 +110,16 @@ export class Hud {
           <b class="v-oxy-t">100%</b>
         </div>
       </div>
+      <div class="h-radar"><canvas width="220" height="220"></canvas></div>
       <div class="h-targets"></div>
       <div class="h-dmg"></div>
       <div class="h-weap">
         <small>REPULSORS</small><b class="v-rpl">READY</b>
         <small>MICRO-ROCKETS</small><div class="v-pips"></div>
+        <small>UNIBEAM · FLARES</small><b class="v-beam">READY · READY</b>
         <small>THREATS NEUTRALISED</small><b class="v-kills">0</b>
+        <small class="v-rank-t">HERO RANK</small><b class="v-rank">ROOKIE</b>
+        <div class="d-xp"><i class="v-xp"></i></div>
       </div>
       <div class="h-popup"></div>
       <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
@@ -180,6 +191,28 @@ export class Hud {
     this.q(".v-rpl").textContent = repulsorReady ? "READY" : "LOW POWER";
   }
 
+  /** Rank name and progress (0..1) toward the next rank. */
+  setRank(name: string, progress: number): void {
+    const el = this.q(".v-rank");
+    if (el.textContent !== name) {
+      el.textContent = name;
+      el.classList.remove("pulse");
+      void el.offsetWidth;
+      el.classList.add("pulse");
+    }
+    this.q(".v-xp").style.transform = `scaleX(${Math.max(0, Math.min(1, progress))})`;
+  }
+
+  /** Unibeam / flare readiness (seconds of cooldown left, charging flag). */
+  setSpecials(beamCooldown: number, charging: boolean, flareCooldown: number): void {
+    const b = charging ? "CHARGING" : beamCooldown > 0 ? `${beamCooldown.toFixed(1)}s` : "READY";
+    const f = flareCooldown > 0 ? `${flareCooldown.toFixed(1)}s` : "READY";
+    const text = `${b} · ${f}`;
+    const el = this.q(".v-beam");
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle("charging", charging);
+  }
+
   /** Fade to black with a message (null clears it). */
   showDeath(title: string | null, detail = ""): void {
     this.el.classList.toggle("dead", title !== null);
@@ -187,6 +220,74 @@ export class Hud {
       this.q(".v-dead-t").textContent = title;
       this.q(".v-dead").textContent = detail;
     }
+  }
+
+  private radarTimer = 0;
+  private lastMode = "";
+
+  /**
+   * Radar: forward is up, 450 m range. Hostiles are red (triangles fly,
+   * squares walk, big ones larger); markers clamp to the edge when far.
+   */
+  updateRadar(dt: number, p: { pos: { x: number; z: number }; viewYaw: number }, blips: RadarBlip[]): void {
+    this.radarTimer -= dt;
+    if (this.radarTimer > 0) return;
+    this.radarTimer = 1 / 15;
+    const canvas = this.q<HTMLCanvasElement>(".h-radar canvas") as unknown as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const S = canvas.width, c = S / 2, R = c - 6, range = 450;
+    ctx.clearRect(0, 0, S, S);
+    ctx.strokeStyle = "rgba(107,233,255,0.25)";
+    ctx.lineWidth = 1;
+    for (const f of [1 / 3, 2 / 3]) {
+      ctx.beginPath();
+      ctx.arc(c, c, R * f, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(c, c - R);
+    ctx.lineTo(c, c + R);
+    ctx.moveTo(c - R, c);
+    ctx.lineTo(c + R, c);
+    ctx.stroke();
+    const sy = Math.sin(p.viewYaw), cy = Math.cos(p.viewYaw);
+    for (const b of blips) {
+      const dx = b.x - p.pos.x, dz = b.z - p.pos.z;
+      let rx = (dx * cy - dz * sy) / range, ry = (dx * sy + dz * cy) / range;
+      const d = Math.hypot(rx, ry);
+      if (d > 1) {
+        if (b.kind === "hostile" || b.kind === "air") continue;
+        rx /= d;
+        ry /= d;
+      }
+      const x = c + rx * R, y = c - ry * R;
+      const s = b.big ? 7 : 4;
+      if (b.kind === "air" || b.kind === "hostile") {
+        ctx.fillStyle = "#ff5148";
+        ctx.beginPath();
+        if (b.kind === "air") {
+          ctx.moveTo(x, y - s);
+          ctx.lineTo(x + s, y + s);
+          ctx.lineTo(x - s, y + s);
+        } else ctx.rect(x - s * 0.8, y - s * 0.8, s * 1.6, s * 1.6);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = b.kind === "event" ? "#ffb547" : b.kind === "suit" ? "#ff8a80" : "#6be9ff";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    // You: an arrow pointing up (forward).
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(c, c - 9);
+    ctx.lineTo(c + 6, c + 7);
+    ctx.lineTo(c, c + 3);
+    ctx.lineTo(c - 6, c + 7);
+    ctx.fill();
   }
 
   damageFlash(amount: number): void {
@@ -350,7 +451,14 @@ export class Hud {
     }
 
     const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? (p.falling ? "FALLING" : "ON FOOT") : p.blackout ? "BLACKOUT" : p.freefall ? "FREE FALL" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
-    this.q(".v-mode").textContent = modeText;
+    const modeEl = this.q(".v-mode");
+    if (modeText !== this.lastMode) {
+      this.lastMode = modeText;
+      modeEl.textContent = modeText;
+      modeEl.classList.remove("pulse");
+      void modeEl.offsetWidth;
+      modeEl.classList.add("pulse");
+    }
     this.el.dataset.mode = p.mode;
     this.el.classList.toggle("civ", !p.suited);
     this.el.classList.toggle("burn", p.afterburner);

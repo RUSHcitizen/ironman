@@ -3,7 +3,8 @@ import { CollisionWorld } from "../src/world/Collision";
 import { PlayerController } from "../src/player/PlayerController";
 import { EnemyManager } from "../src/combat/Enemies";
 import { ProjectileSystem } from "../src/combat/Projectiles";
-import { Combat } from "../src/combat/Combat";
+import { Combat, UNIBEAM } from "../src/combat/Combat";
+import { rankFor } from "../src/gameplay/Progress";
 import { emptyInput, type InputState } from "../src/input/InputState";
 
 function setup() {
@@ -201,5 +202,61 @@ describe("new enemy types", () => {
     expect(swarm.length).toBeLessThanOrEqual(9);
     expect(swarm.every((e) => e.group === -c.id)).toBe(true);
     expect(s.enemies.aliveInGroup(5)).toBe(1);
+  });
+
+  it("the Unibeam charges, then destroys everything on the aim line and costs power", () => {
+    const s = setup();
+    s.player.viewPitch = 0;
+    s.player.mode = "hover";
+    s.player.grounded = false;
+    s.player.pos.y = 20;
+    const a = s.enemies.spawn("drone", 0, 21.5, 60);
+    const b = s.enemies.spawn("trooper", 0, 20, 140);
+    const off = s.enemies.spawn("drone", 40, 21, 60);
+    run(s, 0.1, {}, { beam: true });
+    expect(s.combat.beamCharge).toBeGreaterThanOrEqual(0);
+    expect(a.alive).toBe(true);
+    run(s, UNIBEAM.charge + 0.1);
+    expect(a.alive).toBe(false);
+    expect(b.alive).toBe(false);
+    expect(off.alive).toBe(true);
+    expect(s.player.suit.energy).toBeLessThan(100 - UNIBEAM.cost + 5);
+    expect(s.combat.beamCooldown).toBeGreaterThan(0);
+    expect(s.proj.beams.some((x) => x.kind === "unibeam")).toBe(true);
+  });
+
+  it("flares break missile locks and the missiles chase the decoys instead", () => {
+    const s = setup();
+    s.player.mode = "hover";
+    s.player.grounded = false;
+    s.player.pos.y = 30;
+    s.proj.missile({ x: 0, y: 30, z: 120 }, { x: 0, y: 0, z: -1 }, 14);
+    run(s, 0.5);
+    const m = s.proj.projectiles.find((p) => p.kind === "missile")!;
+    expect(m.homing).toBe(s.player);
+    run(s, 0.05, {}, { flares: true });
+    expect(m.homing).toBeNull();
+    expect(m.decoy).toBeTruthy();
+    expect(s.proj.particles.filter((p) => p.kind === "flare").length).toBeGreaterThan(5);
+    const hp = s.player.suit.overallIntegrity;
+    run(s, 4);
+    expect(s.player.suit.overallIntegrity).toBe(hp);
+  });
+
+  it("destroyed enemies throw tumbling wreckage that lands", () => {
+    const s = setup();
+    const e = s.enemies.spawn("gunship", 0, 30, 80);
+    s.enemies.damage(e, 1000);
+    const debris = s.proj.particles.filter((p) => p.kind === "debris");
+    expect(debris.length).toBeGreaterThan(5);
+    run(s, 2);
+    for (const d of s.proj.particles.filter((p) => p.kind === "debris")) expect(d.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it("hero rank climbs with XP", () => {
+    expect(rankFor(0).name).toBe("ROOKIE");
+    expect(rankFor(1500).name).toBe("VIGILANTE");
+    expect(rankFor(13000).name).toBe("AVENGER");
+    expect(rankFor(1e6).next).toBeNull();
   });
 });

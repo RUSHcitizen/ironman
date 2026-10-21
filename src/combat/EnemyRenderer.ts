@@ -357,7 +357,10 @@ export class EnemyRenderer {
       roll = Math.sin(e.phase * 0.23) * 0.04;
     }
     Quaternion.RotationYawPitchRollToRef(e.yaw, pitch, roll, this.q);
-    this.s.set(1, 1, 1);
+    // Warp in: grow from nothing with a slight overshoot.
+    const w = Math.min(1, e.age / 0.5);
+    const grow = w >= 1 ? 1 : 1 + 2.4 * Math.pow(w - 1, 3) + 1.4 * Math.pow(w - 1, 2);
+    this.s.set(grow, grow, grow);
     this.t.set(e.x, y, e.z);
     Matrix.ComposeToRef(this.s, this.q, this.t, this.m);
     this.m.copyToArray(km.bodyM, i * 16);
@@ -403,6 +406,8 @@ export class EnemyRenderer {
       gg = 0.5;
       gb = 0.1;
     }
-    km.glowC.set([gr, gg, gb, 1], i * 4);
+    // Bright flash while warping in.
+    const warp = Math.max(0, 1 - e.age / 0.6) * 3;
+    km.glowC.set([gr + warp * 0.4, gg + warp * 0.9, gb + warp, 1], i * 4);
   }
 }

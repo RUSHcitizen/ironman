@@ -55,7 +55,8 @@ export class SettingsMenu {
               <li><kbd>Shift</kbd> or <kbd>F</kbd> toggle flight · <kbd>W</kbd> afterburner · <kbd>S</kbd> brake</li>
               <li><kbd>H</kbd> cut all thrust and free-fall (<kbd>H</kbd> / <kbd>Space</kbd> to re-engage)</li>
               <li><kbd>LMB</kbd> / <kbd>X</kbd> repulsors · <kbd>RMB</kbd> / <kbd>R</kbd> rockets</li>
-              <li><kbd>Q</kbd> / <kbd>E</kbd> barrel roll · <kbd>T</kbd> <kbd>B</kbd> <kbd>Y</kbd> tricks</li>
+              <li><kbd>Q</kbd> / <kbd>E</kbd> barrel roll · <kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> sharp turn · <kbd>T</kbd> <kbd>B</kbd> <kbd>Y</kbd> tricks</li>
+              <li><kbd>Z</kbd> Unibeam · <kbd>J</kbd> flares</li>
               <li><kbd>G</kbd> step out / call suit · <kbd>V</kbd> sentry</li>
               <li><kbd>Esc</kbd> / <kbd>P</kbd> pause</li></ul></div>
             <div><h4>Touch</h4><ul>

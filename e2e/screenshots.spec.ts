@@ -171,6 +171,28 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.keyboard.press("KeyG");
   await frames(page, 80);
 
+  // Unibeam: charge, then fire down a line of drones.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 45, -420, 0, "hover"); g.player.viewPitch = 0.02;
+    g.spawnEnemy("drone", 60, 1.5, 0); g.spawnEnemy("jammer", 95, 2, 1); g.spawnEnemy("gunship", 150, 12, -10); g.spawnEnemy("jet", 220, 30, 30);`);
+  await frames(page, 24);
+  await page.keyboard.press("KeyZ");
+  await frames(page, 10);
+  await run(page, `g.player.viewYaw = 0.5;`);
+  await frames(page, 2);
+  await page.screenshot({ path: `${OUT}/22-unibeam.png` });
+  // Flares spraying out behind you.
+  await frames(page, 30);
+  await page.keyboard.press("KeyJ");
+  await frames(page, 7);
+  await page.screenshot({ path: `${OUT}/24-flares.png` });
+
+  // Flying through the cloud layer with contrails.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 950, -300, 0.3, "flight", 110); g.player.viewPitch = 0.04;`);
+  await page.keyboard.down("KeyW");
+  await frames(page, 40);
+  await page.screenshot({ path: `${OUT}/23-clouds-contrails.png` });
+  await page.keyboard.up("KeyW");
+
   await page.keyboard.press("Escape");
   await frames(page, 3);
   await page.screenshot({ path: `${OUT}/08-settings-menu.png` });

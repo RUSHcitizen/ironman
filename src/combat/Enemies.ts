@@ -105,6 +105,8 @@ export interface Enemy {
   aimZ: number;
   /** Protected by a nearby shield drone this frame. */
   shielded: boolean;
+  /** Seconds since spawning (warp-in animation). */
+  age: number;
 }
 
 /** How enemies hurt things - implemented by the projectile system. */
@@ -116,6 +118,8 @@ export interface EnemyWeapons {
   /** Ballistic explosive shell (tank). */
   shell(from: V3, vel: V3, damage: number): void;
   shockwave(at: V3, radius: number): void;
+  /** Wreckage chunks flying off a destroyed unit. */
+  wreck(at: V3, size: number): void;
   /** Electromagnetic pulse: drains suit power within the radius. */
   emp(at: V3, radius: number, drain: number, damage: number): void;
 }
@@ -192,6 +196,7 @@ export class EnemyManager {
       aimY: y,
       aimZ: z,
       shielded: false,
+      age: 0,
     };
     this.enemies.push(e);
     return e;
@@ -244,6 +249,7 @@ export class EnemyManager {
       const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet";
       const size = e.kind === "carrier" ? 16 : big ? 9 : e.kind === "kamikaze" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : 0, true);
+      this.weapons?.wreck(c, size);
       this.bus?.emit("kill", { kind: e.kind, total: this.kills });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
       e.state = "retreat";
@@ -264,6 +270,7 @@ export class EnemyManager {
       const target = p.center;
       const hostile = p.targetable;
       e.phase += dt;
+      e.age += dt;
       e.flash = Math.max(0, e.flash - dt * 5);
       e.dodgeCooldown -= dt;
       const d = dist(this.center(e), target);

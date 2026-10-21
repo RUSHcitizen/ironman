@@ -23,6 +23,10 @@ export interface InputState {
   sentry: boolean;
   /** Mid-air trick requested this frame. */
   trick: TrickRequest | null;
+  /** Charge-free chest Unibeam (edge). */
+  beam: boolean;
+  /** Pop countermeasure flares (edge). */
+  flares: boolean;
   /** Shift+A / Shift+D: -1 sharp left, +1 sharp right, 0 none. */
   sharpTurn: number;
   /** -1 roll left, +1 roll right, 0 none. */
@@ -52,6 +56,8 @@ export function emptyInput(): InputState {
     trick: null,
     roll: 0,
     sharpTurn: 0,
+    beam: false,
+    flares: false,
     menu: false,
   };
 }

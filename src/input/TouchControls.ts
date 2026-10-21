@@ -1,4 +1,4 @@
-type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry" | "trick" | "cut";
+type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry" | "trick" | "cut" | "sharpL" | "sharpR" | "beam" | "flare";
 
 /**
  * On-screen touch controls built from DOM elements and Pointer Events
@@ -43,6 +43,10 @@ export class TouchControls {
       <button class="t-btn t-suit" data-b="suit" aria-label="Exit or call the suit"><span>⛨</span><small>SUIT</small></button>
       <button class="t-btn t-trick" data-b="trick" aria-label="Mid-air trick"><span>↻</span><small>TRICK</small></button>
       <button class="t-btn t-cut" data-b="cut" aria-label="Cut thrust and free-fall"><span>⤓</span><small>CUT</small></button>
+      <button class="t-btn t-sharp t-sharpL" data-b="sharpL" aria-label="Sharp turn left"><span>↰</span><small>SHARP</small></button>
+      <button class="t-btn t-sharp t-sharpR" data-b="sharpR" aria-label="Sharp turn right"><span>↱</span><small>SHARP</small></button>
+      <button class="t-btn t-beam" data-b="beam" aria-label="Unibeam chest laser"><span>◉</span><small>BEAM</small></button>
+      <button class="t-btn t-flare" data-b="flare" aria-label="Countermeasure flares"><span>✦</span><small>FLARE</small></button>
       <button class="t-btn t-sentry" data-b="sentry" aria-label="Toggle sentry mode"><span>⛯</span><small>SENTRY</small></button>
     `;
     parent.appendChild(this.el);
@@ -124,12 +128,21 @@ export class TouchControls {
     this.el.dataset.mode = mode;
   }
 
+  setCharging(on: boolean): void {
+    this.buttons.beam.classList.toggle("charging", on);
+  }
+
   setRockets(n: number): void {
     this.buttons.msl.querySelector("small")!.textContent = `MSL ${n}`;
   }
 
   consume(name: ButtonName): boolean {
     return this.edges.delete(name);
+  }
+
+  /** -1 / +1 for the sharp-turn buttons this frame, else 0. */
+  consumeSharp(): number {
+    return this.edges.delete("sharpL") ? -1 : this.edges.delete("sharpR") ? 1 : 0;
   }
 
   consumeRoll(): number {

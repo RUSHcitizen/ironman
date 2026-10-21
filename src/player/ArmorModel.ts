@@ -41,6 +41,10 @@ export interface AvatarState {
   readonly falling?: boolean;
   /** Flight bank about the body's long axis (radians). */
   readonly bank?: number;
+  /** Unibeam firing pose timer. */
+  readonly beamTimer?: number;
+  /** Where the pilot is looking (head and torso turn toward it). */
+  readonly viewYaw?: number;
 }
 import { clamp, damp } from "../core/math";
 
@@ -85,6 +89,9 @@ export class ArmorModel {
   private open: { t: number; closed: boolean[]; lastDelay: number } | null = null;
   private civShown = false;
   private crouch = 0;
+  /** Smoothed head / torso turn toward the aim. */
+  private lookYaw = 0;
+  private beamGlow = 0;
   readonly meshes: AbstractMesh[] = [];
 
   constructor(
@@ -504,6 +511,19 @@ export class ArmorModel {
     this.setCivilian(true);
   }
 
+  /**
+   * Unscaled nodes at the boot soles (contrail anchors). The flame meshes
+   * themselves are rescaled every frame, which would distort a trail.
+   */
+  bootAnchors(): TransformNode[] {
+    return this.emitters.map((e) => {
+      const n = new TransformNode("bootAnchor", this.scene);
+      n.parent = e.parent;
+      n.position.copyFrom(e.position);
+      return n;
+    });
+  }
+
   /** Show / hide the whole character (used for the autonomous suit). */
   setVisible(v: boolean): void {
     this.root.setEnabled(v);
@@ -635,6 +655,13 @@ export class ArmorModel {
         elL: [-0.06, 0],
         elR: [-0.06, 0],
       };
+      // Steer with the arms: in a bank the lower arm tucks in, the upper one
+      // flares out like a wing, and the legs trail toward the outside.
+      const bk = Math.max(-1, Math.min(1, (p.bank ?? 0) / 1.5));
+      pose.shL = [pose.shL![0] + Math.abs(bk) * 0.15, pose.shL![1] - Math.max(0, -bk) * 0.55 + Math.max(0, bk) * 0.12];
+      pose.shR = [pose.shR![0] + Math.abs(bk) * 0.15, pose.shR![1] + Math.max(0, bk) * 0.55 - Math.max(0, -bk) * 0.12];
+      pose.hipL = [pose.hipL![0], pose.hipL![1] - bk * 0.12];
+      pose.hipR = [pose.hipR![0], pose.hipR![1] - bk * 0.12];
     }
     // Firing poses: repulsor palm out, both forearms up for rockets.
     if (p.suited) {
@@ -650,6 +677,17 @@ export class ArmorModel {
         pose.elR = [-0.05, 0];
       }
     }
+    // Unibeam: chest thrust forward, arms swept back and out.
+    const beam = p.beamTimer ?? 0;
+    if (beam > 0 && p.suited) {
+      pose.spine = [-0.3, 0];
+      pose.neck = [p.mode === "flight" ? -1.0 : 0.15, 0];
+      pose.shL = [0.75, -0.75];
+      pose.shR = [0.75, 0.75];
+      pose.elL = [-0.5, 0];
+      pose.elR = [-0.5, 0];
+    }
+    this.beamGlow += ((beam > 0 ? 1 : 0) - this.beamGlow) * damp(beam > 0 ? 14 : 4, dt);
     if (p.mode !== "ground") this.crouch = 0;
     this.pivot.position.y += (pivotY - this.pivot.position.y) * damp(12, dt);
 
@@ -662,6 +700,15 @@ export class ArmorModel {
       j.z += (target[1] - j.z) * k;
       j.node.rotation.set(j.x, 0, j.z);
     }
+    // Head (and a little of the torso) turn toward where you're looking.
+    let look = 0;
+    if (p.viewYaw !== undefined && p.mode !== "flight") {
+      const d = Math.atan2(Math.sin(p.viewYaw - p.bodyYaw), Math.cos(p.viewYaw - p.bodyYaw));
+      look = clamp(d, -1.1, 1.1);
+    }
+    this.lookYaw += (look - this.lookYaw) * damp(6, dt);
+    this.joints.neck.node.rotation.y = this.lookYaw * 0.65;
+    this.joints.spine.node.rotation.y = this.lookYaw * 0.3;
 
     // Thrusters.
     const airborne = p.mode !== "ground" && p.suited && this.armorShown;
@@ -678,7 +725,8 @@ export class ArmorModel {
 
     const energy = p.suit.energy / 100;
     const pulse = 0.85 + 0.15 * Math.sin(t * 3);
-    this.glowMat.emissiveColor.set(0.45 + 0.3 * energy * pulse, 0.75 + 0.2 * energy * pulse, 1);
+    const bg = this.beamGlow;
+    this.glowMat.emissiveColor.set(0.45 + 0.3 * energy * pulse + bg * 0.5, 0.75 + 0.2 * energy * pulse + bg * 0.5, 1 + bg * 0.6);
 
     // Blob shadow on the surface below.
     const groundY = p.pos.y - p.agl;
