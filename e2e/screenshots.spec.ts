@@ -194,8 +194,8 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.keyboard.up("KeyW");
 
   // New enemies: a titan with sentinels and a spider walker.
-  await run(page, `g.enemies.clear(); g.teleport(2.5, 30, -420, 0, "hover"); g.player.viewPitch = 0.02;
-    g.spawnEnemy("titan", 70, -30, 6); g.spawnEnemy("sentinel", 35, 4, -8); g.spawnEnemy("sentinel", 45, 8, 10); g.spawnEnemy("spider", 50, -30, -18);`);
+  await run(page, `g.enemies.clear(); g.events.clear(); g.teleport(2.5, 14, -420, 0, "hover"); g.player.viewPitch = 0.12;
+    g.spawnEnemy("titan", 75, -30, 4); g.spawnEnemy("sentinel", 30, 6, -7); g.spawnEnemy("sentinel", 38, 10, 8); g.spawnEnemy("spider", 45, -30, -5);`);
   await frames(page, 36);
   await page.screenshot({ path: `${OUT}/27-titan-sentinels.png` });
   await run(page, `g.enemies.clear();`);
