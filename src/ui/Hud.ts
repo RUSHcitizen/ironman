@@ -59,6 +59,7 @@ export class Hud {
     this.el.id = "hud";
     this.el.innerHTML = `
       <div class="h-vignette"></div>
+      <div class="h-hypoxia"></div>
       <div class="h-top">
         <div class="h-compass"><div class="h-tape"></div><div class="h-markers"></div><div class="h-needle"></div></div>
         <div class="h-heading"><b class="v-heading">000</b><span class="v-card">N</span></div>
@@ -97,6 +98,9 @@ export class Hud {
           <small>POWER</small>
           <div class="d-energy"><i class="v-energy"></i></div>
           <b class="v-energy-t">100%</b>
+          <small>OXYGEN</small>
+          <div class="d-oxy"><i class="v-oxy"></i></div>
+          <b class="v-oxy-t">100%</b>
         </div>
       </div>
       <div class="h-targets"></div>
@@ -113,6 +117,7 @@ export class Hud {
       <div class="h-objective"><small class="v-obj-t"></small><b class="v-obj"></b></div>
       <div class="h-alerts"></div>
       <div class="h-fps"></div>
+      <div class="h-dead"><b class="v-dead-t">SUIT DESTROYED</b><span class="v-dead">Returning to Avengers Tower</span></div>
       <button class="h-menu" aria-label="Open menu">☰</button>
     `;
     parent.appendChild(this.el);
@@ -173,6 +178,15 @@ export class Hud {
     for (let k = 0; k < pips.length; k++) pips[k].classList.toggle("on", k < rockets);
     this.q(".v-kills").textContent = String(kills);
     this.q(".v-rpl").textContent = repulsorReady ? "READY" : "LOW POWER";
+  }
+
+  /** Fade to black with a message (null clears it). */
+  showDeath(title: string | null, detail = ""): void {
+    this.el.classList.toggle("dead", title !== null);
+    if (title !== null) {
+      this.q(".v-dead-t").textContent = title;
+      this.q(".v-dead").textContent = detail;
+    }
   }
 
   damageFlash(amount: number): void {
@@ -311,7 +325,7 @@ export class Hud {
     this.q(".v-mach").textContent = `MACH ${(p.speed / 343).toFixed(2)}`;
     this.q(".v-speedbar").style.transform = `scaleY(${Math.min(1, kmh / 460)})`;
     this.q(".v-alt").textContent = String(Math.round(p.pos.y));
-    this.q(".v-altbar").style.transform = `scaleY(${Math.min(1, Math.max(0, p.pos.y) / 650)})`;
+    this.q(".v-altbar").style.transform = `scaleY(${Math.min(1, Math.max(0, p.pos.y) / 2600)})`;
     const vs = p.vel.y;
     this.q(".v-agl").textContent = `AGL ${Math.max(0, Math.round(p.agl))} · VS ${vs >= 0 ? "▲" : "▼"}${Math.abs(vs).toFixed(0)}`;
 
@@ -320,6 +334,13 @@ export class Hud {
     energyEl.style.transform = `scaleX(${e / 100})`;
     energyEl.className = `v-energy ${e < 20 ? "crit" : e < 40 ? "warn" : ""}`;
     this.q(".v-energy-t").textContent = `${Math.round(e)}%`;
+    const o = p.suit.oxygen;
+    const oxyEl = this.q(".v-oxy");
+    oxyEl.style.transform = `scaleX(${o / 100})`;
+    oxyEl.className = `v-oxy ${o < 25 ? "crit" : o < 50 ? "warn" : ""}`;
+    this.q(".v-oxy-t").textContent = `${Math.round(o)}%`;
+    this.q(".h-hypoxia").style.opacity = String(p.suited ? Math.min(1, Math.max(0, (30 - o) / 30)) : 0);
+    this.el.classList.toggle("space", p.inSpace);
     this.q(".v-int").textContent = `${Math.round(p.suit.overallIntegrity)}%`;
     for (const part of SUIT_PARTS) {
       const v = p.suit.integrity[part];
@@ -327,7 +348,7 @@ export class Hud {
       for (const n of this.el.querySelectorAll(`[data-p="${part}"]`)) n.setAttribute("class", cls);
     }
 
-    const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? "ON FOOT" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
+    const modeText = p.transformTimer > 0 ? (p.transformToSuited ? "SUITING UP" : "ARMOUR OFF") : !p.suited ? (p.falling ? "FALLING" : "ON FOOT") : p.blackout ? "BLACKOUT" : p.freefall ? "FREE FALL" : p.rollTimer > 0 ? "EVADE" : p.mode === "ground" ? (p.landingTimer > 0 ? "TOUCHDOWN" : "GROUND") : p.mode === "hover" ? "HOVER" : p.afterburner ? "AFTERBURNER" : "FLIGHT";
     this.q(".v-mode").textContent = modeText;
     this.el.dataset.mode = p.mode;
     this.el.classList.toggle("civ", !p.suited);

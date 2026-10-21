@@ -31,7 +31,7 @@ describe("CityGenerator", () => {
   it("registers the landing pad and rooftop props as colliders", () => {
     const w = new CollisionWorld();
     for (const b of chunkColliders(generateChunk(0, 0))) w.add(b);
-    // Standing on the Apex Tower pad (block 0,0 centre is 40,40).
+    // Standing on the Avengers Tower pad (block 0,0 centre is 40,40).
     expect(w.surfaceBelow(36, 200, 34, 0.45)).toBeCloseTo(147.2);
   });
 

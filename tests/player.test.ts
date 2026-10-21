@@ -207,4 +207,124 @@ describe("PlayerController", () => {
     expect(p.evading).toBe(true);
     expect(p.takeHit(10)).toBe(false);
   });
+
+  it("H cuts thrust into a free fall; SPACE re-engages the hover", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, Math.PI);
+    sim(p, 6, { ascend: true }, { takeoff: true });
+    expect(p.mode).toBe("hover");
+    sim(p, 1.5);
+    const y0 = p.pos.y;
+    sim(p, 1.2, {}, { cutThrust: true });
+    expect(p.freefall).toBe(true);
+    expect(p.mode).toBe("ground");
+    expect(p.pos.y).toBeLessThan(y0 - 8);
+    expect(p.falling).toBe(true);
+    // No automatic stabilisers while the thrusters are cut.
+    sim(p, 0.3);
+    expect(p.mode).toBe("ground");
+    sim(p, 1.5, {}, { takeoff: true });
+    expect(p.freefall).toBe(false);
+    expect(p.mode).toBe("hover");
+    expect(p.dead).toBe(false);
+  });
+
+  it("a fall from a great height is fatal, a short drop is not", () => {
+    const short = new PlayerController(makeWorld());
+    short.spawn(0, 30, 0, 0);
+    sim(short, 0.1, {}, { cutThrust: true });
+    short.freefall = true;
+    sim(short, 4);
+    expect(short.dead).toBe(false);
+    expect(short.pos.y).toBeCloseTo(0, 2);
+
+    const events: string[] = [];
+    const bus = { emit: (t: string) => events.push(t) } as never;
+    const p = new PlayerController(makeWorld(), bus);
+    p.spawn(0, 400, 0, 0);
+    p.mode = "hover";
+    p.grounded = false;
+    sim(p, 0.1, {}, { cutThrust: true });
+    sim(p, 15);
+    expect(p.dead).toBe(true);
+    expect(events).toContain("playerDied");
+    // Dead players don't move until the game respawns them.
+    const y = p.pos.y;
+    sim(p, 1, { moveY: 1, ascend: true });
+    expect(p.pos.y).toBe(y);
+    p.spawn(0, 0, 0, 0);
+    expect(p.dead).toBe(false);
+  });
+
+  it("civilians die from much shorter falls than the armour", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 60, 0, 0);
+    p.suited = false;
+    p.grounded = false;
+    sim(p, 5);
+    expect(p.dead).toBe(true);
+  });
+
+  it("flies to space; oxygen drains up there and refills in breathable air", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 2700, 0, 0);
+    p.mode = "hover";
+    p.grounded = false;
+    expect(p.inSpace).toBe(true);
+    sim(p, 10);
+    expect(p.suit.oxygen).toBeLessThan(80);
+    expect(p.suit.oxygen).toBeGreaterThan(60);
+    p.pos.y = 500;
+    sim(p, 3);
+    expect(p.suit.oxygen).toBeGreaterThan(95);
+  });
+
+  it("no ceiling below space: flight climbs past 2.6 km", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 2000, 0, Math.PI);
+    p.mode = "flight";
+    p.grounded = false;
+    p.flightSpeed = 60;
+    p.viewPitch = 1.2;
+    sim(p, 15, { moveY: 1 });
+    expect(p.pos.y).toBeGreaterThan(2600);
+  });
+
+  it("running out of oxygen blacks you out: thrusters die until you fall back into air", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 3000, 0, 0);
+    p.mode = "hover";
+    p.grounded = false;
+    p.suit.oxygen = 0.5;
+    sim(p, 0.5);
+    expect(p.blackout).toBe(true);
+    expect(p.freefall).toBe(true);
+    // Can't re-engage while unconscious.
+    sim(p, 0.5, { ascend: true }, { takeoff: true });
+    expect(p.mode).toBe("ground");
+    // Fall back below the oxygen line, wake up, and recover.
+    let woke = false;
+    for (let i = 0; i < 60 * 40 && !woke && !p.dead; i++) {
+      p.update(1 / 60, emptyInput());
+      woke = !p.blackout;
+    }
+    expect(woke).toBe(true);
+    expect(p.pos.y).toBeGreaterThan(100);
+    sim(p, 3, {}, { takeoff: true });
+    expect(p.mode).toBe("hover");
+    expect(p.dead).toBe(false);
+  });
+
+  it("stepping out walks the civilian backwards out of the armour", () => {
+    const p = new PlayerController(makeWorld());
+    p.spawn(0, 0, 0, 0);
+    expect(p.exitSuit()).toBe(true);
+    expect(p.suited).toBe(false);
+    sim(p, 0.3, { moveY: 1 });
+    expect(Math.abs(p.pos.z)).toBeLessThan(0.2);
+    sim(p, 1.4, { moveY: 1 });
+    expect(p.pos.z).toBeLessThan(-0.9);
+    expect(p.bodyYaw).toBeCloseTo(0, 3);
+    expect(p.transformTimer).toBe(0);
+  });
 });

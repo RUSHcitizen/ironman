@@ -3,7 +3,7 @@ import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import { SuitSystems, SUIT_PARTS } from "./SuitSystems";
 import { clamp, damp, dampAngle, moveTowards, wrapAngle, DEG } from "../core/math";
-import { WORLD_LIMIT, ALTITUDE_CEILING, ISLAND_MIN, ISLAND_MAX } from "../world/WorldConfig";
+import { WORLD_LIMIT, ALTITUDE_CEILING, ISLAND_MIN, ISLAND_MAX, OXYGEN_ALTITUDE, SPACE_ALTITUDE, airDensity } from "../world/WorldConfig";
 
 export type FlightMode = "ground" | "hover" | "flight";
 
@@ -38,7 +38,22 @@ export const TUNING = {
   transformTime: 1.3,
   /** Piece-by-piece suit-up when the called suit latches on. */
   latchTime: 2.4,
+  /** Stepping out of the open armour. */
+  stepOutTime: 1.5,
+  /** Impact speeds (m/s) that kill: the armour absorbs a lot, a civilian very little. */
+  lethalFall: 62,
+  civilianLethalFall: 26,
+  /** Air drag coefficient (sea-level terminal velocity ~96 m/s, faster in thin air). */
+  drag: 0.0024,
+  /** Oxygen: % per second used on internal supply (thin air -> space), refill rate below. */
+  oxygenUse: 0.9,
+  oxygenUseSpace: 2.5,
+  oxygenRefill: 14,
+  /** Oxygen % needed to wake from a blackout. */
+  oxygenWake: 30,
 };
+
+export type DeathCause = "fall" | "water";
 
 /**
  * Player movement simulation. Owns the view (camera aim) angles so the camera
@@ -99,6 +114,14 @@ export class PlayerController {
   private boundaryWarned = 0;
   private ceilingWarned = 0;
   private failed = false;
+  /** Thrusters cut (H): unpowered free fall until re-engaged. */
+  freefall = false;
+  /** Passed out from lack of oxygen: thrusters can't be re-engaged. */
+  blackout = false;
+  /** Killed (e.g. by a fall); waiting for the game to respawn us. */
+  dead = false;
+  private zone: "air" | "thin" | "space" = "air";
+  private oxygenWarned = 100;
 
   constructor(
     private world: CollisionWorld,
@@ -125,7 +148,21 @@ export class PlayerController {
     this.agl = 0;
     this.transformTimer = 0;
     this.failed = false;
+    this.freefall = this.blackout = this.dead = false;
+    this.suit.oxygen = 100;
+    this.oxygenWarned = 100;
+    this.zone = "air";
     this.setMode("ground");
+  }
+
+  /** Above the edge of space. */
+  get inSpace(): boolean {
+    return this.pos.y > SPACE_ALTITUDE;
+  }
+
+  /** Falling fast with no thrust (drives the skydive pose and camera). */
+  get falling(): boolean {
+    return this.mode === "ground" && !this.grounded && this.airTime > 0.3 && this.vel.y < -9;
   }
 
   get speed(): number {
@@ -191,7 +228,7 @@ export class PlayerController {
       return false;
     }
     this.transformToSuited = false;
-    this.transformTimer = 0.5;
+    this.transformTimer = TUNING.stepOutTime;
     this.vel.x = this.vel.z = 0;
     this.bus?.emit("suitTransform", { toSuited: false });
     this.finishTransform();
@@ -218,6 +255,11 @@ export class PlayerController {
 
   update(dt: number, input: InputState): void {
     dt = Math.min(dt, 0.05);
+    if (this.dead) {
+      this.vel.x = this.vel.y = this.vel.z = 0;
+      this.thrust = 0;
+      return;
+    }
     // View angles from look input.
     this.viewYaw = wrapAngle(this.viewYaw + input.lookX);
     const pitchLimit = this.mode === "flight" ? 85 * DEG : 70 * DEG;
@@ -235,6 +277,10 @@ export class PlayerController {
       }
     }
 
+    if (input.cutThrust && this.suited && this.transformTimer <= 0) {
+      if (this.mode !== "ground") this.cutThrusters();
+      else if (this.freefall) this.reengage("hover");
+    }
     if (this.mode === "ground") this.updateGround(dt, input);
     else if (this.mode === "hover") this.updateHover(dt, input);
     else this.updateFlight(dt, input);
@@ -244,6 +290,7 @@ export class PlayerController {
     this.integrate(dt);
     this.updateBoundaries(dt);
     this.updateEnergy(dt);
+    this.updateOxygen(dt);
     this.updateNearMiss(dt);
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
@@ -266,31 +313,65 @@ export class PlayerController {
 
   private updateGround(dt: number, input: InputState): void {
     const move = this.planarInput(input);
+    const steppingOut = this.transformTimer > 0 && !this.transformToSuited;
     const locked = this.landingTimer > 0 || this.transformTimer > 0;
     let speed = this.suited ? TUNING.walkSpeed : input.sprint ? TUNING.civilianSprint : TUNING.civilianWalk;
     if (locked) speed = 0;
-    const k = damp(this.grounded ? 12 : 2, dt);
-    this.vel.x += (move.x * speed - this.vel.x) * k;
-    this.vel.z += (move.z * speed - this.vel.z) * k;
+    const falling = this.falling;
+    if (this.freefall || falling) {
+      // Unpowered fall: keep momentum, steer a little like a skydiver.
+      const air = TUNING.gravity * 0.45;
+      this.vel.x += move.x * air * dt;
+      this.vel.z += move.z * air * dt;
+    } else {
+      let tx = move.x * speed, tz = move.z * speed;
+      if (steppingOut) {
+        // Back out of the open armour, still facing it.
+        const t = TUNING.stepOutTime - this.transformTimer;
+        const back = t > 0.4 && t < 1.15 ? -1.9 : 0;
+        tx = Math.sin(this.bodyYaw) * back;
+        tz = Math.cos(this.bodyYaw) * back;
+      }
+      const k = damp(this.grounded ? 12 : 2, dt);
+      this.vel.x += (tx - this.vel.x) * k;
+      this.vel.z += (tz - this.vel.z) * k;
+    }
     this.vel.y -= TUNING.gravity * dt;
+    if (!this.grounded) {
+      // Aerodynamic drag (weaker in thin air, so falls from space get fast).
+      const sp = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+      const f = Math.min(1, TUNING.drag * airDensity(this.pos.y) * sp * dt);
+      this.vel.x -= this.vel.x * f;
+      this.vel.y -= this.vel.y * f;
+      this.vel.z -= this.vel.z * f;
+    }
 
     const planar = Math.hypot(this.vel.x, this.vel.z);
-    if (this.aimTimer > 0 && this.suited) this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 14, dt);
+    if (falling) this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 3, dt);
+    else if (steppingOut) {
+      /* keep facing the suit */
+    } else if (this.aimTimer > 0 && this.suited) this.bodyYaw = dampAngle(this.bodyYaw, this.viewYaw, 14, dt);
     else if (planar > 0.4) this.bodyYaw = dampAngle(this.bodyYaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
-    this.walkPhase += planar * dt * (this.suited ? 1.25 : 1.9);
-    this.bodyPitch += (0 - this.bodyPitch) * damp(10, dt);
+    this.walkPhase += (steppingOut ? -planar : planar) * dt * (this.suited ? 1.25 : 1.9);
+    // Belly-to-earth while falling fast.
+    this.bodyPitch += ((falling ? 1.2 : 0) - this.bodyPitch) * damp(falling ? 2.5 : 10, dt);
     this.bodyRoll += (0 - this.bodyRoll) * damp(10, dt);
     this.thrust = moveTowards(this.thrust, 0, dt * 3);
     this.flightSpeed = 0;
 
     if (!this.grounded) {
       this.airTime += dt;
-      if (this.suited && this.airTime > 0.55 && this.vel.y < -6) {
+      if (this.suited && !this.freefall && this.airTime > 0.55 && this.vel.y < -6) {
         this.setMode("hover");
         this.alert("Stabilisers engaged");
       }
     }
-    if (locked) return;
+    if (locked || this.blackout) return;
+    if (this.freefall) {
+      if (input.takeoff || input.ascend) this.reengage("hover");
+      else if (input.toggleFlight) this.reengage("flight");
+      return;
+    }
     if (!this.suited) {
       if (input.takeoff && this.grounded) {
         this.vel.y = 5.5;
@@ -311,6 +392,31 @@ export class PlayerController {
       this.bus?.emit("boost", {});
       this.alert("Flight mode: launch");
     }
+  }
+
+  /** H: cut all thrust and drop. */
+  cutThrusters(reason = "Thrusters cut - free fall · H or SPACE to re-engage"): void {
+    this.freefall = true;
+    this.trick = null;
+    this.trickPitch = this.trickYaw = 0;
+    this.afterburner = this.wasAfterburner = false;
+    this.yawRate = this.pitchRate = 0;
+    this.grounded = false;
+    this.airTime = Math.max(this.airTime, 0.3);
+    this.setMode("ground");
+    this.alert(reason, this.blackout ? "critical" : "warn");
+  }
+
+  private reengage(mode: "hover" | "flight"): void {
+    if (this.blackout) return;
+    this.freefall = false;
+    if (mode === "flight") {
+      this.flightSpeed = Math.max(40, Math.hypot(this.vel.x, this.vel.z));
+      this.viewPitch = Math.max(this.viewPitch, -30 * DEG);
+      this.bus?.emit("boost", {});
+    }
+    this.setMode(mode);
+    this.alert("Thrusters re-engaged", "success");
   }
 
   private updateHover(dt: number, input: InputState): void {
@@ -361,8 +467,9 @@ export class PlayerController {
       this.bus?.emit("boost", {});
     }
     this.wasAfterburner = this.afterburner;
-    let target = TUNING.cruiseSpeed;
-    if (this.afterburner) target = TUNING.afterburnerSpeed;
+    // Thin air at altitude: less drag, so the suit flies much faster.
+    const thin = 1 + clamp((this.pos.y - 400) / 2000, 0, 1) * 1.6;
+    let target = (this.afterburner ? TUNING.afterburnerSpeed : TUNING.cruiseSpeed) * thin;
     // Gravity assist: dives build speed, climbs bleed it.
     const sp = Math.sin(this.viewPitch);
     target += sp < 0 ? -sp * 45 : -sp * (this.afterburner ? 8 : 20);
@@ -521,12 +628,18 @@ export class PlayerController {
 
     if (this.mode === "ground") {
       if (supported) {
+        if (!this.grounded && fallSpeed > (this.suited ? TUNING.lethalFall : TUNING.civilianLethalFall)) {
+          this.die(overWater ? "water" : "fall", fallSpeed);
+          return;
+        }
         if (!this.grounded && fallSpeed > 14) this.landed(fallSpeed > 22);
         this.grounded = true;
+        this.freefall = false;
         this.airTime = 0;
         this.vel.y = 0;
       } else this.grounded = false;
-      if (overWater && this.suited) {
+      if (overWater && this.suited && !this.blackout && (supported || !this.freefall)) {
+        this.freefall = false;
         this.vel.y = 3;
         this.setMode("hover");
         this.alert("Water below - hover engaged");
@@ -559,6 +672,19 @@ export class PlayerController {
         this.setMode("hover");
       }
     }
+  }
+
+  /** Fatal impact: the game shows it and returns us to the tower. */
+  private die(cause: DeathCause, speed: number): void {
+    this.dead = true;
+    this.failed = true;
+    this.freefall = this.blackout = false;
+    this.trick = null;
+    this.vel.x = this.vel.y = this.vel.z = 0;
+    this.thrust = 0;
+    this.afterburner = false;
+    this.grounded = true;
+    this.bus?.emit("playerDied", { cause, speed });
   }
 
   private landed(hard: boolean): void {
@@ -634,19 +760,60 @@ export class PlayerController {
         this.boundaryWarned = 6;
       }
     }
-    if (this.pos.y > ALTITUDE_CEILING) {
+    if (this.pos.y > ALTITUDE_CEILING && this.mode !== "ground") {
       this.vel.y = Math.min(this.vel.y, -(this.pos.y - ALTITUDE_CEILING));
       if (this.mode === "flight") this.viewPitch = Math.min(this.viewPitch, 0);
       if (this.ceilingWarned <= 0) {
-        this.alert("Altitude ceiling - icing risk", "warn");
+        this.alert("Maximum altitude - thrusters can't climb any higher", "warn");
         this.ceilingWarned = 8;
       }
     }
   }
 
+  /**
+   * Above OXYGEN_ALTITUDE the suit runs on its internal supply, faster in
+   * space. At zero the pilot blacks out and the thrusters go dead.
+   */
+  private updateOxygen(dt: number): void {
+    const s = this.suit;
+    const y = this.pos.y;
+    const zone = y > SPACE_ALTITUDE ? "space" : y > OXYGEN_ALTITUDE ? "thin" : "air";
+    if (zone !== this.zone && this.suited) {
+      if (zone === "space") this.alert("You're in space, boss. Oxygen is limited - watch the gauge", "success");
+      else if (zone === "thin" && this.zone === "air") this.alert("Thin air - switching to internal oxygen", "warn");
+      else if (zone === "air") this.alert("Breathable air - oxygen recharging", "info");
+    }
+    this.zone = zone;
+    if (zone === "air" || !this.suited) {
+      s.oxygen = Math.min(100, s.oxygen + TUNING.oxygenRefill * dt);
+      if (s.oxygen > 60) this.oxygenWarned = 100;
+    } else {
+      const k = clamp((y - OXYGEN_ALTITUDE) / (SPACE_ALTITUDE - OXYGEN_ALTITUDE), 0, 1);
+      s.oxygen = Math.max(0, s.oxygen - (TUNING.oxygenUse + (TUNING.oxygenUseSpace - TUNING.oxygenUse) * k) * dt);
+    }
+    for (const [lvl, text, level] of [
+      [50, "Oxygen at 50%", "warn"],
+      [25, "Oxygen critical - descend now!", "critical"],
+      [10, "Oxygen 10% - you're about to pass out, boss!", "critical"],
+    ] as const) {
+      if (s.oxygen <= lvl && this.oxygenWarned > lvl) {
+        this.oxygenWarned = lvl;
+        this.alert(text, level);
+      }
+    }
+    if (s.oxygen <= 0 && !this.blackout && this.suited) {
+      this.blackout = true;
+      this.cutThrusters("Pilot unconscious - no oxygen. Thrusters offline");
+    } else if (this.blackout && s.oxygen >= TUNING.oxygenWake) {
+      this.blackout = false;
+      this.alert("You're back with me, boss! SPACE to re-engage thrusters", "success");
+    }
+  }
+
   private updateEnergy(dt: number): void {
     const s = this.suit;
-    if (!this.suited || this.mode === "ground") s.charge(14 * dt);
+    if (!this.suited || (this.mode === "ground" && this.grounded)) s.charge(14 * dt);
+    else if (this.mode === "ground") s.charge(2 * dt);
     else if (this.mode === "hover") s.charge(2 * dt);
     else s.drain((this.afterburner ? 9 : 0.4) * dt);
 

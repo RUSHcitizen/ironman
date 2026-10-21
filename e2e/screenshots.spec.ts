@@ -42,7 +42,7 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await frames(page, 14);
   await page.screenshot({ path: `${OUT}/13-suit-up-latch.png` });
   await frames(page, 50);
-  await page.screenshot({ path: `${OUT}/02-apex-tower-pad.png` });
+  await page.screenshot({ path: `${OUT}/02-avengers-tower-pad.png` });
 
   // Repulsor fight with a drone swarm above an avenue.
   await run(page, `g.teleport(2.5, 32, -300, 0, "hover"); g.player.viewPitch = 0.04;
@@ -88,6 +88,11 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await run(page, `g.teleport(11, 0.15, -182, Math.PI); g.player.viewPitch = -0.05;`);
   await frames(page, 4);
   await page.keyboard.press("KeyG");
+  // The armour splits open and the civilian backs out of it.
+  await frames(page, 5);
+  await run(page, `g.player.viewYaw = Math.PI + 1.25; g.player.viewPitch = -0.1;`);
+  await frames(page, 4);
+  await page.screenshot({ path: `${OUT}/16-step-out.png` });
   await frames(page, 10);
   await run(page, `g.player.viewYaw = 0.55; g.player.viewPitch = -0.05;`);
   await frames(page, 12);
@@ -119,6 +124,18 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await frames(page, 3);
   await page.screenshot({ path: `${OUT}/15-called-suit-latching.png` });
   await frames(page, 60);
+
+  // Space: black sky, stars, the city far below. Then cut thrust (H) and fall.
+  await run(page, `g.enemies.clear(); g.teleport(2.5, 2900, -300, 0.4, "hover"); g.player.viewPitch = -0.32;`);
+  await frames(page, 30);
+  await page.screenshot({ path: `${OUT}/17-space.png` });
+  await page.keyboard.press("KeyH");
+  await frames(page, 40);
+  await run(page, `g.player.viewPitch = -0.5;`);
+  await frames(page, 6);
+  await page.screenshot({ path: `${OUT}/18-freefall.png` });
+  await page.keyboard.press("KeyH");
+  await frames(page, 20);
 
   await page.keyboard.press("Escape");
   await frames(page, 3);

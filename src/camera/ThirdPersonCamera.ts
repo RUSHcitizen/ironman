@@ -63,9 +63,10 @@ export class ThirdPersonCamera {
     }
     // Flight: lock to the hero (velocity is already smoothed, and pivot lag at
     // 100+ m/s pushes the hero metres ahead of the camera). On foot: soften.
-    const pk = flight ? 1 : damp(12, dt);
+    const fast = flight || speed > 25;
+    const pk = fast ? 1 : damp(12, dt);
     this.pivot.x += (tx - this.pivot.x) * pk;
-    this.pivot.y += (ty - this.pivot.y) * (flight ? damp(30, dt) : damp(9, dt));
+    this.pivot.y += (ty - this.pivot.y) * (fast ? damp(30, dt) : damp(9, dt));
     this.pivot.z += (tz - this.pivot.z) * pk;
 
     // In flight the camera trails the aim slightly, so turns feel fluid.

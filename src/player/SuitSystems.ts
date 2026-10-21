@@ -6,6 +6,8 @@ export const SUIT_PARTS: SuitPart[] = ["helmet", "chest", "arms", "legs", "thrus
 /** Suit energy and per-part integrity with passive self-repair. */
 export class SuitSystems {
   energy = 100;
+  /** Breathable air reserve (%), used above the oxygen altitude. */
+  oxygen = 100;
   integrity: Record<SuitPart, number> = { helmet: 100, chest: 100, arms: 100, legs: 100, thrusters: 100 };
   private repairDelay = 0;
 
@@ -36,6 +38,7 @@ export class SuitSystems {
 
   restore(): void {
     this.energy = 100;
+    this.oxygen = 100;
     this.repair(100);
     this.repairDelay = 0;
   }

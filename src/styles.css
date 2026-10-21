@@ -401,3 +401,28 @@ html.touch .h-civ { bottom: auto; top: calc(10px + var(--st)); }
 .t-trick { display: none; right: calc(206px + var(--sr)); bottom: calc(120px + var(--sb)); width: 62px; height: 62px; border-color: #c48bff; color: #dcb8ff; }
 #touch[data-mode="hover"]:not(.civ) .t-trick, #touch[data-mode="flight"]:not(.civ) .t-trick { display: grid; }
 @media (max-height: 380px) { .t-trick { width: 54px; height: 54px; right: calc(176px + var(--sr)); bottom: calc(100px + var(--sb)); } }
+
+/* Cut-thrust button: only while flying in the suit. */
+.t-cut { display: none; right: calc(276px + var(--sr)); bottom: calc(120px + var(--sb)); width: 56px; height: 56px; border-color: #ffd36b; color: #ffe3a0; }
+#touch[data-mode="hover"]:not(.civ) .t-cut, #touch[data-mode="flight"]:not(.civ) .t-cut { display: grid; }
+@media (max-height: 380px) { .t-cut { width: 50px; height: 50px; right: calc(238px + var(--sr)); bottom: calc(100px + var(--sb)); } }
+
+/* Oxygen gauge (helmet HUD). */
+.d-oxy { height: 6px; background: rgba(140, 255, 190, 0.18); margin: 2px 0; overflow: hidden; }
+.d-oxy i { display: block; height: 100%; background: #8dffc0; transform-origin: left; box-shadow: 0 0 6px #8dffc0; }
+.d-oxy i.warn { background: var(--amber); }
+.d-oxy i.crit { background: var(--red); animation: blink 0.6s steps(2) infinite; }
+/* Hypoxia: the view closes in as oxygen runs out. */
+.h-hypoxia {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.92) 78%);
+}
+/* Death: fade to black with F.R.I.D.A.Y.'s message. */
+.h-dead {
+  position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px;
+  background: rgba(0, 0, 0, 0.88); opacity: 0; pointer-events: none; transition: opacity 0.5s;
+}
+.h-dead b { font-size: calc(30px * var(--s)); letter-spacing: 0.3em; color: #ff5148; }
+.h-dead span { font-size: calc(13px * var(--s)); letter-spacing: 0.15em; color: #e9f3ff; }
+#hud.dead .h-dead { opacity: 1; }
+#hud.space .h-area small::after { content: " · LOW ORBIT"; }

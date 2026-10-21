@@ -66,6 +66,37 @@ test.describe("desktop controls", () => {
     await expect(page.locator(".h-popup")).toContainText(/LOOP|FLIP/);
   });
 
+  test("space: oxygen drains, the sky turns black, H cuts thrust into a free fall", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 2750, -300, 0, "hover"));
+    const s = await until(page, (st) => st.inSpace && st.space > 0.9 && st.oxygen < 99);
+    expect(s.mode).toBe("hover");
+    await expect(page.locator("#hud")).toHaveClass(/space/);
+    await page.keyboard.press("KeyH");
+    const f = await until(page, (st) => st.freefall);
+    expect(f.mode).toBe("ground");
+    await until(page, (st) => st.pos.y < 2700);
+    // H again re-engages the thrusters.
+    await page.keyboard.press("KeyH");
+    await until(page, (st) => !st.freefall && st.mode === "hover");
+    expect(errors).toEqual([]);
+  });
+
+  test("a fatal fall returns you to Avengers Tower", async ({ page }) => {
+    const errors = await boot(page);
+    await game(page, (g) => g.teleport(2.5, 500, -300, 0, "hover"));
+    await page.keyboard.press("KeyH");
+    await until(page, (st) => st.freefall);
+    await until(page, (st) => st.dead, 120_000);
+    await expect(page.locator("#hud")).toHaveClass(/dead/);
+    const back = await until(page, (st) => !st.dead, 30_000);
+    expect(Math.hypot(back.pos.x - 36, back.pos.z - 34)).toBeLessThan(3);
+    expect(back.pos.y).toBeGreaterThan(140);
+    expect(back.suited).toBe(true);
+    await expect(page.locator("#hud")).not.toHaveClass(/dead/);
+    expect(errors).toEqual([]);
+  });
+
   test("repulsors and rockets destroy hostiles", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => {
@@ -87,7 +118,10 @@ test.describe("desktop controls", () => {
     await boot(page);
     await game(page, (g) => g.teleport(2.5, 0, -182, 0));
     await page.keyboard.press("KeyG");
-    await until(page, (s) => !s.suited && !s.transforming);
+    // The armour opens and the civilian backs out of it.
+    await until(page, (s) => !s.suited && s.stepOut);
+    const done = await until(page, (s) => !s.suited && !s.transforming && !s.stepOut);
+    expect(Math.hypot(done.suitPos.x - done.pos.x, done.suitPos.z - done.pos.z)).toBeGreaterThan(0.8);
     await expect(page.locator("#hud")).toHaveClass(/civ/);
     await page.waitForTimeout(300);
     const s0 = await until(page, (s) => s.speed === 0 || s.speed < 0.5);

@@ -37,6 +37,8 @@ export interface AvatarState {
   afterburner: boolean;
   agl: number;
   suit: { energy: number };
+  /** Unpowered fall (skydive pose). */
+  readonly falling?: boolean;
 }
 import { clamp, damp } from "../core/math";
 
@@ -75,6 +77,8 @@ export class ArmorModel {
   private latch: { t: number; starts: Vector3[]; landed: boolean[]; lastDelay: number } | null = null;
   /** Called when a piece clamps on (world position, part index). */
   onLatch: ((world: Vector3, index: number) => void) | null = null;
+  /** Step-out: the empty suit opens up, then closes again (progress seconds). */
+  private open: { t: number; closed: boolean[]; lastDelay: number } | null = null;
   private civShown = false;
   private crouch = 0;
   readonly meshes: AbstractMesh[] = [];
@@ -362,6 +366,7 @@ export class ArmorModel {
    */
   latchFrom(worldStarts: Vector3[] | null): void {
     this.armorT = -1;
+    this.open = null;
     this.refreshWorld();
     const starts: Vector3[] = [];
     this.parts.forEach((part, i) => {
@@ -384,6 +389,62 @@ export class ArmorModel {
     this.armorShown = true;
     this.setCivilian(this.withCivilian);
     this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1 };
+  }
+
+  /**
+   * Step-out animation for the empty suit: plates split open from the helmet
+   * down, hold while the wearer backs out, then clamp shut again.
+   */
+  playOpen(): void {
+    this.resetParts();
+    this.open = { t: 0, closed: this.parts.map(() => false), lastDelay: -1 };
+  }
+
+  get opening(): boolean {
+    return this.open !== null;
+  }
+
+  private resetParts(): void {
+    for (const part of this.parts) {
+      const md = part.mesh.metadata as { s: Vector3; p: Vector3 } | undefined;
+      if (md) {
+        part.mesh.scaling.copyFrom(md.s);
+        part.mesh.position.copyFrom(md.p);
+      }
+    }
+  }
+
+  private updateOpen(dt: number): void {
+    const o = this.open;
+    if (!o) return;
+    o.t += dt;
+    let done = true;
+    this.parts.forEach((part, i) => {
+      const m = part.mesh;
+      const rest = (m.metadata as { p: Vector3 }).p;
+      const t0 = (1 - part.delay) * 0.3;
+      const tc = 1.0 + part.delay * 0.3;
+      const u = clamp((o.t - t0) / 0.2, 0, 1);
+      const c = clamp((o.t - tc) / 0.16, 0, 1);
+      if (c < 1) done = false;
+      const a = (1 - Math.pow(1 - u, 3)) * (1 - c * c * c);
+      // Front plates swing forward, side plates outward, the back pack lifts.
+      const side = Math.abs(rest.x) > 0.03 ? Math.sign(rest.x) : 0;
+      const back = rest.z < -0.08;
+      m.position.set(rest.x + side * 0.16 * a, rest.y + (back ? 0.22 : 0.03) * a, rest.z + (back ? -0.08 : 0.2) * a);
+      if (c >= 1 && !o.closed[i]) {
+        o.closed[i] = true;
+        if (Math.abs(part.delay - o.lastDelay) > 0.1) {
+          o.lastDelay = part.delay;
+          m.computeWorldMatrix(true);
+          this.onLatch?.(m.getAbsolutePosition().clone(), i);
+        }
+      }
+    });
+    if (done) {
+      this.resetParts();
+      this.open = null;
+    }
   }
 
   get latching(): boolean {
@@ -476,7 +537,22 @@ export class ArmorModel {
     const planar = Math.hypot(p.vel.x, p.vel.z);
     let pose: Pose;
     let pivotY = 1.0;
-    if (p.mode === "ground") {
+    if (p.mode === "ground" && p.falling) {
+      // Skydive: arched back, arms and legs spread (civilians flail).
+      const flail = p.suited ? 0 : Math.sin(t * 9) * 0.35;
+      pose = {
+        spine: [-0.25, 0],
+        neck: [-0.75, 0],
+        shL: [-0.5 + flail, -1.35],
+        shR: [-0.5 - flail, 1.35],
+        elL: [-0.9, 0],
+        elR: [-0.9, 0],
+        hipL: [-0.15 - flail * 0.5, -0.28],
+        hipR: [-0.15 + flail * 0.5, 0.28],
+        knL: [0.85, 0],
+        knR: [0.85, 0],
+      };
+    } else if (p.mode === "ground") {
       const a = clamp(planar / 8, 0, 1);
       const ph = p.walkPhase;
       const s = Math.sin(ph);
@@ -602,6 +678,7 @@ export class ArmorModel {
 
     this.updateArmorAnim(dt);
     this.updateLatch(dt);
+    this.updateOpen(dt);
   }
 
   private updateArmorAnim(dt: number): void {

@@ -23,7 +23,9 @@ import {
   ROAD_WIDTH,
   SIDEWALK_HEIGHT,
   WATER_Y,
+  SPACE_ALTITUDE,
 } from "./WorldConfig";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 
 export const SUN_AZIMUTH = 250 * DEG;
 export const SUN_ELEVATION = 13 * DEG;
@@ -43,6 +45,13 @@ export class Environment {
   readonly sun: DirectionalLight;
   readonly hemi: HemisphericLight;
   private waterTex: Texture | null = null;
+  private skyMat!: StandardMaterial;
+  private stars!: Mesh;
+  private starMat!: StandardMaterial;
+  private viewDistance = 600;
+  private lastSpace = -1;
+  /** 0 at ground level, 1 in space. */
+  space = 0;
 
   constructor(
     private scene: Scene,
@@ -71,8 +80,35 @@ export class Environment {
   }
 
   setViewDistance(d: number): void {
-    this.scene.fogStart = d * 0.3;
-    this.scene.fogEnd = d;
+    this.viewDistance = d;
+    this.lastSpace = -1;
+    this.setAltitude(0);
+  }
+
+  /**
+   * Climbing toward space: the sky darkens to black, stars come out, and the
+   * fog thins so the city stays visible far below.
+   */
+  setAltitude(y: number): void {
+    const k = Math.min(1, Math.max(0, (y - 500) / (SPACE_ALTITUDE - 500)));
+    const sp = k * k * (3 - 2 * k);
+    // Fog distance tracks altitude so the ground isn't swallowed.
+    const d = this.viewDistance;
+    const up = Math.max(0, y - 150);
+    this.scene.fogStart = d * 0.3 + up * 0.9;
+    this.scene.fogEnd = d + up * 1.6;
+    if (Math.abs(sp - this.lastSpace) < 0.004) return;
+    this.lastSpace = sp;
+    this.space = sp;
+    const fog = Color3.Lerp(HAZE, new Color3(0.2, 0.32, 0.55), sp);
+    this.scene.fogColor.copyFrom(fog);
+    const clear = Color3.Lerp(HAZE, new Color3(0.01, 0.01, 0.03), sp);
+    this.scene.clearColor.set(clear.r, clear.g, clear.b, 1);
+    const b = 1 - sp * 0.97;
+    this.skyMat.emissiveColor.set(b, b, b * 1.02 + sp * 0.02);
+    this.starMat.alpha = Math.max(0, (sp - 0.35) / 0.65);
+    this.stars.setEnabled(sp > 0.36);
+    this.hemi.intensity = 0.62 - sp * 0.25;
   }
 
   update(time: number): void {
@@ -108,6 +144,32 @@ export class Environment {
     sky.isPickable = false;
     sky.applyFog = false;
     sky.metadata = { drawOrder: 2 };
+    this.skyMat = m;
+
+    // Starfield, faded in near space.
+    const tex = new DynamicTexture("starsTex", { width: 2048, height: 1024 }, this.scene, true);
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, 2048, 1024);
+    const rng = new Rng(4242);
+    for (let k = 0; k < 2600; k++) {
+      const x = rng.range(0, 2048), yy = rng.range(0, 1024);
+      const big = rng.chance(0.06);
+      const v = Math.floor(rng.range(120, 255));
+      const tint = rng.chance(0.2) ? `rgb(${v},${Math.floor(v * 0.85)},${Math.floor(v * 0.7)})` : rng.chance(0.2) ? `rgb(${Math.floor(v * 0.8)},${Math.floor(v * 0.9)},${v})` : `rgb(${v},${v},${v})`;
+      ctx.fillStyle = tint;
+      ctx.fillRect(x, yy, big ? 2.4 : 1.3, big ? 2.4 : 1.3);
+    }
+    tex.update(false);
+    this.starMat = this.mats.additive("starsMat", Color3.Black(), 0);
+    this.starMat.emissiveTexture = tex;
+    this.stars = CreateSphere("stars", { diameter: 12000, segments: 16, sideOrientation: Mesh.BACKSIDE }, this.scene);
+    this.stars.material = this.starMat;
+    this.stars.infiniteDistance = true;
+    this.stars.isPickable = false;
+    this.stars.applyFog = false;
+    this.stars.metadata = { drawOrder: 3 };
+    this.stars.setEnabled(false);
 
     const sunDisc = CreateDisc("sunDisc", { radius: 230, tessellation: 24 }, this.scene);
     const sm = this.mats.additive("sunMat", new Color3(1, 0.86, 0.6), 1);

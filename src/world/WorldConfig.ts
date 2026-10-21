@@ -23,7 +23,17 @@ export const ISLAND_MAX = DISTRICT_MAX + ISLAND_MARGIN;
 export const WATER_Y = -1.2;
 /** Soft boundary (square, beyond the shoreline) - F.R.I.D.A.Y. steers the player back. */
 export const WORLD_LIMIT = ISLAND_MAX + 260;
-export const ALTITUDE_CEILING = 900;
+/** Air thins above this: the suit switches to its internal oxygen supply. */
+export const OXYGEN_ALTITUDE = 1100;
+/** Edge of space: sky turns black, stars come out. */
+export const SPACE_ALTITUDE = 2600;
+/** Hard ceiling (thrusters can't climb higher). */
+export const ALTITUDE_CEILING = 4200;
+
+/** Relative air density (1 at sea level), used for drag and thin-air speed. */
+export function airDensity(y: number): number {
+  return Math.exp(-Math.max(0, y) / 1400);
+}
 
 export const WORLD_SEED = 1939;
 

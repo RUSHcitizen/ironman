@@ -133,6 +133,8 @@ export class Game {
     this.suitUnit = new SuitUnit(this.world, this.player.suit, this.enemies, this.projectiles, this.bus);
     this.targets.push(this.player, this.suitUnit);
     this.suitAvatar = new ArmorModel(scene, false);
+    // Plates clamping shut after the step-out.
+    this.suitAvatar.onLatch = (w, i) => this.bus.emit("suitLatch", { x: w.x, y: w.y, z: w.z, part: i });
     this.avatar.onLatch = (w, i) => {
       this.projectiles.fx.push({ kind: "spark", x: w.x, y: w.y, z: w.z, size: 0.9, t: 0, life: 0.18, yaw: 0, pitch: 0 });
       this.bus.emit("suitLatch", { x: w.x, y: w.y, z: w.z, part: i });
@@ -208,7 +210,10 @@ export class Game {
     const bus = this.bus;
     bus.on("modeChanged", () => this.syncTouchMode());
     bus.on("impact", (e) => this.cam.addShake(Math.min(1, e.speed / 60)));
-    bus.on("landed", (e) => this.cam.addShake(e.hard ? 0.7 : 0.15));
+    bus.on("landed", (e) => {
+      this.cam.addShake(e.hard ? 0.7 : 0.15);
+      this.updateHint();
+    });
     bus.on("suitTransform", (e) => {
       if (e.toSuited) {
         if (!this.avatar.latching) this.avatar.startTransform(true);
@@ -244,27 +249,32 @@ export class Game {
       const d = Math.hypot(e.x - this.player.pos.x, e.y - this.player.pos.y, e.z - this.player.pos.z);
       if (d < 60) this.cam.addShake(Math.min(0.8, (e.size / 10) * (1 - d / 60)));
     });
+    bus.on("playerDied", (e) => {
+      const fast = Math.round(e.speed * 3.6);
+      this.hud.showDeath(e.cause === "water" ? "IMPACT · WATER" : "FATAL FALL", `Hit at ${fast} km/h · F.R.I.D.A.Y. is bringing you back to Avengers Tower`);
+      this.cam.addShake(1.2);
+      this.bus.emit("impact", { speed: e.speed });
+      this.peds.panic(this.player.pos.x, this.player.pos.z, 60);
+      this.failTimer = 2.6;
+    });
     bus.on("suitFailure", () => {
-      bus.emit("alert", { text: "SUIT FAILURE - emergency return to Apex Tower", level: "critical", ttl: 4 });
+      bus.emit("alert", { text: "SUIT FAILURE - emergency return to Avengers Tower", level: "critical", ttl: 4 });
       this.failTimer = 1.6;
     });
   }
 
   /**
-   * The civilian steps out backwards; the empty armour stays standing where
-   * the player was (same pose), so the swap reads as one continuous motion.
+   * The empty armour stays standing where the player was and splits open; the
+   * civilian backs out of it (PlayerController drives the walk), then the
+   * plates clamp shut again.
    */
   private stepOutOfSuit(): void {
     const p = this.player;
     this.suitUnit.park(p.pos.x, p.pos.y, p.pos.z, p.bodyYaw);
     this.suitAvatar.setVisible(true);
+    this.suitAvatar.playOpen();
     this.suitAvatar.update(0.016, this.suitUnit);
     this.avatar.exitArmor();
-    const bx = p.pos.x - Math.sin(p.bodyYaw) * 1.3, bz = p.pos.z - Math.cos(p.bodyYaw) * 1.3;
-    if (!this.world.overlaps(bx - 0.45, p.pos.y + 0.4, bz - 0.45, bx + 0.45, p.pos.y + 1.9, bz + 0.45)) {
-      p.pos.x = bx;
-      p.pos.z = bz;
-    }
   }
 
   /** G / V routing between the player and the autonomous suit. */
@@ -348,8 +358,10 @@ export class Game {
       this.avatar.startTransform(true);
       this.refreshMarkers();
     }
+    this.failTimer = 0;
+    this.hud.showDeath(null);
     this.teleport(SPAWN.x, SPAWN.y, SPAWN.z, SPAWN.yaw);
-    this.bus.emit("alert", { text: "Returned to Apex Tower landing pad", level: "info" });
+    this.bus.emit("alert", { text: "Returned to Avengers Tower landing pad", level: "info" });
   }
 
   /** Debug/test helper: spawn an enemy relative to the player's facing. */
@@ -369,12 +381,13 @@ export class Game {
     }
     if (!this.input.mouseMode) return this.hud.setHint("");
     const m = p.mode;
+    if (p.freefall) return this.hud.setHint("FREE FALL · H / SPACE re-engage thrusters · SHIFT fly · WASD steer");
     this.hud.setHint(
       m === "ground"
         ? "SPACE lift-off · SHIFT launch · LMB blast · RMB rockets · G step out · V sentry"
         : m === "hover"
-          ? "SPACE/C altitude · SHIFT flight · Q/E dodge · LMB/RMB fire"
-          : "W afterburner · S brake · Q/E barrel roll · dive for speed",
+          ? "SPACE/C altitude · SHIFT flight · H cut thrust · Q/E dodge · LMB/RMB fire"
+          : "W afterburner · S brake · H cut thrust · climb high to reach space",
     );
   }
 
@@ -438,6 +451,7 @@ export class Game {
       return;
     }
     const p = this.player;
+    if (p.dead) input.fire = input.rockets = input.toggleSuit = input.sentry = false;
     this.handleSuitCommands(input);
     p.update(dt, input);
     this.avatar.update(dt, p);
@@ -473,6 +487,7 @@ export class Game {
 
     // World.
     this.env.update(this.time);
+    this.env.setAltitude(camPos.y);
     this.traffic.update(dt, p.pos.x, p.pos.z, p.pos.y);
     this.props.setSignalPhase(this.traffic.phase);
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
@@ -568,7 +583,7 @@ export class Game {
   }
 
   private refreshMarkers(): void {
-    const markers: HudMarker[] = [{ id: "apex", label: "APEX", x: HERO_X, z: HERO_Z, kind: "poi" }, ...this.events.markers];
+    const markers: HudMarker[] = [{ id: "tower", label: "TOWER", x: HERO_X, z: HERO_Z, kind: "poi" }, ...this.events.markers];
     if (this.suitUnit && this.suitUnit.state !== "worn") markers.push(this.suitMarker);
     this.hud.setMarkers(markers);
   }
@@ -617,6 +632,13 @@ export class Game {
       rockets: this.combat.rockets,
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
+      oxygen: p.suit.oxygen,
+      freefall: p.freefall,
+      blackout: p.blackout,
+      dead: p.dead,
+      inSpace: p.inSpace,
+      space: this.env.space,
+      stepOut: this.suitAvatar.opening,
       styleCombo: p.styleCombo,
       suitPos: { ...this.suitUnit.pos },
       mouseMode: this.input.mouseMode,

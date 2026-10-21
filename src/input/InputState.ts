@@ -17,6 +17,8 @@ export interface InputState {
   toggleFlight: boolean;
   rockets: boolean;
   toggleSuit: boolean;
+  /** Cut all thrust and free-fall (again to re-engage). */
+  cutThrust: boolean;
   /** Toggle sentry mode for the empty suit. */
   sentry: boolean;
   /** Mid-air trick requested this frame. */
@@ -44,6 +46,7 @@ export function emptyInput(): InputState {
     rockets: false,
     toggleSuit: false,
     sentry: false,
+    cutThrust: false,
     trick: null,
     roll: 0,
     menu: false,

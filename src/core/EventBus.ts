@@ -39,6 +39,7 @@ export interface GameEvents extends Record<string, unknown> {
   playerHit: { damage: number };
   evaded: Record<string, never>;
   suitFailure: Record<string, never>;
+  playerDied: { cause: "fall" | "water"; speed: number };
   weapon: { kind: "repulsor" | "rocket" | "enemyBolt" | "missile" | "laser"; x: number; y: number; z: number };
   explosion: { x: number; y: number; z: number; size: number };
   kill: { kind: string; total: number };

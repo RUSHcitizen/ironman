@@ -8,14 +8,36 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
+| ![In space](docs/screenshots/17-space.png) | ![Free fall after cutting thrust](docs/screenshots/18-freefall.png) |
+| ![Stepping out of the open armour](docs/screenshots/16-step-out.png) | ![City from 420 m](docs/screenshots/06-city-overview.png) |
 | ![Suit pieces latching on](docs/screenshots/13-suit-up-latch.png) | ![Called suit latching on](docs/screenshots/15-called-suit-latching.png) |
 | ![New enemy types](docs/screenshots/14-new-enemies.png) | ![Warbot](docs/screenshots/04-warbot.png) |
-| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Title screen](docs/screenshots/01-title.png) |
+| ![Drone fight](docs/screenshots/03-combat-drones.png) | ![Busy street](docs/screenshots/10-busy-street.png) |
 | ![Stepped out of the suit](docs/screenshots/07-civilian.png) | ![Sentry mode](docs/screenshots/11-sentry.png) |
 | ![Afterburner flight](docs/screenshots/05-flight-afterburner.png) | ![Suit flying in](docs/screenshots/12-suit-inbound.png) |
-| ![City from 420 m](docs/screenshots/06-city-overview.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
+| ![Title screen](docs/screenshots/01-title.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 5 – space, oxygen, free fall and the step-out
+
+- **Fly to space.** The old 900 m ceiling is gone.
+  - Above **1,100 m** the air is too thin and the suit switches to internal **oxygen** (new OXYGEN gauge under POWER).
+  - Above **2,600 m** you are in space: the sky fades to black, stars come out, and the city stays visible far below. The hard limit is 4,200 m.
+  - Thin air means less drag, so the suit flies up to about 2.6× faster up high.
+- **Oxygen runs out.**
+  - It drains slowly in thin air and faster in space (about 40 s of supply at full), and refills quickly once you are back below 1,100 m.
+  - F.R.I.D.A.Y. warns at 50%, 25% and 10%, and the view closes in as it gets low.
+  - At 0% you **black out**: the thrusters die and you fall. You come to once you have dropped back into breathable air and the tank reaches 30%, with a few hundred metres to re-engage. If you don't, see below.
+- **Cut thrust with `H`.**
+  - In hover or flight, `H` kills all thrust and you drop into a **free fall** (skydiving pose, momentum kept, `WASD` steers a little).
+  - Re-engage with `H` or `Space` (hover), or `Shift` (flight). Touch: a CUT button appears in flight; LIFT re-engages.
+  - The automatic stabilisers stay off while thrust is cut, so a fall from space is a real fall.
+- **Falls can kill you.** Drag sets a terminal velocity of about 96 m/s at sea level (faster in thin air).
+  - Hitting the ground or water unpowered faster than **62 m/s** in the armour (about 220 km/h), or **26 m/s** as a civilian, is fatal.
+  - The screen fades to black with the impact speed, and F.R.I.D.A.Y. brings you back, suited and repaired, to the **Avengers Tower** landing pad (renamed from Apex Tower).
+- **Step-out animation.** Pressing `G` while landed now splits the armour open: the helmet first, then the front plates swing forward, the side plates move out and the back pack lifts. You back out of it, and the plates clamp shut again with a clank per section.
+- The spin / corkscrew trick moved from `H` to `Y`.
 
 ## Milestone 4 – latch-on suit-up, new enemies, fluid flight and tricks, 33 km²
 
@@ -38,7 +60,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Mid-air tricks**, chained into a style combo that refills power:
   - `T`: front flip in hover / loop-the-loop in flight (the flight path really loops).
   - `B`: backflip.
-  - `H`: 360° spin in hover / corkscrew in flight (a double roll that also dodges fire).
+  - `H` (now `Y`, see Milestone 5): 360° spin in hover / corkscrew in flight (a double roll that also dodges fire).
   - `Q` / `E`: barrel rolls, as before.
   - Touch: a TRICK button appears while airborne.
 - **Even bigger map:** 18 × 18 chunks, about **5.8 km × 5.8 km (33 km²)**, with 81 districts and a fifth skyscraper cluster (Harbor Heights).
@@ -74,7 +96,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
   - **Kamikaze drones:** weaving dives that explode on contact. Shoot them first or roll away.
   - **Jet-pack troopers:** strafe along rooftops and streets without falling off, **jet-hop** to new positions (sometimes to dodge your fire), fire bursts, and launch **homing missiles**.
   - **Warbot** (unlocks after three incidents): a walking assault mech that stomps toward you firing bursts, launches 4-missile salvos, charges a **telegraphed laser** (the red aiming line lags behind you, so keep moving), and **ground-slams a shockwave** if you get close at street level.
-- **Incidents.** F.R.I.D.A.Y. dispatches combat incidents (drone swarms, rooftop gangs, street robberies, kamikaze waves, missile nests, Warbot rampages) plus occasional rescue calls. Each is marked by a beam, a ring and a compass marker, and progress shows as "Hostiles 2/5". Clearing one repairs the suit, recharges power and reloads rockets. If integrity falls below 15%, the suit fails and F.R.I.D.A.Y. flies you back to Apex Tower.
+- **Incidents.** F.R.I.D.A.Y. dispatches combat incidents (drone swarms, rooftop gangs, street robberies, kamikaze waves, missile nests, Warbot rampages) plus occasional rescue calls. Each is marked by a beam, a ring and a compass marker, and progress shows as "Hostiles 2/5". Clearing one repairs the suit, recharges power and reloads rockets. If integrity falls below 15%, the suit fails and F.R.I.D.A.Y. flies you back to Avengers Tower.
 - **More fun flying:**
   - **Barrel rolls** (`Q`/`E`, double-tap `A`/`D`, or double-tap the right side of the touchscreen): a sideways dash with brief invulnerability that also **breaks missile locks**.
   - **Dives build speed and climbs bleed it.** The afterburner now has a kick and a higher top speed (about 590 km/h).
@@ -86,7 +108,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 ## Milestone 1 – playable prototype (foundation)
 
-- **City** (now expanded, see Milestone 2): an island grid with avenues, lane markings, crosswalks, raised sidewalks, modular skyscrapers with setbacks and cornices, glass towers, NYC-style rooftop water towers, AC units, antennas, a park, a plaza with a fountain, and the hero landmark **Apex Tower** with its landing pad. A distant skyline and harbour water surround it.
+- **City** (now expanded, see Milestone 2): an island grid with avenues, lane markings, crosswalks, raised sidewalks, modular skyscrapers with setbacks and cornices, glass towers, NYC-style rooftop water towers, AC units, antennas, a park, a plaza with a fountain, and the hero landmark **Avengers Tower** with its landing pad. A distant skyline and harbour water surround it.
 - **Street life**: traffic that follows lanes, keeps its distance and stops at signals (the signals change colour), plus pedestrians walking the sidewalks.
 - **Armoured hero**: a procedurally modelled suit with a joint hierarchy. Poses blend between walk, hover, flight and a "superhero landing" crouch, with boot and palm thruster flames, an arc reactor glow, a suit-up assembly animation on start, and a blob shadow.
 - **Movement**: walking in armour, takeoff, hover (strafe, ascend, descend, hold altitude), high-speed flight with banking, an afterburner, braking back into hover, and landing on streets or rooftops (hard landings at speed). Wall impacts damage the suit. Stabilisers catch you if you walk off a roof, hover engages automatically over water, and soft limits apply to the airspace boundary and altitude ceiling.
@@ -94,7 +116,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **F.R.I.D.A.Y. HUD**: compass tape with map markers, heading, speed (km/h + Mach), altitude, AGL and vertical speed, suit integrity diagnostics (per-part silhouette), power bar, mode indicator, area-name banners, and dynamically generated alerts.
 - **Optional city incidents**: F.R.I.D.A.Y. spawns incidents nearby, each with a beam and ring in the world and an amber compass marker. Reach one to resolve it.
 - **Controls**: keyboard and mouse (drag-look, or click to pointer-lock), plus a touch layout with a floating virtual stick, a camera drag area, and large UP / DOWN / FLY buttons.
-- **Settings menu**: graphics quality (low / medium / high), auto-reduce quality on low FPS, mouse and touch sensitivity, invert Y, volume, FPS counter, and return to Apex Tower. Settings persist in `localStorage`.
+- **Settings menu**: graphics quality (low / medium / high), auto-reduce quality on low FPS, mouse and touch sensitivity, invert Y, volume, FPS counter, and return to Avengers Tower. Settings persist in `localStorage`.
 - **Robustness**: loading screen with progress, a recoverable error screen when WebGL is unavailable, a WebGL context-loss notice, a rotate-to-landscape hint on phones, safe-area insets, and no pinch-zoom or scroll hijack.
 - **Audio**: synthesised WebAudio thrusters, wind and alert blips (no audio files), unlocked by the Engage tap so it works on iOS.
 
@@ -109,7 +131,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Toggle flight / hover | `Shift` or `F` | FLY |
 | Afterburner / brake (in flight) | `W` / `S` | Stick up / down |
 | Barrel roll / dodge | `Q` / `E`, or double-tap `A` / `D` | Double-tap the right side |
-| Tricks: flip or loop / backflip / spin or corkscrew | `T` / `B` / `H` | TRICK (flip in hover, loop in flight) |
+| Tricks: flip or loop / backflip / spin or corkscrew | `T` / `B` / `Y` | TRICK (flip in hover, loop in flight) |
+| Cut all thrust (free fall) / re-engage | `H` (re-engage: `H` or `Space`) | CUT / LIFT |
 | Repulsors (hold) | Left mouse or `X` | BLAST |
 | Micro-rockets (lock-on) | Right mouse or `R` | MSL |
 | Step out of the suit (landed) / call it back | `G` | SUIT · CALL SUIT |

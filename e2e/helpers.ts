@@ -13,6 +13,13 @@ export interface DebugState {
   suitState: string;
   trick: string | null;
   styleCombo: number;
+  oxygen: number;
+  freefall: boolean;
+  blackout: boolean;
+  dead: boolean;
+  inSpace: boolean;
+  space: number;
+  stepOut: boolean;
   suitPos: { x: number; y: number; z: number };
   mouseMode: boolean;
   pointerLocked: boolean;

@@ -44,7 +44,7 @@ export class SettingsMenu {
           <input type="range" min="0" max="1" step="0.05" data-k="volume"/>
           <label class="m-toggle"><input type="checkbox" data-k="showFps"/><span>Show FPS counter</span></label>
         </section>
-        <button data-a="respawn">Return to Apex Tower</button>
+        <button data-a="respawn">Return to Avengers Tower</button>
         <details ${isTouch ? "" : "open"}>
           <summary>Controls</summary>
           <div class="m-controls">
@@ -53,12 +53,16 @@ export class SettingsMenu {
               <li><kbd>Mouse</kbd> look &amp; steer (click to lock, Esc to release)</li>
               <li><kbd>Space</kbd> take off / ascend · <kbd>C</kbd> descend</li>
               <li><kbd>Shift</kbd> or <kbd>F</kbd> toggle flight · <kbd>W</kbd> afterburner · <kbd>S</kbd> brake</li>
+              <li><kbd>H</kbd> cut all thrust and free-fall (<kbd>H</kbd> / <kbd>Space</kbd> to re-engage)</li>
+              <li><kbd>LMB</kbd> / <kbd>X</kbd> repulsors · <kbd>RMB</kbd> / <kbd>R</kbd> rockets</li>
+              <li><kbd>Q</kbd> / <kbd>E</kbd> barrel roll · <kbd>T</kbd> <kbd>B</kbd> <kbd>Y</kbd> tricks</li>
+              <li><kbd>G</kbd> step out / call suit · <kbd>V</kbd> sentry</li>
               <li><kbd>Esc</kbd> / <kbd>P</kbd> pause</li></ul></div>
             <div><h4>Touch</h4><ul>
               <li>Left thumb: move stick (push up in flight = afterburner)</li>
               <li>Right side drag: look &amp; steer</li>
               <li>▲ / ▼ ascend &amp; descend (climb / dive in flight)</li>
-              <li>FLY toggles high-speed flight</li></ul></div>
+              <li>FLY toggles high-speed flight · CUT drops all thrust (LIFT re-engages)</li></ul></div>
           </div>
         </details>
       </div>`;

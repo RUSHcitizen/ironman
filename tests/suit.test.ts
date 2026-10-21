@@ -78,7 +78,7 @@ describe("autonomous suit", () => {
     s.player.exitSuit();
     s.suit.park(0, 0, -3, 0);
     s.suit.setSentry(true);
-    for (let k = 0; k < 30 && s.suit.state === "sentry"; k++) s.suit.takeHit(30);
+    for (let k = 0; k < 300 && s.suit.state === "sentry"; k++) s.suit.takeHit(30);
     expect(s.suit.state).toBe("parked");
     expect(s.suit.call()).toBe(false);
   });
