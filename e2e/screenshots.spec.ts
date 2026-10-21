@@ -222,6 +222,13 @@ test("mobile screenshot (emulated iPhone landscape in Chromium)", async ({ brows
   await boot(page, { keepSettings: true });
   await run(page, `g.avatar.armorT = 99; g.teleport(0, 40, -120, 0.25, "hover"); g.player.viewPitch = -0.05; g.spawnEnemy("drone", 40, 6, -5); g.spawnEnemy("drone", 50, 9, 6);`);
   await frames(page, 10);
+  // Touch the screen so the controls are awake (they fade when idle).
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "touch", pointerId: 99 })));
+  await frames(page, 4);
   await page.screenshot({ path: `${OUT}/09-mobile-touch-controls.png` });
+  // ...and after 4 s untouched they fade almost away.
+  await page.evaluate(() => document.getElementById("touch")!.classList.add("idle"));
+  await frames(page, 12);
+  await page.screenshot({ path: `${OUT}/28-mobile-controls-idle.png` });
   await ctx.close();
 });
