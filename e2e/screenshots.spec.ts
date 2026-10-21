@@ -193,6 +193,16 @@ test("desktop screenshots", async ({ page, isMobile }) => {
   await page.screenshot({ path: `${OUT}/23-clouds-contrails.png` });
   await page.keyboard.up("KeyW");
 
+  // Night over the city, then a sunny day in the Midas armour with a boss bar.
+  await run(page, `g.settings.update({ timeOfDay: "night" }); g.teleport(2.5, 120, -300, 0.4, "hover"); g.player.viewPitch = -0.12;`);
+  await frames(page, 30);
+  await page.screenshot({ path: `${OUT}/25-night.png` });
+  await run(page, `g.settings.update({ timeOfDay: "day", suit: "midas" }); g.teleport(2.5, 60, -400, 0, "hover"); g.spawnEnemy("warbot", 45, -40, 0); g.player.viewPitch = -0.1;`);
+  await frames(page, 40);
+  await page.screenshot({ path: `${OUT}/26-day-midas-boss.png` });
+  await run(page, `g.enemies.clear(); g.settings.update({ timeOfDay: "sunset", suit: "classic" });`);
+  await frames(page, 4);
+
   await page.keyboard.press("Escape");
   await frames(page, 3);
   await page.screenshot({ path: `${OUT}/08-settings-menu.png` });

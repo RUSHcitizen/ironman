@@ -8,6 +8,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 | | |
 |---|---|
+| ![Night over the city](docs/screenshots/25-night.png) | ![Midas armour by day with a boss bar](docs/screenshots/26-day-midas-boss.png) |
+| ![Unibeam](docs/screenshots/22-unibeam.png) | ![Clouds and contrails](docs/screenshots/23-clouds-contrails.png) |
 | ![Banked turn](docs/screenshots/19-bank-turn.png) | ![Piloting the empty suit in sentry mode](docs/screenshots/21-sentry-remote.png) |
 | ![Ejecting mid-air](docs/screenshots/20-eject.png) | ![In space](docs/screenshots/17-space.png) |
 | ![Free fall after cutting thrust](docs/screenshots/18-freefall.png) | ![Busy street](docs/screenshots/10-busy-street.png) |
@@ -20,6 +22,21 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | ![Title screen](docs/screenshots/01-title.png) | ![Mobile touch controls](docs/screenshots/09-mobile-touch-controls.png) |
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
+
+## Milestone 9 – phone rotation that always works, armour schemes, time of day, rescues
+
+- **Phones: playing sideways now always works.**
+  - If your phone's browser stays upright (most often because the system rotation lock is on, which a web page can't override on iPhone), the whole game is now drawn sideways in landscape. You just turn the phone and play.
+  - Touch controls are mapped into the rotated screen, and the notch and home-bar safe areas are swapped to match.
+  - If the browser does rotate, it switches back to a normal landscape layout automatically.
+  - On Android, tapping Engage also goes full-screen and locks to landscape.
+  - The HUD now measures the game area rather than the browser window, so it sizes correctly either way. This uses CSS container queries, with the old rules kept as a fallback for older browsers.
+  - This replaces the old "Rotate your device" screen.
+- **Armour schemes** (menu → Armour): Classic red & gold, Mark II silver, War Machine gunmetal, Stealth black, and Midas gold, each with matching eye and reactor glow.
+- **Time of day** (menu): Sunset (default), Day (high sun, blue sky) or Night (moonlight, stars, and city windows lit up).
+- **Rescue missions:** "Civilian falling!" Someone teeters on a rooftop edge and slips off as you approach. Fly into them in the suit to catch them (+600 XP), carry them for a moment, and they're set down safe. Too slow, and they're lost.
+- **Boss health bar** under the compass for the toughest engaged heavy unit nearby (Dreadnought, Warbot, Gunship or Hover Tank), with a trailing damage bar.
+- **Cinematic mode:** `K` (or the menu) hides the HUD for clean views. The death screen still shows.
 
 ## Milestone 8 – Unibeam, flares, radar, hero ranks, and a big polish pass
 
@@ -202,6 +219,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 | Sharp 90° turn (flight / hover) | `Shift`+`A` / `Shift`+`D` | ↰ / ↱ SHARP |
 | Unibeam (chest laser) | `Z` | BEAM |
 | Countermeasure flares | `J` | FLARE |
+| Hide / show the HUD (cinematic) | `K` | Menu → Show HUD |
 | Civilian: sprint / jump | `Shift` / `Space` | — / ▲ |
 | Pause & settings | `Esc` or `P` | ☰ |
 
@@ -315,7 +333,8 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
 - **22 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
-  - **Phone rotation: nothing overflows the screen in portrait, and rotating to landscape clears the rotate hint and keeps Engage on screen.**
+  - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**
+  - **A falling civilian caught mid-air; night time, armour schemes, `K` cinematic mode and the boss bar.**
   - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**
   - **Space (oxygen drain, black sky), cutting thrust with `H`, and a fatal fall that returns you to Avengers Tower.**
   - Hover flip and flight loop in the real game.
