@@ -207,6 +207,12 @@ export class ProjectileSystem implements EnemyWeapons {
   }
 
   /** Ring of dust kicked up by a landing or take-off. */
+  /** Smoke and flame trailing behind a crashing wreck. */
+  trail(at: V3): void {
+    this.particle({ kind: "dust", x: at.x, y: at.y, z: at.z, vx: (Math.random() - 0.5) * 2, vy: 1.5, vz: (Math.random() - 0.5) * 2, life: 1.6, size: 1.6 });
+    if (Math.random() < 0.6) this.particle({ kind: "ember", x: at.x, y: at.y, z: at.z, vx: (Math.random() - 0.5) * 6, vy: 2, vz: (Math.random() - 0.5) * 6, life: 0.4, size: 0.5 });
+  }
+
   dust(at: V3, strength: number): void {
     const n = Math.round(6 + strength * 14);
     for (let k = 0; k < n; k++) {

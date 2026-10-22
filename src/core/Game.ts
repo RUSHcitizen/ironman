@@ -209,6 +209,7 @@ export class Game {
     this.events = new CityEvents(scene, this.mats, this.world, this.bus, this.enemies);
     this.progress = new HeroProgress(this.bus);
     this.events.onComplete = (combat) => {
+      this.player.cheer = 1;
       this.progress.add(combat ? 500 : 200);
       this.player.suit.repair(combat ? 40 : 15);
       this.player.suit.charge(50);
@@ -350,6 +351,7 @@ export class Game {
       // Bosses go down in slow motion.
       if (stats.hp >= 600) {
         this.slowmo = 1.1;
+        this.player.cheer = 1;
         this.cam.addShake(0.8);
         this.hud.popup(`${e.kind.toUpperCase()} DESTROYED · +${score}`);
       }
@@ -383,12 +385,15 @@ export class Game {
       this.cam.addShake(Math.min(0.5, 0.15 + e.speed / 120));
     });
     bus.on("achievement", (e) => {
-      this.hud.popup(`★ ${e.name.toUpperCase()}`);
+      this.hud.toast(e.name);
       this.bus.emit("alert", { text: `Achievement unlocked: ${e.name}`, level: "success", ttl: 4 });
       this.progress.add(250);
     });
     bus.on("objective", (e) => {
-      if (e.won) this.hud.popup("OBJECTIVE COMPLETE");
+      if (e.won) {
+        this.hud.banner("OBJECTIVE COMPLETE");
+        this.player.cheer = 1;
+      }
     });
     bus.on("rankUp", (e) => {
       this.hud.popup(`RANK UP · ${e.name}`);
@@ -726,6 +731,7 @@ export class Game {
       this.hud.popup("+ ROCKETS REARMED");
     }
     this.cam.addKick(0.04);
+    this.avatar.flashGlow(item.kind === "power" ? 1.2 : 0.7);
     this.projectiles.fx.push({ kind: "spark", x: item.x, y: item.y, z: item.z, size: 1.4, t: 0, life: 0.2, yaw: 0, pitch: 0 });
     this.bus.emit("pickup", { kind: item.kind });
   }

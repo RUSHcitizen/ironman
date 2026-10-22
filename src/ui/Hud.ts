@@ -138,6 +138,8 @@ export class Hud {
         <div class="d-xp"><i class="v-xp"></i></div>
       </div>
       <div class="h-popup"></div>
+      <div class="h-banner"><i></i><b class="v-banner"></b><i></i></div>
+      <div class="h-toast"><small>ACHIEVEMENT UNLOCKED</small><b class="v-toast"></b></div>
       <div class="h-streak"><b class="v-streak"></b><span><i class="v-streakbar"></i></span></div>
       <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
       <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Suit parked</b></div>
@@ -198,6 +200,27 @@ export class Hud {
       n++;
     }
     for (let k = n; k < this.targetEls.length; k++) if (this.targetEls[k].style.display !== "none") this.targetEls[k].style.display = "none";
+  }
+
+  private bannerTimer: number | undefined;
+  private toastTimer: number | undefined;
+
+  /** Big centre banner that sweeps in (objective complete). */
+  banner(text: string): void {
+    this.text(".v-banner", text);
+    const el = this.q(".h-banner");
+    restart(el, "on");
+    window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(() => el.classList.remove("on"), 2600);
+  }
+
+  /** Achievement toast sliding in at the top. */
+  toast(name: string): void {
+    this.text(".v-toast", `★ ${name}`);
+    const el = this.q(".h-toast");
+    restart(el, "on");
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => el.classList.remove("on"), 3800);
   }
 
   /** Kill-streak chip: chain length and the fraction of the window left (0..1). */

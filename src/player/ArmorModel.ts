@@ -50,6 +50,10 @@ export interface AvatarState {
   readonly rush?: number;
   /** Where the pilot is looking (head and torso turn toward it). */
   readonly viewYaw?: number;
+  /** Superhero landing (1 on touchdown, decays to 0). */
+  readonly superLanding?: number;
+  /** Victory celebration (1 when it starts, decays to 0). */
+  readonly cheer?: number;
   /** Repulsor recoil 0..1, and the hand that fired (+1 right, -1 left). */
   readonly recoil?: number;
   readonly fireHand?: number;
@@ -152,6 +156,8 @@ export class ArmorModel {
   private lastMode = "ground";
   /** Slow idle weight shift on the ground. */
   private idleT = 0;
+  /** Seconds hovering still (the head starts looking around). */
+  private hoverIdle = 0;
   readonly meshes: AbstractMesh[] = [];
 
   constructor(
@@ -445,6 +451,11 @@ export class ArmorModel {
 
   playSuitUp(): void {
     this.latchFrom(null);
+  }
+
+  /** Brief power-up glow through the reactor, eyes and palms (pickups). */
+  flashGlow(level = 0.9): void {
+    this.beamGlow = Math.max(this.beamGlow, level);
   }
 
   /** Refresh world matrices top-down so absolute positions are current this frame. */
@@ -820,6 +831,34 @@ export class ArmorModel {
         }
         pivotY -= 0.5 * c;
       }
+      // Superhero landing: knee and fist planted, head bowed... then the slow
+      // rise, head coming up last.
+      const sl = p.superLanding ?? 0;
+      if (sl > 0 && p.suited) {
+        const hold = clamp((sl - 0.25) / 0.3, 0, 1);
+        const SL: Pose = {
+          spine: [0.7, -0.08],
+          neck: [0.45 - (1 - hold) * 0.9, 0],
+          hipL: [-1.65, -0.12],
+          knL: [2.25, 0],
+          hipR: [0.5, 0.2],
+          knR: [2.2, 0],
+          // The torso leans ~0.7 rad forward, so the planted arm swings back
+          // relative to it to point straight down at the ground.
+          shR: [0.5, 0.15],
+          elR: [-0.05, 0],
+          // Other arm swept back and up.
+          shL: [1.5, -0.75],
+          elL: [-0.25, 0],
+        };
+        const k = clamp(sl / 0.25, 0, 1);
+        for (const j of Object.keys(SL) as JointName[]) {
+          const a0 = pose[j] ?? [0, 0];
+          const b0 = SL[j]!;
+          pose[j] = [a0[0] + (b0[0] - a0[0]) * k, a0[1] + (b0[1] - a0[1]) * k];
+        }
+        pivotY = Math.min(pivotY, 1.0 - 0.48 * k);
+      }
     } else if (p.mode === "hover") {
       const sway = Math.sin(t * 1.6) * 0.04;
       pose = {
@@ -947,6 +986,18 @@ export class ArmorModel {
     if (!flying) {
       this.surge = 0;
       this.lastBurn = false;
+    }
+    // Victory: a fist punched to the sky, pumping, other fist at the hip.
+    const cheer = p.cheer ?? 0;
+    if (cheer > 0 && p.suited && p.mode !== "flight") {
+      const k = Math.min(1, cheer * 4);
+      const pump = cheer > 0.5 ? Math.max(0, Math.sin(t * 11)) * 0.45 : 0;
+      const C: Pose = { shR: [-2.95, 0.18], elR: [-0.05 - pump, 0], shL: [0.15, -0.35], elL: [-1.3, 0], neck: [-0.3, 0], spine: [-0.1, 0] };
+      for (const j of Object.keys(C) as JointName[]) {
+        const a0 = pose[j] ?? [0, 0];
+        const b0 = C[j]!;
+        pose[j] = [a0[0] + (b0[0] - a0[0]) * k, a0[1] + (b0[1] - a0[1]) * k];
+      }
     }
     // Choreographed suit-up: present each limb as its plates arrive.
     let suitLook = 0;
@@ -1099,6 +1150,9 @@ export class ArmorModel {
       const d = Math.atan2(Math.sin(p.viewYaw - p.bodyYaw), Math.cos(p.viewYaw - p.bodyYaw));
       look = clamp(d, -1.1, 1.1);
     }
+    // Hovering still for a while: the head scans the city.
+    this.hoverIdle = p.mode === "hover" && planar < 1 && p.aimTimer <= 0 ? this.hoverIdle + dt : 0;
+    if (this.hoverIdle > 3) look += Math.sin((this.hoverIdle - 3) * 0.7) * 0.7 * Math.min(1, (this.hoverIdle - 3) / 1.5);
     this.lookYaw += (look - this.lookYaw) * damp(6, dt);
     this.joints.neck.node.rotation.y = this.lookYaw * 0.65 + this.suitLook;
     // Torso twists toward the firing hand, swinging side to side as the hands alternate.

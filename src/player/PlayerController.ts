@@ -156,6 +156,8 @@ export class PlayerController {
   flinch = 0;
   /** Superhero landing (1 on touchdown, decays) - drives the three-point pose. */
   superLanding = 0;
+  /** Victory celebration (set to 1 after a big win, decays) - animation only. */
+  cheer = 0;
   /** Hand that fired the last repulsor shot (+1 right, -1 left). */
   fireHand = 1;
   /** Air-braking in flight (drives the flare-out pose). */
@@ -210,7 +212,7 @@ export class PlayerController {
     this.failed = false;
     this.freefall = this.blackout = this.dead = this.chute = false;
     this.deadTime = 0;
-    this.recoil = this.flinch = this.superLanding = 0;
+    this.recoil = this.flinch = this.superLanding = this.cheer = 0;
     this.suit.oxygen = 100;
     this.oxygenWarned = 100;
     this.zone = "air";
@@ -442,6 +444,7 @@ export class PlayerController {
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
     this.superLanding = Math.max(0, this.superLanding - dt * 1.1);
+    this.cheer = Math.max(0, this.cheer - dt * 0.6);
     if (this.aimTimer > 0) this.aimTimer -= dt;
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
     if (this.beamTimer > 0) this.beamTimer -= dt;

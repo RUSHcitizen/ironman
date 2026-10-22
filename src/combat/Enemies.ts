@@ -133,6 +133,8 @@ export interface Enemy {
   shielded: boolean;
   /** Seconds since spawning (warp-in animation). */
   age: number;
+  /** Seconds since it was shot down (crashing wrecks only; 0 while alive). */
+  dying: number;
 }
 
 /** How enemies hurt things - implemented by the projectile system. */
@@ -148,7 +150,12 @@ export interface EnemyWeapons {
   wreck(at: V3, size: number): void;
   /** Electromagnetic pulse: drains suit power within the radius. */
   emp(at: V3, radius: number, drain: number, damage: number): void;
+  /** Smoke and fire trailing from a crashing wreck (optional). */
+  trail?(at: V3): void;
 }
+
+/** Aircraft that spiral down as burning wrecks instead of blowing up in mid-air. */
+const CRASHERS: ReadonlySet<EnemyKind> = new Set(["gunship", "jet", "bomber", "carrier", "rival", "courier", "jammer", "sentinel", "drone", "shielder"]);
 
 /**
  * Hostile units and their behaviours. Pure simulation (no rendering) so it can
@@ -166,6 +173,8 @@ export class EnemyManager {
   weapons: EnemyWeapons | null = null;
   /** Units spawned mid-update (carrier launches), added after the loop. */
   private launched: Enemy[] = [];
+  /** Shot-down aircraft falling to the ground (drawn, not targetable). */
+  readonly crashing: Enemy[] = [];
 
   constructor(
     private world: CollisionWorld,
@@ -227,6 +236,7 @@ export class EnemyManager {
       aimZ: z,
       shielded: false,
       age: 0,
+      dying: 0,
     };
     this.enemies.push(e);
     return e;
@@ -284,6 +294,7 @@ export class EnemyManager {
   clear(): void {
     this.enemies.length = 0;
     this.launched.length = 0;
+    this.crashing.length = 0;
   }
 
   center(e: Enemy): V3 {
@@ -343,9 +354,19 @@ export class EnemyManager {
       const c = this.center(e);
       const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider" || e.kind === "bomber" || e.kind === "rival" || e.kind === "turret" || e.kind === "courier";
       const size = e.kind === "carrier" || e.kind === "titan" ? 16 : big ? 9 : e.kind === "kamikaze" || e.kind === "mine" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
-      // Shot mines still go off (chain reactions through a minefield).
-      this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : e.kind === "mine" ? 14 : 0, true);
-      this.weapons?.wreck(c, size);
+      if (CRASHERS.has(e.kind)) {
+        // Knocked out of the sky: a burst, then it spirals down burning and
+        // explodes where it hits (hurting any hostiles it lands on).
+        this.weapons?.explode(c, size * 0.45, 0, true);
+        e.dying = 0.001;
+        e.vy = Math.min(e.vy, 4);
+        e.strafe = this.rng.chance(0.5) ? 1 : -1;
+        this.crashing.push(e);
+      } else {
+        // Shot mines still go off (chain reactions through a minefield).
+        this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : e.kind === "mine" ? 14 : 0, true);
+        this.weapons?.wreck(c, size);
+      }
       this.bus?.emit("kill", { kind: e.kind, total: this.kills, ...c });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
       e.state = "retreat";
@@ -446,10 +467,43 @@ export class EnemyManager {
           break;
       }
     }
+    this.updateCrashing(dt);
     // Drop long-dead entries (and add units launched this frame).
     for (const e of this.launched) this.enemies.push(e);
     this.launched.length = 0;
     for (let i = this.enemies.length - 1; i >= 0; i--) if (!this.enemies[i].alive) this.enemies.splice(i, 1);
+  }
+
+  /** Burning wrecks: fall, spin, trail smoke, and explode on impact. */
+  private updateCrashing(dt: number): void {
+    for (let i = this.crashing.length - 1; i >= 0; i--) {
+      const e = this.crashing[i];
+      e.dying += dt;
+      e.phase += dt;
+      e.vy -= 20 * dt;
+      e.vx *= 1 - 0.3 * dt;
+      e.vz *= 1 - 0.3 * dt;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      e.z += e.vz * dt;
+      e.yaw += e.strafe * dt * 2.5;
+      e.burstTimer -= dt;
+      if (e.burstTimer <= 0) {
+        e.burstTimer = 0.06;
+        this.weapons?.trail?.({ x: e.x, y: e.y, z: e.z });
+      }
+      const s = ENEMY_STATS[e.kind];
+      const floor = this.world.surfaceBelow(e.x, e.y + 1, e.z, s.radius * 0.5, 0);
+      const hitWall = this.world.overlaps(e.x - 0.5, e.y - 0.5, e.z - 0.5, e.x + 0.5, e.y + 0.5, e.z + 0.5);
+      if (e.y - s.radius * 0.4 <= floor || hitWall || e.dying > 7) {
+        const size = e.kind === "carrier" ? 18 : e.kind === "bomber" || e.kind === "gunship" ? 11 : 6;
+        const at = { x: e.x, y: Math.max(e.y, floor + 0.5), z: e.z };
+        this.weapons?.explode(at, size, 40, false);
+        this.weapons?.wreck(at, size);
+        this.weapons?.shockwave(at, size * 1.6);
+        this.crashing.splice(i, 1);
+      }
+    }
   }
 
   private lineOfSight(a: V3, b: V3, d: number): boolean {

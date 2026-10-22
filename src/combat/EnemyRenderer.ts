@@ -460,8 +460,8 @@ export class EnemyRenderer {
       this.bubble.thinInstanceBufferUpdated("color");
     }
     const counts = new Map<EnemyKind, number>();
-    for (const e of mgr.enemies) {
-      if (!e.alive || isCloaked(e)) continue;
+    for (const e of [...mgr.enemies, ...mgr.crashing]) {
+      if ((!e.alive && e.dying <= 0) || isCloaked(e)) continue;
       const km = this.kinds.get(e.kind)!;
       const n = counts.get(e.kind) ?? 0;
       if (n >= km.max) continue;
@@ -562,6 +562,11 @@ export class EnemyRenderer {
       roll = Math.max(-0.9, Math.min(0.9, -side * 0.03)) + e.jet * Math.sin(e.phase * 14) * 0.6;
       y += Math.sin(e.phase * 3) * 0.12;
     }
+    if (e.dying > 0) {
+      // Burning wreck: nose down and rolling over as it falls.
+      pitch += Math.min(1.1, e.dying * 0.8);
+      roll += e.dying * 3 * e.strafe;
+    }
     const spin = e.kind === "jammer" ? e.phase * (1.5 + e.charge * 12) : e.kind === "shielder" ? e.phase * 0.9 : 0;
     Quaternion.RotationYawPitchRollToRef(e.yaw + spin, pitch, roll, this.q);
     // Warp in: grow from nothing with a slight overshoot.
@@ -653,6 +658,14 @@ export class EnemyRenderer {
       gr = 0.9;
       gg = 0.5;
       gb = 0.1;
+    }
+    if (e.dying > 0) {
+      // Lights flicker out; scorched hull.
+      const f = Math.sin(e.dying * 37) > 0.3 ? 0.9 : 0.15;
+      gr = 1.2 * f;
+      gg = 0.35 * f;
+      gb = 0.05;
+      km.bodyC.set([0.35, 0.3, 0.28, 1], i * 4);
     }
     // Bright flash while warping in.
     const warp = Math.max(0, 1 - e.age / 0.6) * 3;

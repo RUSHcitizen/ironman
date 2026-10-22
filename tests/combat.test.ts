@@ -276,14 +276,33 @@ describe("new enemy types", () => {
     expect(s.player.suit.overallIntegrity).toBe(hp);
   });
 
-  it("destroyed enemies throw tumbling wreckage that lands", () => {
+  it("destroyed ground units throw tumbling wreckage that lands", () => {
     const s = setup();
-    const e = s.enemies.spawn("gunship", 0, 30, 80);
+    const e = s.enemies.spawn("tank", 0, 0, 80);
     s.enemies.damage(e, 1000);
-    const debris = s.proj.particles.filter((p) => p.kind === "debris");
-    expect(debris.length).toBeGreaterThan(5);
+    expect(s.proj.particles.filter((p) => p.kind === "debris").length).toBeGreaterThan(5);
     run(s, 2);
     for (const d of s.proj.particles.filter((p) => p.kind === "debris")) expect(d.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it("shot-down aircraft spiral down burning and blow up where they hit, hurting hostiles below", () => {
+    const s = setup();
+    const g = s.enemies.spawn("gunship", 0, 40, 120);
+    const below = s.enemies.spawn("trooper", 0, 0, 120);
+    s.enemies.damage(g, 1000);
+    expect(g.alive).toBe(false);
+    expect(s.enemies.crashing).toContain(g);
+    expect(s.proj.particles.filter((p) => p.kind === "debris").length).toBe(0); // still in one piece
+    let trail = false;
+    for (let t = 0; t < 8 && s.enemies.crashing.length > 0; t += 1 / 60) {
+      run(s, 1 / 60);
+      if (s.proj.particles.some((p) => p.kind === "dust")) trail = true;
+    }
+    expect(trail).toBe(true);
+    expect(s.enemies.crashing.length).toBe(0);
+    expect(g.y).toBeLessThan(10); // it came down
+    expect(s.proj.particles.filter((p) => p.kind === "debris").length).toBeGreaterThan(5);
+    expect(below.hp).toBeLessThan(below.maxHp);
   });
 
   it("hero rank climbs with XP", () => {
