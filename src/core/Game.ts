@@ -47,6 +47,7 @@ import { Pickups, type Pickup } from "../gameplay/Pickups";
 import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { MissionRenderer } from "../gameplay/MissionRenderer";
 import { SunFlare } from "../world/SunFlare";
+import { Rain } from "../world/Rain";
 import { Achievements } from "../gameplay/Achievements";
 import { Contracts } from "../gameplay/Contracts";
 import { BOMB_RANGE, type ReactorTarget } from "../gameplay/Missions";
@@ -89,6 +90,9 @@ export class Game {
   private pickupRenderer!: PickupRenderer;
   private missionRenderer!: MissionRenderer;
   private sunFlare!: SunFlare;
+  private rain!: Rain;
+  /** Seconds to the next storm lightning strike. */
+  private boltTimer = 4;
   /** Chromatic-aberration kick from taking hits (High quality only). */
   private hitPulse = 0;
   achievements!: Achievements;
@@ -175,6 +179,7 @@ export class Game {
     await progress(0.1, "Building harbour");
     this.env = new Environment(scene, this.mats);
     this.sunFlare = new SunFlare(this.uiRoot);
+    this.rain = new Rain(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
     await progress(0.15, "Surveying 299 km² of city");
@@ -741,6 +746,18 @@ export class Game {
         break;
       }
     }
+    if (m?.kind === "fires") {
+      // Smoke pours off the burning roofs; the palm points at the fire you're fighting.
+      this.fireSmoke -= 1;
+      for (const f of m.points) {
+        if (f.done) continue;
+        if (this.fireSmoke <= 0) {
+          this.projectiles.trail({ x: f.x + (Math.random() - 0.5) * 2, y: f.y + 3.5, z: f.z + (Math.random() - 0.5) * 2 });
+        }
+        if (Math.hypot(f.x - c.x, f.z - c.z) < 9 && c.y > f.y) p.scanAt = { x: f.x, y: f.y + 1, z: f.z };
+      }
+      if (this.fireSmoke <= 0) this.fireSmoke = 3;
+    }
     let best = 11;
     for (const it of this.pickups.items) {
       const d = Math.hypot(it.x - c.x, it.y - c.y, it.z - c.z);
@@ -752,6 +769,8 @@ export class Game {
   }
 
   private damageFxTimer = 0;
+  /** Frames until the next puff of smoke from burning roofs. */
+  private fireSmoke = 0;
   /** A badly damaged suit sparks and trails smoke (more as integrity falls). */
   private updateSuitDamageFx(dt: number, p: PlayerController): void {
     const hp = p.suit.overallIntegrity;
@@ -763,6 +782,22 @@ export class Game {
     const at = { x: c.x + (Math.random() - 0.5) * 0.8, y: c.y + (Math.random() - 0.3) * 1.2, z: c.z + (Math.random() - 0.5) * 0.8 };
     if (Math.random() < 0.55) this.projectiles.fx.push({ kind: "spark", ...at, size: 0.5 + Math.random() * 0.5, t: 0, life: 0.12, yaw: 0, pitch: 0 });
     else this.projectiles.trail(at);
+  }
+
+  /** Rain around the camera; in a storm, lightning strikes with thunder. */
+  private updateWeather(dt: number, camPos: Vector3): void {
+    const p = this.player;
+    this.rain.update(dt, camPos, p.vel, camPos.y);
+    if (this.env.weather !== "storm") return;
+    this.boltTimer -= dt;
+    if (this.boltTimer > 0) return;
+    this.boltTimer = 5 + Math.random() * 9;
+    const a = Math.random() * Math.PI * 2, d = 250 + Math.random() * 700;
+    const x = camPos.x + Math.cos(a) * d, z = camPos.z + Math.sin(a) * d;
+    const ground = this.world.surfaceBelow(x, 2000, z, 1, 0);
+    this.projectiles.lightning({ x, y: 650, z }, { x, y: ground, z });
+    this.env.flash();
+    this.bus.emit("thunder", { distance: Math.hypot(x - camPos.x, z - camPos.z) });
   }
 
   /** Keep a defended reactor in the enemies' target list while its mission runs. */
@@ -841,6 +876,9 @@ export class Game {
     this.avatar.setScheme(s.suit);
     this.suitAvatar.setScheme(s.suit);
     if (this.env.time !== s.timeOfDay) this.env.setTimeOfDay(s.timeOfDay);
+    if (this.env.weather !== s.weather) this.env.setWeather(s.weather);
+    const drops = s.quality === "low" ? 260 : s.quality === "medium" ? 700 : 1300;
+    this.rain.setCount(s.weather === "clear" ? 0 : Math.round(drops * (s.weather === "storm" ? 1.1 : 1)));
     if (this.started) this.hud.setVisible(s.hud);
     this.hud.setShowFps(s.showFps);
     this.audio.setVolume(s.volume);
@@ -1030,7 +1068,8 @@ export class Game {
 
     this.mark("combat");
     // World.
-    this.env.update(this.time);
+    this.env.update(this.time, dt);
+    this.updateWeather(dt, camPos);
     this.env.setAltitude(camPos.y);
     this.traffic.update(dt, p.pos.x, p.pos.z, p.pos.y);
     this.props.setSignalPhase(this.traffic.phase);

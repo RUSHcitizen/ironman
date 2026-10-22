@@ -37,6 +37,8 @@ export interface SettingsData {
   /** Armour colour scheme. */
   suit: "classic" | "silver" | "warmachine" | "stealth" | "midas";
   timeOfDay: "sunset" | "day" | "night";
+  /** Weather: clear skies, rain, or a thunderstorm. */
+  weather: "clear" | "rain" | "storm";
   /** Show the helmet HUD (off = cinematic). */
   hud: boolean;
   /** The player chose a quality preset themselves (no automatic upgrades). */
@@ -56,6 +58,7 @@ export function defaultSettings(isMobile: boolean): SettingsData {
     showFps: false,
     suit: "classic",
     timeOfDay: "sunset",
+    weather: "clear",
     hud: true,
     qualityPicked: false,
   };
@@ -69,6 +72,7 @@ export class Settings {
     const defaults = defaultSettings(isMobile);
     this.data = { ...defaults, ...Settings.load() };
     if (!(this.data.quality in QUALITY_PRESETS)) this.data.quality = defaults.quality;
+    if (!["clear", "rain", "storm"].includes(this.data.weather)) this.data.weather = "clear";
   }
 
   private static load(): Partial<SettingsData> {

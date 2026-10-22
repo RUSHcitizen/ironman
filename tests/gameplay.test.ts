@@ -154,6 +154,29 @@ describe("special objectives", () => {
   });
 });
 
+describe("rooftop fires", () => {
+  it("hovering low over each fire blows it out; fires left alone flare back; the clock can run out", () => {
+    const w = towers();
+    const enemies = new EnemyManager(w);
+    const m = planMission("fires", w, new Rng(31), 0, 0, enemies, 1)!;
+    expect(m.points.length).toBe(4);
+    const f0 = m.points[0];
+    const over = (f: { x: number; y: number; z: number }): MissionContext => ({ px: f.x + 2, py: f.y + 6, pz: f.z, suited: true, enemies, grounded: false });
+    for (let t = 0; t < 1.2; t += 0.1) m.update(0.1, over(f0));
+    const half = f0.progress;
+    expect(half).toBeGreaterThan(0.3);
+    for (let t = 0; t < 2; t += 0.1) m.update(0.1, over(m.points[1])); // walk away: it flares back
+    expect(f0.progress).toBeLessThan(half);
+    // Standing on the roof doesn't count; hovering does.
+    m.update(0.5, { ...over(f0), py: f0.y + 0.5, grounded: true });
+    for (const f of m.points) for (let t = 0; t < 3; t += 0.1) m.update(0.1, over(f));
+    expect(m.status).toBe("won");
+    const m2 = planMission("fires", w, new Rng(32), 0, 0, enemies, 1)!;
+    for (let t = 0; t < 110; t += 1) m2.update(1, over({ x: 5000, y: 0, z: 5000 }));
+    expect(m2.status).toBe("lost");
+  });
+});
+
 describe("escort, rooftop run and skydive", () => {
   const base = (enemies: EnemyManager, w: CollisionWorld): MissionContext => ({ px: 0, py: 50, pz: 0, suited: true, enemies, world: w });
 

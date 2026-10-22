@@ -68,7 +68,7 @@ export interface Fx {
 export interface Beam {
   a: V3;
   b: V3;
-  kind: "telegraph" | "laser" | "unibeam" | "arc";
+  kind: "telegraph" | "laser" | "unibeam" | "arc" | "bolt";
   t: number;
   life: number;
 }
@@ -207,6 +207,25 @@ export class ProjectileSystem implements EnemyWeapons {
   }
 
   /** Ring of dust kicked up by a landing or take-off. */
+  /** A storm lightning bolt from the clouds to the ground: a jagged, forking chain. */
+  lightning(from: V3, to: V3): void {
+    const n = 9;
+    let px = from.x, py = from.y, pz = from.z;
+    for (let k = 1; k <= n; k++) {
+      const u = k / n;
+      const j = k < n ? 28 : 0;
+      const q = { x: from.x + (to.x - from.x) * u + (Math.random() - 0.5) * j, y: from.y + (to.y - from.y) * u, z: from.z + (to.z - from.z) * u + (Math.random() - 0.5) * j };
+      this.beams.push({ a: { x: px, y: py, z: pz }, b: q, kind: "bolt", t: 0, life: 0.35 });
+      // A short fork now and then.
+      if (k > 2 && k < n - 1 && Math.random() < 0.35) {
+        this.beams.push({ a: q, b: { x: q.x + (Math.random() - 0.5) * 70, y: q.y - 40 - Math.random() * 40, z: q.z + (Math.random() - 0.5) * 70 }, kind: "bolt", t: 0, life: 0.25 });
+      }
+      px = q.x;
+      py = q.y;
+      pz = q.z;
+    }
+  }
+
   /** Smoke and flame trailing behind a crashing wreck. */
   trail(at: V3): void {
     this.particle({ kind: "dust", x: at.x, y: at.y, z: at.z, vx: (Math.random() - 0.5) * 2, vy: 1.5, vz: (Math.random() - 0.5) * 2, life: 1.6, size: 1.6 });

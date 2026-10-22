@@ -31,6 +31,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "medic", name: "Air Ambulance", desc: "Escort the medevac to the hospital" },
   { id: "deckRunner", name: "Deck Runner", desc: "Complete a rooftop run" },
   { id: "lowPull", name: "Low Pull", desc: "Win the skydive challenge" },
+  { id: "firefighter", name: "Firefighter", desc: "Put out every rooftop fire" },
   { id: "scavenger", name: "Scavenger", desc: "Collect 20 pickups" },
   { id: "avenger", name: "Avenger", desc: "Reach the AVENGER rank" },
 ];
@@ -90,7 +91,7 @@ export class Achievements {
     });
     bus.on("objective", (e) => {
       if (!e.won) return;
-      const id = ({ bombs: "bombSquad", cores: "dataThief", courier: "courierCatcher", defend: "guardian", escort: "medic", stunt: "deckRunner", skydive: "lowPull" } as Record<string, string>)[e.kind];
+      const id = ({ bombs: "bombSquad", cores: "dataThief", courier: "courierCatcher", defend: "guardian", escort: "medic", stunt: "deckRunner", skydive: "lowPull", fires: "firefighter" } as Record<string, string>)[e.kind];
       if (id) this.unlock(id);
     });
     bus.on("pickup", () => {

@@ -13,10 +13,11 @@ import type { Rng } from "../core/math";
  *  - defend:  protect an arc reactor from waves of attackers;
  *  - escort:  shepherd a medevac helicopter across the city under attack;
  *  - stunt:   rack up seconds flying flat out and low over the rooftops;
- *  - skydive: climb high, cut thrust, and pull out as low as you dare.
+ *  - skydive: climb high, cut thrust, and pull out as low as you dare;
+ *  - fires:   blow out rooftop fires with the thrusters (hover low over each).
  * Pure simulation; placement uses collision-world queries only.
  */
-export type MissionKind = "bombs" | "cores" | "courier" | "defend" | "escort" | "stunt" | "skydive";
+export type MissionKind = "bombs" | "cores" | "courier" | "defend" | "escort" | "stunt" | "skydive" | "fires";
 
 export interface MissionPoint {
   x: number;
@@ -29,6 +30,9 @@ export interface MissionPoint {
 
 export const BOMB_DEFUSE_TIME = 2.5;
 export const BOMB_RANGE = 7;
+/** Fires: hover within this horizontal range and height band above a fire. */
+export const FIRE_RANGE = 9;
+export const FIRE_TIME = 2.5;
 export const CORE_RANGE = 5;
 export const COURIER_ESCAPE = 1100;
 /** Rooftop run: fly faster than this (m/s) within STUNT_AGL m of the surface. */
@@ -156,6 +160,8 @@ export class Mission {
         const prog = active ? ` · defusing ${Math.round(active.progress * 100)}%` : "";
         return `Bombs defused ${this.points.length - this.remaining}/${this.points.length} · ${clock}${prog} · hover close to defuse`;
       }
+      case "fires":
+        return `Fires out ${this.points.length - this.remaining}/${this.points.length} · ${clock} · hover low over each fire to blow it out`;
       case "cores":
         return `Data cores ${this.points.length - this.remaining}/${this.points.length} · ${clock} · fly through them`;
       case "courier": {
@@ -191,6 +197,18 @@ export class Mission {
         }
         if (this.remaining === 0) this.status = "won";
         else if (this.timeLeft <= 0) this.fail("The bombs went off");
+        break;
+      case "fires":
+        for (const f of this.points) {
+          if (f.done) continue;
+          const dy = ctx.py - f.y;
+          const over = ctx.suited && !ctx.grounded && Math.hypot(f.x - ctx.px, f.z - ctx.pz) < FIRE_RANGE && dy > 1.5 && dy < 18;
+          // Left alone, a fire flares back up.
+          f.progress = over ? Math.min(1, f.progress + dt / FIRE_TIME) : Math.max(0, f.progress - dt * 0.15);
+          if (f.progress >= 1) f.done = true;
+        }
+        if (this.remaining === 0) this.status = "won";
+        else if (this.timeLeft <= 0) this.fail("The fires spread");
         break;
       case "cores":
         for (const c of this.points) {
@@ -338,6 +356,11 @@ export function planMission(kind: MissionKind, world: CollisionWorld, rng: Rng, 
       const roofs = findRoofs(world, rng, x, z, 3, 40, 260);
       if (roofs.length < 3) return null;
       return new Mission(kind, roofs.map((r) => ({ x: r.x, y: r.y + 0.6, z: r.z, done: false, progress: 0 })), 80, rng);
+    }
+    case "fires": {
+      const roofs = findRoofs(world, rng, x, z, 4, 40, 300, 12);
+      if (roofs.length < 4) return null;
+      return new Mission(kind, roofs.map((r) => ({ x: r.x, y: r.y, z: r.z, done: false, progress: 0 })), 100, rng);
     }
     case "cores": {
       const roofs = findRoofs(world, rng, x, z, 6, 30, 320, 8);

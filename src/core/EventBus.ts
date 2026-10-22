@@ -57,4 +57,5 @@ export interface GameEvents extends Record<string, unknown> {
   objective: { kind: string; won: boolean };
   achievement: { id: string; name: string };
   contract: { text: string; reward: number };
+  thunder: { distance: number };
 }

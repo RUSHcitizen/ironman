@@ -272,7 +272,7 @@ test.describe("desktop controls", () => {
     type M = { mission: { kind: string; status: string; remaining: number } | null; achievements: number };
     await page.keyboard.press("Escape");
     await expect(page.locator("#menu")).toBeVisible();
-    await expect(page.locator(".m-achlist li")).toHaveCount(25);
+    await expect(page.locator(".m-achlist li")).toHaveCount(26);
     await expect(page.locator(".m-conlist li")).toHaveCount(3);
     await page.locator('[data-m="Bomb threat"]').click();
     await expect(page.locator("#menu")).toBeHidden();
@@ -604,7 +604,7 @@ test("touch look/stick math maps screen to the sideways stage", async ({ browser
   const ctx = await browser.newContext(phone);
   const page = await ctx.newPage();
 
-  await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
+  await page.addInitScript((weather) => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false, weather })), weather);
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
   await page.locator("#l-start").tap();
@@ -703,12 +703,13 @@ test("Chromebook (emulated UA): starts on Low; flying across the ~14,900 km² ma
   await ctx.close();
 });
 
-test("performance budget on a slow device (iPhone X layout, Low, 4x CPU throttle, mid-fight flight)", async ({ browser, browserName }) => {
+for (const weather of ["clear", "storm"] as const)
+test(`performance budget on a slow device (iPhone X layout, Low, 4x CPU throttle, mid-fight flight${weather === "storm" ? ", thunderstorm" : ""})`, async ({ browser, browserName }) => {
   test.skip(browserName !== "chromium", "CPU throttling needs Chromium's DevTools protocol");
   test.setTimeout(180_000);
   const ctx = await browser.newContext({ viewport: { width: 812, height: 375 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
-  await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
+  await page.addInitScript((weather) => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false, weather })), weather);
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 120_000 });
   await page.locator("#l-start").tap();
@@ -723,7 +724,7 @@ test("performance budget on a slow device (iPhone X layout, Low, 4x CPU throttle
   await page.waitForTimeout(15_000);
   await page.keyboard.up("KeyW");
   const s = await page.evaluate(() => (window as unknown as { __GAME: { debugState(): { updateMs: number; updateMsMax: number; heapMB: number } } }).__GAME.debugState());
-  console.log(`perf @4x: update ${s.updateMs.toFixed(2)} ms avg, ${s.updateMsMax.toFixed(1)} ms peak, heap ${s.heapMB.toFixed(0)} MB`);
+  console.log(`perf @4x ${weather}: update ${s.updateMs.toFixed(2)} ms avg, ${s.updateMsMax.toFixed(1)} ms peak, heap ${s.heapMB.toFixed(0)} MB`);
   console.log("prof", JSON.stringify(await page.evaluate(() => { const p = (window as any).__GAME.prof; const o: Record<string, string> = {}; for (const k in p) o[k] = p[k].avg.toFixed(2) + "/" + p[k].max.toFixed(1); return o; })), "speed", (await page.evaluate(() => (window as any).__GAME.debugState().speed)).toFixed(0));
   // Simulation (CPU) cost per frame must leave room for rendering at 30-60 fps.
   expect(s.updateMs).toBeLessThan(16);

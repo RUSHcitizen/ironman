@@ -52,6 +52,7 @@ export class MissionRenderer {
   private rotor: Part;
   private heliGlow: Part;
   private pad: Part;
+  private flame: Part;
   private mat = new Matrix();
   private q = new Quaternion();
   private s = new Vector3();
@@ -102,6 +103,8 @@ export class MissionRenderer {
     );
     this.rotor = new Part(lit(g.merge("medevacRotor", [g.box(9.5, 0.06, 0.32, D, 0, 0, 0), g.box(0.32, 0.06, 9.5, D, 0, 0, 0)])));
     this.heliGlow = new Part(glow(g.merge("medevacCross", [g.box(0.06, 0.9, 0.3, W, 1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, 1.62, 0.1, 0.4), g.box(0.06, 0.9, 0.3, W, -1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, -1.62, 0.1, 0.4), g.sphere(0.12, W, 0, -0.9, 1.6, 4)])));
+    // Rooftop fire: a cluster of flame cones (scaled down as it is blown out).
+    this.flame = new Part(glow(g.merge("roofFire", [g.cyl(0, 1.6, 4.5, W, 0, 2.25, 0, 7), g.cyl(0, 1.1, 3.2, W, 1.5, 1.6, 0.6, 6), g.cyl(0, 1.0, 2.8, W, -1.3, 1.4, -0.8, 6)])));
     // Hospital landing pad: a glowing square with an H.
     this.pad = new Part(glow(g.merge("hospitalPad", [g.box(10, 0.06, 0.4, W, 0, 0, 5), g.box(10, 0.06, 0.4, W, 0, 0, -5), g.box(0.4, 0.06, 10, W, 5, 0, 0), g.box(0.4, 0.06, 10, W, -5, 0, 0), g.box(0.5, 0.07, 4, W, -1.2, 0, 0), g.box(0.5, 0.07, 4, W, 1.2, 0, 0), g.box(2.4, 0.07, 0.5, W, 0, 0, 0)])));
   }
@@ -125,6 +128,14 @@ export class MissionRenderer {
           const on = b.done ? 0.9 : Math.sin(time * rate * Math.PI) > 0 ? 1.6 : 0.2;
           this.put(this.bombLight, b.x, b.y, b.z, 0, 1, 1, 1, b.done ? [0.2, on, 0.3] : [on, 0.08, 0.05]);
           if (!b.done && b.progress > 0) this.put(this.bar, b.x - 0.7, b.y + 1.6, b.z, 0, 1.4 * b.progress, 1, 1, [0.3, 1.4, 0.4]);
+        }
+      } else if (mission.kind === "fires") {
+        for (let i = 0; i < mission.points.length; i++) {
+          const f = mission.points[i];
+          if (f.done) continue;
+          const k = 1 - f.progress * 0.85;
+          const flick = 1 + Math.sin(time * 13 + i * 2) * 0.12 + Math.sin(time * 29 + i) * 0.06;
+          this.put(this.flame, f.x, f.y, f.z, time * 0.7 + i, k * flick, k * (1.1 + Math.sin(time * 9 + i) * 0.15), k * flick, [1.6, 0.55 + Math.sin(time * 17 + i) * 0.1, 0.12]);
         }
       } else if (mission.kind === "cores") {
         for (let i = 0; i < mission.points.length; i++) {
@@ -170,6 +181,6 @@ export class MissionRenderer {
         this.put(this.reactorGlow, b.x, b.y - 2, b.z, time * 0.8, pulse, 1, pulse, [0.3 * life + hit * 1.5, 0.8 * life, 1.5 * life]);
       }
     }
-    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow, this.heli, this.rotor, this.heliGlow, this.pad]) p.flush();
+    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow, this.heli, this.rotor, this.heliGlow, this.pad, this.flame]) p.flush();
   }
 }

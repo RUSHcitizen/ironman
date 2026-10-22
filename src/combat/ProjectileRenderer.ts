@@ -126,7 +126,7 @@ export class ProjectileRenderer {
     const tube = CreateCylinder("beamTube", { diameter: 1, height: 1, tessellation: 12, cap: 0 }, scene);
     tube.bakeTransformIntoVertices(Matrix.RotationX(Math.PI / 2));
     tube.material = add;
-    this.beamTubes = new Batch(tube, 64);
+    this.beamTubes = new Batch(tube, 160);
   }
 
   update(ps: ProjectileSystem, cam: { x: number; y: number; z: number }): void {
@@ -160,7 +160,13 @@ export class ProjectileRenderer {
       const [yaw, pitch] = orient(dx / l, dy / l, dz / l);
       const mx = (b.a.x + b.b.x) / 2, my = (b.a.y + b.b.y) / 2, mz = (b.a.z + b.b.z) / 2;
       if (b.kind === "telegraph") this.bolts.push(mx, my, mz, yaw, pitch, 0, 0.12, 0.12, l, 1.2, 0.1, 0.05);
-      else if (b.kind === "arc") {
+      else if (b.kind === "bolt") {
+        // Storm lightning: a thick, blinding white-violet channel that flickers out.
+        const k = 1 - b.t / b.life;
+        const f = Math.random() < 0.25 ? 0.4 : 1;
+        this.beamTubes.push(mx, my, mz, yaw, pitch, 0, 2.2, 2.2, l, 1.6 * k * f, 1.6 * k * f, 2.2 * k * f);
+        this.beamTubes.push(mx, my, mz, yaw, pitch, 0, 7, 7, l, 0.15 * k * f, 0.15 * k * f, 0.3 * k * f);
+      } else if (b.kind === "arc") {
         // Lightning: a jagged chain of short segments, re-jittered every frame.
         const n = 4;
         let px = b.a.x, py = b.a.y, pz = b.a.z;
@@ -171,7 +177,7 @@ export class ProjectileRenderer {
           const sx = qx - px, sy = qy - py, sz = qz - pz;
           const sl = Math.hypot(sx, sy, sz) || 1;
           const [syaw, spitch] = orient(sx / sl, sy / sl, sz / sl);
-          this.beamTubes.push((px + qx) / 2, (py + qy) / 2, (pz + qz) / 2, syaw, spitch, 0, 0.14, 0.14, sl, 0.25, 0.6, 1.8);
+          this.beamTubes.push((px + qx) / 2, (py + qy) / 2, (pz + qz) / 2, syaw, spitch, 0, 0.14, 0.14, sl, 0.12, 0.35, 1.2);
           px = qx;
           py = qy;
           pz = qz;

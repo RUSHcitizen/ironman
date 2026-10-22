@@ -88,6 +88,11 @@ export class Environment {
   private skyMesh!: Mesh;
   private sunDisc!: Mesh;
   time: TimeOfDay = "sunset";
+  /** Current weather (fog, light and sky darken in rain and storms). */
+  weather: "clear" | "rain" | "storm" = "clear";
+  private lastY = 0;
+  /** Lightning flash (1 = flash, decays) brightening the sky and ambient light. */
+  private flashT = 0;
   /** Unit vector toward the sun (or moon at night). */
   readonly sunDir = SUN_DIR.clone();
   private lastSpace = -1;
@@ -130,31 +135,66 @@ export class Environment {
    * Climbing toward space: the sky darkens to black, stars come out, and the
    * fog thins so the city stays visible far below.
    */
+  /** Rain / storm: closer fog, darker sky and light (fades out above the clouds). */
+  setWeather(w: "clear" | "rain" | "storm"): void {
+    this.weather = w;
+    this.lastSpace = -1;
+    this.applyLight();
+    this.setAltitude(this.lastY);
+  }
+
+  /** How much the weather applies at a height (0 above the cloud deck). */
+  private overcast(y: number): number {
+    const w = this.weather === "storm" ? 1 : this.weather === "rain" ? 0.6 : 0;
+    return w * Math.min(1, Math.max(0, 1 - (y - 500) / 500));
+  }
+
+  private applyLight(): void {
+    const o = this.overcast(this.lastY);
+    this.sun.intensity = this.palette.sunI * (1 - o * 0.65) + this.flashT * 1.5;
+    this.hemi.intensity = this.palette.hemiI * (1 - this.space * 0.4) * (1 - o * 0.3) + this.flashT * 0.9;
+  }
+
+  /** A lightning strike lights up the sky. */
+  flash(): void {
+    this.flashT = 1;
+    this.lastSpace = -1;
+  }
+
   setAltitude(y: number): void {
+    this.lastY = y;
+    const o = this.overcast(y);
     const k = Math.min(1, Math.max(0, (y - 500) / (SPACE_ALTITUDE - 500)));
     const sp = k * k * (3 - 2 * k);
     // Fog distance tracks altitude so the ground isn't swallowed.
     const d = this.viewDistance;
     const up = Math.max(0, y - 150);
-    this.scene.fogStart = d * 0.3 + up * 0.9;
-    this.scene.fogEnd = d + up * 1.6;
-    if (Math.abs(sp - this.lastSpace) < 0.004) return;
+    this.scene.fogStart = (d * 0.3 + up * 0.9) * (1 - o * 0.75);
+    this.scene.fogEnd = (d + up * 1.6) * (1 - o * 0.45);
+    if (Math.abs(sp - this.lastSpace) < 0.004 && o === 0 && this.flashT <= 0) return;
     this.lastSpace = sp;
     this.space = sp;
-    const haze = this.palette.haze;
+    const grey = this.time === "night" ? new Color3(0.05, 0.055, 0.07) : new Color3(0.36, 0.38, 0.42);
+    const haze = Color3.Lerp(this.palette.haze, grey, o * 0.8).add(new Color3(0.6, 0.62, 0.7).scale(this.flashT * 0.5));
     const fog = Color3.Lerp(haze, new Color3(0.2, 0.32, 0.55), sp);
     this.scene.fogColor.copyFrom(fog);
     const clear = Color3.Lerp(haze, new Color3(0.01, 0.01, 0.03), sp);
     this.scene.clearColor.set(clear.r, clear.g, clear.b, 1);
-    const b = 1 - sp * 0.97;
+    const b = (1 - sp * 0.97) * (1 - o * 0.55) + this.flashT * 0.8;
     this.skyMat.emissiveColor.set(b, b, b * 1.02 + sp * 0.02);
     const starA = Math.max(this.palette.stars, (sp - 0.35) / 0.65);
     this.starMat.alpha = starA;
     this.stars.setEnabled(starA > 0.01);
-    this.hemi.intensity = this.palette.hemiI * (1 - sp * 0.4);
+    this.applyLight();
   }
 
-  update(time: number): void {
+  update(time: number, dt = 0): void {
+    if (this.flashT > 0) {
+      // Flicker, then fade.
+      this.flashT = Math.max(0, this.flashT - dt * 4) * (Math.random() < 0.15 ? 0.3 : 1);
+      this.lastSpace = -1;
+      this.setAltitude(this.lastY);
+    }
     if (this.waterTex) {
       this.waterTex.uOffset = time * 0.004;
       this.waterTex.vOffset = Math.sin(time * 0.1) * 0.01;
@@ -172,6 +212,7 @@ export class Environment {
     this.sun.diffuse = pal.sun.clone();
     this.sun.specular = pal.sun.scale(t === "night" ? 0.5 : 1);
     this.sun.intensity = pal.sunI;
+    this.applyLight();
     this.hemi.diffuse = pal.hemi.clone();
     this.hemi.groundColor = pal.ground.clone();
     this.hemi.intensity = pal.hemiI;

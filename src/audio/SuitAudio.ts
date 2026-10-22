@@ -46,6 +46,14 @@ export class SuitAudio {
       this.noiseBurst(0.12, 3200, 0.12, false);
     });
     bus.on("trick", () => this.noiseBurst(0.5, 1200, 0.22, false));
+    // Thunder: arrives after the flash (speed of sound), quieter far away.
+    bus.on("thunder", (e) => {
+      const v = Math.max(0.15, 1 - e.distance / 1500);
+      setTimeout(() => {
+        this.noiseBurst(2.2, 140, 0.55 * v, true);
+        setTimeout(() => this.noiseBurst(1.6, 90, 0.4 * v, true), 260);
+      }, (e.distance / 343) * 1000);
+    });
     // Superhero landing: a deep slam with a rumble.
     bus.on("superLanding", () => {
       this.thud(1);
