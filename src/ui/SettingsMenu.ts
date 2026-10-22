@@ -71,7 +71,7 @@ export class SettingsMenu {
             <button data-m="Catch the courier">Courier chase</button><button data-m="Protect the arc reactor">Defend reactor</button>
             <button data-m="ROGUE ARMOUR">Rogue Armour</button><button data-m="Bombing run">Bombing run</button>
             <button data-m="Medevac escort">Medevac escort</button><button data-m="Rooftop run">Rooftop run</button>
-            <button data-m="Skydive: low pull">Skydive</button><button data-m="Rooftop fires">Rooftop fires</button>
+            <button data-m="Skydive: low pull">Skydive</button><button data-m="Rooftop fires">Rooftop fires</button><button data-m="Pylon race">Pylon race</button>
           </div>
         </section>
         <section class="m-contracts">

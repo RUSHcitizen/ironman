@@ -222,6 +222,7 @@ export class Game {
     this.progress = new HeroProgress(this.bus);
     this.events.onComplete = (combat) => {
       this.player.cheer = 1;
+      this.peds.cheer(this.player.pos.x, this.player.pos.z, 140);
       this.progress.add(combat ? 500 : 200);
       this.player.suit.repair(combat ? 40 : 15);
       this.player.suit.charge(50);
@@ -372,6 +373,7 @@ export class Game {
     });
     bus.on("rescue", (e) => {
       if (e.saved) {
+        this.peds.cheer(this.player.pos.x, this.player.pos.z, 160);
         this.hud.popup("CIVILIAN SAVED · +600");
         this.progress.add(600);
       }

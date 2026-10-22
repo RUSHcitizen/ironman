@@ -52,15 +52,17 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Rooftop run:** bank 12 s flying faster than 248 km/h within 30 m of the rooftops or street.
 - **Skydive (low pull):** climb above 600 m, cut thrust, and re-engage below 80 m above the ground. Too early fails, and so does hitting the ground.
 - The pause menu has buttons to start any mission right away. Special objectives come up more often among random incidents.
+- **Pylon race:** fly between eight pairs of glowing pylons (Air-Race style, gold marks the next gate) and beat a flickering hologram rival suit flying the same line at 95 m/s. The gates are lifted clear of the rooftops, and they count in order.
 - **Rooftop fires:** four roofs are burning. Hover low over each one to blow the flames out with the thrusters. Flames shrink as you work and flare back up if you leave them, and you have 100 s before they spread.
 - **Contracts:** three side objectives run at once, drawn from 23 kinds (destroy 8 drones, chain a triple kill, superhero-land on two hostiles, escort a medevac, nail a low pull, 10 near misses and more). Each pays XP when done and is replaced by a new one. They are listed with progress bars in the pause menu, and a toast announces each completion.
-- **26 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
+- **27 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
 
 **New animations**
 - **Superhero landing pose:** knee and fist planted, head bowed, then a slow rise.
 - **Victory pose:** a fist punched to the sky and pumping after objectives, incidents and boss kills.
 - Hovering still, the head scans the city. Collecting a pickup flashes the reactor, eyes and palms.
 - **Defusing:** the right palm is held out at the bomb with a scanner beam, and the torso turns toward it. The left hand reaches for a pickup as it is pulled in.
+- **Cheering crowds:** after you complete an objective or catch a falling civilian, pedestrians nearby stop, turn to face you and jump for joy.
 - **Knockback deaths:** jet-pack troopers and snipers are blasted backwards off their feet, tumbling, before they go up.
 - **A badly damaged suit** (below 35%) throws sparks and trails smoke, and does so faster below 15%.
 - **Crashing wrecks:** downed aircraft (drones, jets, gunships, bombers, the carrier, the rogue armour and others) spiral down burning with a smoke trail, then explode where they hit, hurting hostiles below.
@@ -506,7 +508,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **97 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **98 unit tests** pass, covering:
+  - Pylon race: the gates clear the roofs and count in order, flying them all wins, and dawdling lets the rival win.
   - Rooftop fires: hovering blows them out, fires left alone flare back, standing on the roof doesn't count, and the clock can run out.
   - Contracts advance only from matching events, pay out and are replaced. Arc drones zap targets in range. Killed troopers are thrown backwards and land.
   - Milestone 17 (cont.): the medevac flies to its pad clear of the roofs while waves attack it (and is lost if shot down), the rooftop run only counts fast-and-low seconds, and the skydive wins only for a low pull.
@@ -539,7 +542,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
 - **45 browser tests** pass on the desktop and emulated-mobile projects, including:
-  - **Medevac escort, rooftop run and skydive start from the pause menu with their objective text.**
+  - **Medevac escort, rooftop run, skydive, pylon race and rooftop fires start from the pause menu with their objective text.**
   - **Missions started from the pause menu: all three bombs defused by hovering beside them, then all six data cores collected. The achievement list is shown.**
   - **The courier is shot down and drops salvage; reactor defence starts its first wave.**
   - **A triple kill shows the streak, a dropped power cell is collected, and a dive with the thrusters cut ends in a SUPERHERO LANDING.**

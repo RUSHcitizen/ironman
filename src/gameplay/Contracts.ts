@@ -38,6 +38,7 @@ export const CONTRACTS: ContractDef[] = [
   { id: "stunt", text: "Complete a rooftop run", on: "objective", match: won("stunt"), goal: 1, reward: 600 },
   { id: "skydive", text: "Nail a low-pull skydive", on: "objective", match: won("skydive"), goal: 1, reward: 600 },
   { id: "fires", text: "Put out the rooftop fires", on: "objective", match: won("fires"), goal: 1, reward: 700 },
+  { id: "race", text: "Win a pylon race", on: "objective", match: won("race"), goal: 1, reward: 800 },
   { id: "rescue", text: "Catch a falling civilian", on: "rescue", match: (e: never) => (e as { saved: boolean }).saved, goal: 1, reward: 700 },
   { id: "rings", text: "Fly through 15 course rings", on: "ringPassed", goal: 15, reward: 500 },
   { id: "nearMiss", text: "Pull 10 near misses", on: "nearMiss", goal: 10, reward: 450 },

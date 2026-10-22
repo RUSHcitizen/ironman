@@ -14,10 +14,11 @@ import type { Rng } from "../core/math";
  *  - escort:  shepherd a medevac helicopter across the city under attack;
  *  - stunt:   rack up seconds flying flat out and low over the rooftops;
  *  - skydive: climb high, cut thrust, and pull out as low as you dare;
- *  - fires:   blow out rooftop fires with the thrusters (hover low over each).
+ *  - fires:   blow out rooftop fires with the thrusters (hover low over each);
+ *  - race:    a pylon air race against a holographic rival suit.
  * Pure simulation; placement uses collision-world queries only.
  */
-export type MissionKind = "bombs" | "cores" | "courier" | "defend" | "escort" | "stunt" | "skydive" | "fires";
+export type MissionKind = "bombs" | "cores" | "courier" | "defend" | "escort" | "stunt" | "skydive" | "fires" | "race";
 
 export interface MissionPoint {
   x: number;
@@ -33,6 +34,11 @@ export const BOMB_RANGE = 7;
 /** Fires: hover within this horizontal range and height band above a fire. */
 export const FIRE_RANGE = 9;
 export const FIRE_TIME = 2.5;
+/** Pylon race: gate half-width / half-height, and the rival ghost's speed (m/s). */
+export const GATE_HALF = 13;
+export const GATE_HEIGHT = 22;
+export const RIVAL_SPEED = 95;
+const RACE_START = 3;
 export const CORE_RANGE = 5;
 export const COURIER_ESCAPE = 1100;
 /** Rooftop run: fly faster than this (m/s) within STUNT_AGL m of the surface. */
@@ -114,6 +120,9 @@ export class Mission {
   skyStage: "climb" | "fall" = "climb";
   /** Lowest altitude above ground reached before pulling out (skydive score). */
   pullAgl = Infinity;
+  /** Race: distance the rival ghost has flown along the gates, and the race clock. */
+  ghostDist = 0;
+  raceT = 0;
 
   constructor(
     readonly kind: MissionKind,
@@ -160,6 +169,11 @@ export class Mission {
         const prog = active ? ` · defusing ${Math.round(active.progress * 100)}%` : "";
         return `Bombs defused ${this.points.length - this.remaining}/${this.points.length} · ${clock}${prog} · hover close to defuse`;
       }
+      case "race": {
+        const rival = Math.min(this.points.length, this.ghostGate());
+        const go = this.raceT < RACE_START ? `starts in ${Math.ceil(RACE_START - this.raceT)}` : `${(this.raceT - RACE_START).toFixed(1)} s`;
+        return `Gate ${Math.min(this.points.length, this.points.length - this.remaining + 1)}/${this.points.length} · rival at gate ${rival + 1} · ${go} · fly between the pylons`;
+      }
       case "fires":
         return `Fires out ${this.points.length - this.remaining}/${this.points.length} · ${clock} · hover low over each fire to blow it out`;
       case "cores":
@@ -198,6 +212,19 @@ export class Mission {
         if (this.remaining === 0) this.status = "won";
         else if (this.timeLeft <= 0) this.fail("The bombs went off");
         break;
+      case "race": {
+        this.raceT += dt;
+        if (this.raceT >= RACE_START) this.ghostDist += RIVAL_SPEED * dt;
+        const next = this.points.find((g) => !g.done);
+        if (next && ctx.suited && Math.hypot(next.x - ctx.px, next.z - ctx.pz) < GATE_HALF && Math.abs(ctx.py - next.y) < GATE_HEIGHT) {
+          next.done = true;
+          next.progress = 1;
+        }
+        if (this.remaining === 0) this.status = "won";
+        else if (this.ghostDist >= this.pathLength()) this.fail("The rival suit won the race");
+        else if (this.timeLeft <= 0) this.fail("Out of time");
+        break;
+      }
       case "fires":
         for (const f of this.points) {
           if (f.done) continue;
@@ -305,6 +332,41 @@ export class Mission {
     if (this.status !== "active" && this.reactor) this.reactor.active = false;
   }
 
+  /** Total length of the race path through every gate. */
+  pathLength(): number {
+    let d = 0;
+    for (let k = 1; k < this.points.length; k++) d += Math.hypot(this.points[k].x - this.points[k - 1].x, this.points[k].y - this.points[k - 1].y, this.points[k].z - this.points[k - 1].z);
+    return d;
+  }
+
+  /** Index of the gate the rival ghost is heading for. */
+  ghostGate(): number {
+    let d = this.ghostDist;
+    for (let k = 1; k < this.points.length; k++) {
+      const seg = Math.hypot(this.points[k].x - this.points[k - 1].x, this.points[k].y - this.points[k - 1].y, this.points[k].z - this.points[k - 1].z);
+      if (d < seg) return k;
+      d -= seg;
+    }
+    return this.points.length;
+  }
+
+  /** Where the rival ghost is now (on the path through the gates). */
+  ghostPos(): { x: number; y: number; z: number; yaw: number } {
+    let d = this.ghostDist;
+    const p = this.points;
+    for (let k = 1; k < p.length; k++) {
+      const a = p[k - 1], b = p[k];
+      const seg = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+      if (d <= seg) {
+        const u = seg > 0 ? d / seg : 0;
+        return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u, yaw: Math.atan2(b.x - a.x, b.z - a.z) };
+      }
+      d -= seg;
+    }
+    const l = p[p.length - 1], m = p[p.length - 2] ?? l;
+    return { x: l.x, y: l.y, z: l.z, yaw: Math.atan2(l.x - m.x, l.z - m.z) };
+  }
+
   private spawnAround(enemies: EnemyManager, at: V3, kinds: EnemyKind[]): void {
     const a0 = this.rng.range(0, Math.PI * 2);
     for (const k of kinds) {
@@ -356,6 +418,27 @@ export function planMission(kind: MissionKind, world: CollisionWorld, rng: Rng, 
       const roofs = findRoofs(world, rng, x, z, 3, 40, 260);
       if (roofs.length < 3) return null;
       return new Mission(kind, roofs.map((r) => ({ x: r.x, y: r.y + 0.6, z: r.z, done: false, progress: 0 })), 80, rng);
+    }
+    case "race": {
+      // Eight gates on a curving line, each lifted clear of the roofs along its leg.
+      const pts: MissionPoint[] = [];
+      let yaw = rng.range(0, Math.PI * 2), cx = x, cz = z;
+      for (let k = 0; k < 8; k++) {
+        if (k > 0) {
+          yaw += rng.range(-0.55, 0.55);
+          const step = rng.range(170, 230);
+          cx += Math.sin(yaw) * step;
+          cz += Math.cos(yaw) * step;
+        }
+        pts.push({ x: cx, y: 0, z: cz, done: false, progress: 0 });
+      }
+      for (let k = 0; k < pts.length; k++) {
+        const a = pts[Math.max(0, k - 1)], b = pts[k];
+        let roof = 0;
+        for (let u = 0; u <= 1.0001; u += 1 / 10) roof = Math.max(roof, world.surfaceBelow(a.x + (b.x - a.x) * u, 1000, a.z + (b.z - a.z) * u, GATE_HALF, 0));
+        b.y = roof + GATE_HEIGHT + 8;
+      }
+      return new Mission(kind, pts, 150, rng);
     }
     case "fires": {
       const roofs = findRoofs(world, rng, x, z, 4, 40, 300, 12);

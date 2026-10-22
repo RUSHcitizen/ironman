@@ -177,6 +177,27 @@ describe("rooftop fires", () => {
   });
 });
 
+describe("pylon race", () => {
+  it("fly through every gate in order to beat the rival ghost; dawdle and it wins", () => {
+    const w = towers();
+    const enemies = new EnemyManager(w);
+    const m = planMission("race", w, new Rng(41), 0, 0, enemies, 1)!;
+    expect(m.points.length).toBe(8);
+    // Gates sit clear of the rooftops.
+    for (const g of m.points) expect(g.y).toBeGreaterThan(w.surfaceBelow(g.x, 1000, g.z, 1, 0) + 10);
+    // Skipping ahead doesn't count: gates go in order.
+    const last = m.points[7];
+    m.update(0.1, { px: last.x, py: last.y, pz: last.z, suited: true, enemies });
+    expect(last.done).toBe(false);
+    for (const g of m.points) m.update(0.5, { px: g.x, py: g.y, pz: g.z, suited: true, enemies });
+    expect(m.status).toBe("won");
+    const slow = planMission("race", w, new Rng(42), 0, 0, enemies, 1)!;
+    for (let t = 0; t < 60 && slow.status === "active"; t += 0.5) slow.update(0.5, { px: 9000, py: 50, pz: 9000, suited: true, enemies });
+    expect(slow.status).toBe("lost");
+    expect(slow.ghostGate()).toBe(slow.points.length);
+  });
+});
+
 describe("escort, rooftop run and skydive", () => {
   const base = (enemies: EnemyManager, w: CollisionWorld): MissionContext => ({ px: 0, py: 50, pz: 0, suited: true, enemies, world: w });
 

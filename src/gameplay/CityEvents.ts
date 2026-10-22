@@ -96,6 +96,7 @@ const TEMPLATES: Template[] = [
   { title: "Stolen Stark tech", detail: "Recover the scattered data cores before they self-destruct", place: "air", squad: [], mission: "cores" },
   { title: "Catch the courier", detail: "A drone is fleeing with stolen tech - run it down", place: "air", squad: [], mission: "courier", minLevel: 1 },
   { title: "Protect the arc reactor", detail: "Waves of attackers are going for the reactor - hold the line", place: "roof", squad: [], mission: "defend", minLevel: 2 },
+  { title: "Pylon race", detail: "Race a holographic rival through the pylon gates - fly between each pair", place: "air", squad: [], mission: "race" },
   { title: "Rooftop fires", detail: "Four rooftops are burning - hover low over each to blow the flames out", place: "air", squad: [], mission: "fires" },
   { title: "Medevac escort", detail: "A medevac chopper is crossing hostile skies - keep it in the air", place: "air", squad: [], mission: "escort", minLevel: 1 },
   { title: "Rooftop run", detail: "Fly flat out, low over the rooftops - bank the seconds", place: "air", squad: [], mission: "stunt" },

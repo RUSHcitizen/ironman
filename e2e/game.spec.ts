@@ -272,7 +272,7 @@ test.describe("desktop controls", () => {
     type M = { mission: { kind: string; status: string; remaining: number } | null; achievements: number };
     await page.keyboard.press("Escape");
     await expect(page.locator("#menu")).toBeVisible();
-    await expect(page.locator(".m-achlist li")).toHaveCount(26);
+    await expect(page.locator(".m-achlist li")).toHaveCount(27);
     await expect(page.locator(".m-conlist li")).toHaveCount(3);
     await page.locator('[data-m="Bomb threat"]').click();
     await expect(page.locator("#menu")).toBeHidden();
@@ -326,13 +326,15 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
-  test("medevac escort, rooftop run and skydive missions start from the menu", async ({ page }) => {
+  test("medevac escort, rooftop run, skydive, pylon race and rooftop fires start from the menu", async ({ page }) => {
     const errors = await boot(page);
     type M = { mission: { kind: string; reactorHp: number | null } | null };
     for (const [title, kind, text] of [
       ["Medevac escort", "escort", /Medevac hull 100%/],
       ["Rooftop run", "stunt", /Rooftop run 0\.0\/12 s/],
       ["Skydive: low pull", "skydive", /Climb above 600 m/],
+      ["Pylon race", "race", /Gate 1\/8/],
+      ["Rooftop fires", "fires", /Fires out 0\/4/],
     ] as const) {
       await page.keyboard.press("Escape");
       await expect(page.locator("#menu")).toBeVisible();

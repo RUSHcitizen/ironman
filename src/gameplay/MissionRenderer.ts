@@ -7,7 +7,7 @@ import { ProcGeo } from "../world/ProcGeo";
 import type { WorldMaterials } from "../world/Materials";
 import type { RGB } from "../world/CityGenerator";
 import { setInstanceCount } from "../world/instancing";
-import type { Mission } from "./Missions";
+import { GATE_HALF, GATE_HEIGHT, type Mission } from "./Missions";
 
 const MAX = 8;
 
@@ -16,9 +16,12 @@ class Part {
   readonly m: Float32Array;
   readonly c: Float32Array;
   n = 0;
-  constructor(readonly mesh: Mesh) {
-    this.m = new Float32Array(MAX * 16);
-    this.c = new Float32Array(MAX * 4).fill(1);
+  constructor(
+    readonly mesh: Mesh,
+    readonly max = MAX,
+  ) {
+    this.m = new Float32Array(max * 16);
+    this.c = new Float32Array(max * 4).fill(1);
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.isPickable = false;
     mesh.thinInstanceSetBuffer("matrix", this.m, 16, false);
@@ -53,6 +56,8 @@ export class MissionRenderer {
   private heliGlow: Part;
   private pad: Part;
   private flame: Part;
+  private pylon: Part;
+  private ghost: Part;
   private mat = new Matrix();
   private q = new Quaternion();
   private s = new Vector3();
@@ -105,12 +110,16 @@ export class MissionRenderer {
     this.heliGlow = new Part(glow(g.merge("medevacCross", [g.box(0.06, 0.9, 0.3, W, 1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, 1.62, 0.1, 0.4), g.box(0.06, 0.9, 0.3, W, -1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, -1.62, 0.1, 0.4), g.sphere(0.12, W, 0, -0.9, 1.6, 4)])));
     // Rooftop fire: a cluster of flame cones (scaled down as it is blown out).
     this.flame = new Part(glow(g.merge("roofFire", [g.cyl(0, 1.6, 4.5, W, 0, 2.25, 0, 7), g.cyl(0, 1.1, 3.2, W, 1.5, 1.6, 0.6, 6), g.cyl(0, 1.0, 2.8, W, -1.3, 1.4, -0.8, 6)])));
+    // Race pylons: tall glowing columns (one per side of each gate).
+    this.pylon = new Part(glow(g.merge("racePylon", [g.cyl(0.7, 0.9, GATE_HEIGHT * 2, W, 0, 0, 0, 10), g.cyl(1.4, 1.4, 0.5, W, 0, GATE_HEIGHT, 0, 10)])), 16);
+    // The rival: a glowing hologram suit in flying pose.
+    this.ghost = new Part(glow(g.merge("raceGhost", [g.sphere(0.36, W, 0, 0, 0.75, 8, 1, 1, 1.1), g.box(0.55, 0.32, 1.1, W, 0, 0, 0), g.box(0.18, 0.18, 1.0, W, -0.15, 0, -0.95), g.box(0.18, 0.18, 1.0, W, 0.15, 0, -0.95), g.box(0.14, 0.14, 0.75, W, -0.42, 0, 0.1), g.box(0.14, 0.14, 0.75, W, 0.42, 0, 0.1)])));
     // Hospital landing pad: a glowing square with an H.
     this.pad = new Part(glow(g.merge("hospitalPad", [g.box(10, 0.06, 0.4, W, 0, 0, 5), g.box(10, 0.06, 0.4, W, 0, 0, -5), g.box(0.4, 0.06, 10, W, 5, 0, 0), g.box(0.4, 0.06, 10, W, -5, 0, 0), g.box(0.5, 0.07, 4, W, -1.2, 0, 0), g.box(0.5, 0.07, 4, W, 1.2, 0, 0), g.box(2.4, 0.07, 0.5, W, 0, 0, 0)])));
   }
 
   private put(part: Part, x: number, y: number, z: number, yaw: number, sx: number, sy: number, sz: number, c: RGB): void {
-    if (part.n >= MAX) return;
+    if (part.n >= part.max) return;
     Quaternion.RotationYawPitchRollToRef(yaw, 0, 0, this.q);
     Matrix.ComposeToRef(this.s.set(sx, sy, sz), this.q, this.t.set(x, y, z), this.mat);
     this.mat.copyToArray(part.m, part.n * 16);
@@ -128,6 +137,25 @@ export class MissionRenderer {
           const on = b.done ? 0.9 : Math.sin(time * rate * Math.PI) > 0 ? 1.6 : 0.2;
           this.put(this.bombLight, b.x, b.y, b.z, 0, 1, 1, 1, b.done ? [0.2, on, 0.3] : [on, 0.08, 0.05]);
           if (!b.done && b.progress > 0) this.put(this.bar, b.x - 0.7, b.y + 1.6, b.z, 0, 1.4 * b.progress, 1, 1, [0.3, 1.4, 0.4]);
+        }
+      } else if (mission.kind === "race") {
+        const next = mission.points.findIndex((g) => !g.done);
+        for (let i = 0; i < mission.points.length; i++) {
+          const g = mission.points[i];
+          if (g.done) continue;
+          const a = mission.points[Math.max(0, i - 1)], b = mission.points[Math.min(mission.points.length - 1, i + 1)];
+          const yaw = Math.atan2(b.x - a.x, b.z - a.z);
+          const rx = Math.cos(yaw) * GATE_HALF, rz = -Math.sin(yaw) * GATE_HALF;
+          const hot = i === next;
+          const pulse = hot ? 1.2 + Math.sin(time * 6) * 0.3 : 0.6;
+          const c: RGB = hot ? [1.5 * pulse, 0.85 * pulse, 0.15] : [0.15, 0.7 * pulse, 1.2 * pulse];
+          this.put(this.pylon, g.x + rx, g.y, g.z + rz, 0, 1, 1, 1, c);
+          this.put(this.pylon, g.x - rx, g.y, g.z - rz, 0, 1, 1, 1, c);
+        }
+        if (mission.raceT >= 3) {
+          const gp = mission.ghostPos();
+          const flick = Math.sin(time * 40) > -0.6 ? 1 : 0.4;
+          this.put(this.ghost, gp.x, gp.y, gp.z, gp.yaw, 1.6, 1.6, 1.6, [0.3 * flick, 1.1 * flick, 1.6 * flick]);
         }
       } else if (mission.kind === "fires") {
         for (let i = 0; i < mission.points.length; i++) {
@@ -181,6 +209,6 @@ export class MissionRenderer {
         this.put(this.reactorGlow, b.x, b.y - 2, b.z, time * 0.8, pulse, 1, pulse, [0.3 * life + hit * 1.5, 0.8 * life, 1.5 * life]);
       }
     }
-    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow, this.heli, this.rotor, this.heliGlow, this.pad, this.flame]) p.flush();
+    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow, this.heli, this.rotor, this.heliGlow, this.pad, this.flame, this.pylon, this.ghost]) p.flush();
   }
 }

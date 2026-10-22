@@ -18,6 +18,8 @@ interface Ped {
   height: number;
   /** Seconds left running from danger. */
   panic: number;
+  /** Seconds left cheering the hero (stop, face them, jump for joy). */
+  cheer: number;
 }
 
 const SHIRTS: RGB[] = [
@@ -51,6 +53,9 @@ export class PedestrianSystem {
   readonly max: number;
   private active = 0;
   private rng = new Rng(1234);
+  /** Where the crowd looks while cheering. */
+  private heroX = 0;
+  private heroZ = 0;
 
   constructor(scene: Scene, mats: WorldMaterials, max = 80) {
     this.max = max;
@@ -87,6 +92,7 @@ export class PedestrianSystem {
         phase: rng.range(0, 6),
         height: rng.range(0.88, 1.1),
         panic: 0,
+        cheer: 0,
       });
       colors.set([...rng.pick(SHIRTS), 1], k * 4);
       skins.set([...rng.pick(SKIN), 1], k * 4);
@@ -120,6 +126,21 @@ export class PedestrianSystem {
       const away = Math.hypot(ax - x, az - z) > d;
       p.speed = Math.abs(p.speed) * (away ? 1 : -1);
     }
+  }
+
+  /** Pedestrians near (x, z) stop, turn to the hero and jump for joy. */
+  cheer(x: number, z: number, radius: number): number {
+    this.heroX = x;
+    this.heroZ = z;
+    let n = 0;
+    for (let k = 0; k < this.active; k++) {
+      const p = this.peds[k];
+      const [px, pz] = this.position(p);
+      if (p.panic > 0 || Math.hypot(px - x, pz - z) > radius) continue;
+      p.cheer = 3 + Math.random() * 1.5;
+      n++;
+    }
+    return n;
   }
 
   private position(p: Pick<Ped, "x0" | "z0" | "t">): [number, number] {
@@ -156,8 +177,10 @@ export class PedestrianSystem {
     const t = new Vector3();
     for (let k = 0; k < this.active; k++) {
       const p = this.peds[k];
-      const run = p.panic > 0 ? 3.2 : 1;
+      const cheering = p.cheer > 0 && p.panic <= 0;
+      const run = p.panic > 0 ? 3.2 : cheering ? 0 : 1;
       if (p.panic > 0) p.panic -= dt;
+      if (p.cheer > 0) p.cheer -= dt;
       p.t = (((p.t + p.speed * run * dt) % PERIM) + PERIM) % PERIM;
       p.phase += Math.abs(p.speed) * run * dt * 3.2;
       const side = Math.floor(p.t / SIDE);
@@ -168,13 +191,19 @@ export class PedestrianSystem {
       else if (side === 2) { x += SIDE - u; z += SIDE; yaw = -Math.PI / 2; }
       else { z += SIDE - u; yaw = Math.PI; }
       if (p.speed < 0) yaw += Math.PI;
-      const bob = Math.abs(Math.sin(p.phase)) * (p.panic > 0 ? 0.1 : 0.05);
+      let bob = Math.abs(Math.sin(p.phase)) * (p.panic > 0 ? 0.1 : 0.05);
+      if (cheering) {
+        // Face the hero and hop up and down, each at their own rhythm.
+        yaw = Math.atan2(this.heroX - x, this.heroZ - z);
+        p.phase += dt * (7 + (k % 5));
+        bob = Math.abs(Math.sin(p.phase)) * 0.28;
+      }
       s.set(p.height, p.height, p.height);
-      Quaternion.RotationYawPitchRollToRef(yaw, p.panic > 0 ? 0.25 : 0, 0, q);
+      Quaternion.RotationYawPitchRollToRef(yaw, p.panic > 0 ? 0.25 : cheering ? -0.12 : 0, 0, q);
       t.set(x, SIDEWALK_HEIGHT + bob, z);
       Matrix.ComposeToRef(s, q, t, m);
       m.copyToArray(this.bodyM, k * 16);
-      const swing = Math.sin(p.phase) * (p.panic > 0 ? 0.8 : 0.45);
+      const swing = cheering ? 0.15 * Math.sin(p.phase) : Math.sin(p.phase) * (p.panic > 0 ? 0.8 : 0.45);
       t.y = SIDEWALK_HEIGHT + 0.86 * p.height + bob;
       Quaternion.RotationYawPitchRollToRef(yaw, swing, 0, q);
       Matrix.ComposeToRef(s, q, t, m);
