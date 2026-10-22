@@ -604,7 +604,7 @@ test("touch look/stick math maps screen to the sideways stage", async ({ browser
   const ctx = await browser.newContext(phone);
   const page = await ctx.newPage();
 
-  await page.addInitScript((weather) => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false, weather })), weather);
+  await page.addInitScript(() => localStorage.setItem("ironman.settings.v1", JSON.stringify({ quality: "low", autoQuality: false })));
   await page.goto("/");
   await page.locator("#l-start:not([disabled])").waitFor({ timeout: 90_000 });
   await page.locator("#l-start").tap();
