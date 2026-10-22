@@ -1,4 +1,4 @@
-type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry" | "trick" | "cut" | "sharpL" | "sharpR" | "beam" | "flare";
+type ButtonName = "up" | "down" | "fly" | "fire" | "msl" | "suit" | "sentry" | "trick" | "cut" | "sharpL" | "sharpR" | "beam" | "flare" | "scan";
 
 /**
  * On-screen touch controls built from DOM elements and Pointer Events
@@ -47,6 +47,7 @@ export class TouchControls {
       <button class="t-btn t-sharp t-sharpR" data-b="sharpR" aria-label="Sharp turn right"><span>↱</span><small>SHARP</small></button>
       <button class="t-btn t-beam" data-b="beam" aria-label="Unibeam chest laser"><span>◉</span><small>BEAM</small></button>
       <button class="t-btn t-flare" data-b="flare" aria-label="Countermeasure flares"><span>✦</span><small>FLARE</small></button>
+      <button class="t-btn t-scan" data-b="scan" aria-label="F.R.I.D.A.Y. area scan"><span>⌖</span><small>SCAN</small></button>
       <button class="t-btn t-sentry" data-b="sentry" aria-label="Toggle sentry mode"><span>⛯</span><small>SENTRY</small></button>
     `;
     parent.appendChild(this.el);

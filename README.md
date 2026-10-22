@@ -26,6 +26,22 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 18 – F.R.I.D.A.Y. visor, scanning tech, and Earth from space
+
+- **Target analysis:** keep a hostile in your sights (or let aim assist pick it) and F.R.I.D.A.Y. analyses it in about 0.9 s.
+  - While the scan runs, a card beside the target shows a progress bar and a name that decodes letter by letter.
+  - Once done it shows the enemy's name, class, threat level (LOW / MODERATE / HIGH / EXTREME, which blinks), live hull %, range and a tactical tip, for example "Rotor nacelles - rockets bring it down". Every enemy type has a dossier.
+- **Area scan** (`N`, or the touch SCAN button, 6 s cooldown):
+  - A bright line sweeps down the visor over a brief grid, with a rising scanner sound.
+  - Every hostile within 600 m is tagged with pulsing gold brackets that show through walls for 7 s, and its analysis completes instantly.
+  - F.R.I.D.A.Y. reports the count, how many are heavy, and the nearest one's distance and compass bearing.
+- **Missile lock warning:** a blinking "MISSILE LOCK" with an arrow toward the nearest homing missile and its range. The warning beeps faster as the missile closes.
+- **Visor:**
+  - Corner brackets, a faint hex grid on the edges and a slow scan line drifting down.
+  - A telemetry ticker under the compass: G-force, thrust, reactor output, tracked hostiles and scan readiness.
+- **Boot-up:** when the suit locks on, F.R.I.D.A.Y. runs a systems check. Lines appear in turn and every HUD panel flickers on one by one.
+- **Earth from space:** past 2 km up, a procedurally painted Earth fades in below you (oceans, continents, deserts, ice caps, a drifting cloud shell and a glowing blue atmosphere rim, lit by the sun) and hides the city. Not yet checked on screen.
+
 ## Milestone 17 – more enemies, more fun, missions, achievements, animations and graphics
 
 **New enemies (six)**
@@ -509,7 +525,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **98 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **100 unit tests** pass, covering:
+  - Every enemy type has a F.R.I.D.A.Y. dossier, and the area-scan summary reads correctly (count, heavies, nearest bearing).
   - Pylon race: the gates clear the roofs and count in order, flying them all wins, and dawdling lets the rival win.
   - Rooftop fires: hovering blows them out, fires left alone flare back, standing on the roof doesn't count, and the clock can run out.
   - Contracts advance only from matching events, pay out and are replaced. Arc drones zap targets in range. Killed troopers are thrown backwards and land.

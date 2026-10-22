@@ -31,7 +31,7 @@ import { Hud, type HudMarker, type HudTarget, type RadarBlip } from "../ui/Hud";
 import { SettingsMenu } from "../ui/SettingsMenu";
 import { SuitAudio } from "../audio/SuitAudio";
 import { CityEvents } from "../gameplay/CityEvents";
-import { EnemyManager, ENEMY_STATS, AIR_KINDS, isCloaked, type EnemyKind } from "../combat/Enemies";
+import { EnemyManager, ENEMY_STATS, AIR_KINDS, isCloaked, type EnemyKind, type Enemy } from "../combat/Enemies";
 import { ProjectileSystem } from "../combat/Projectiles";
 import { Combat, MAX_ROCKETS, aimDirection } from "../combat/Combat";
 import { EnemyRenderer } from "../combat/EnemyRenderer";
@@ -49,6 +49,8 @@ import { MissionRenderer } from "../gameplay/MissionRenderer";
 import { SunFlare } from "../world/SunFlare";
 import { Rain } from "../world/Rain";
 import { Planet } from "../world/Planet";
+import { intelFor, scanSummary } from "../ui/ScanIntel";
+import type { ScanCard } from "../ui/Hud";
 import { Achievements } from "../gameplay/Achievements";
 import { Contracts } from "../gameplay/Contracts";
 import { BOMB_RANGE, type ReactorTarget } from "../gameplay/Missions";
@@ -93,6 +95,15 @@ export class Game {
   private sunFlare!: SunFlare;
   private rain!: Rain;
   private planet!: Planet;
+  /** F.R.I.D.A.Y. target analysis progress per enemy id (0..1). */
+  private scanProg = new Map<number, number>();
+  /** Area scan: hostiles tagged until this time; cooldown seconds left. */
+  private tagUntil = 0;
+  private scanCooldown = 0;
+  /** Smoothed G-force for the telemetry ticker, and last velocity. */
+  private gForce = 1;
+  private lastVel = new Vector3();
+  private missileBeep = 0;
   /** Seconds to the next storm lightning strike. */
   private boltTimer = 4;
   /** Chromatic-aberration kick from taking hits (High quality only). */
@@ -340,7 +351,10 @@ export class Game {
       }
       this.syncTouchMode(e.toSuited);
     });
-    bus.on("suitChanged", () => this.syncTouchMode());
+    bus.on("suitChanged", (e) => {
+      this.syncTouchMode();
+      if (e.suited) this.hud.boot();
+    });
     bus.on("playerHit", (e) => {
       this.hud.damageFlash(e.damage);
       this.hitPulse = Math.min(1, this.hitPulse + e.damage / 15);
@@ -633,6 +647,7 @@ export class Game {
     this.audio.unlock();
     this.audio.setVolume(this.settings.data.volume);
     this.hud.setVisible(this.settings.data.hud);
+    this.hud.boot();
     this.input.touch.setVisible(!this.input.mouseMode);
     this.avatar.playSuitUp();
     this.setPaused(false);
@@ -1039,6 +1054,9 @@ export class Game {
     // Combat.
     this.combat.aimAssist = this.input.mouseMode ? 0.06 : 0.16;
     this.combat.update(dt, input, p, camPos);
+    this.scanCooldown = Math.max(0, this.scanCooldown - dt);
+    if (input.scan) this.areaScan();
+    this.updateTelemetry(dt, p);
     this.enemies.update(dt, this.targets);
     this.projectiles.update(dt);
     if (this.projectiles.hitsThisFrame > 0) this.hud.hitMarker();
@@ -1125,6 +1143,11 @@ export class Game {
       this.slowHud = 0.1;
       this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 0, this.combat.rocketReload);
       this.hud.setStreak(this.streak.chain, this.streak.remaining(this.time) / 3.5);
+      if (p.suited && !this.remote) {
+        const tracked = this.enemies.enemies.filter((e) => e.alive).length;
+        const reactor = (2.4 + p.thrust * 3.1 + (p.afterburner ? 1.2 : 0)).toFixed(1);
+        this.hud.setTelemetry(`G ${this.gForce.toFixed(1)} · THR ${Math.round(p.thrust * 100)}% · RCTR ${reactor} GJ/s · TRK ${tracked} · SCAN ${this.scanCooldown > 0 ? Math.ceil(this.scanCooldown) + "s" : "RDY"}`);
+      }
       this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
       const rank = this.progress.rank;
       const lo = rankLow(rank.index);
@@ -1203,37 +1226,121 @@ export class Game {
     this.projectiles.dust({ x: p.pos.x, y: p.pos.y - p.agl, z: p.pos.z }, 0.12 * (1 - p.agl / 7) + 0.05);
   }
 
+  /**
+   * F.R.I.D.A.Y. area scan: a sweep down the visor tags every hostile within
+   * 600 m (shown through walls for a few seconds) and reports what's out there.
+   */
+  areaScan(): void {
+    const p = this.player;
+    if (!p.suited || this.remote || this.scanCooldown > 0) return;
+    this.scanCooldown = 6;
+    this.tagUntil = this.time + 7;
+    this.hud.scanSweep();
+    const found: { kind: string; d: number; bearing: number }[] = [];
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      const dx = e.x - p.pos.x, dz = e.z - p.pos.z;
+      const d = Math.hypot(dx, e.y - p.pos.y, dz);
+      if (d > 600) continue;
+      found.push({ kind: e.kind, d, bearing: Math.atan2(dx, dz) });
+      // A scan also completes the analysis of everything it finds.
+      this.scanProg.set(e.id, 1);
+    }
+    this.bus.emit("scan", { found: found.length });
+    window.setTimeout(() => this.bus.emit("alert", { text: scanSummary(found), level: found.length ? "warn" : "info", ttl: 5 }), 900);
+  }
+
+  /** G-force, thrust and reactor readouts. */
+  private updateTelemetry(dt: number, p: PlayerController): void {
+    if (dt <= 0) return;
+    const ax = (p.vel.x - this.lastVel.x) / dt, ay = (p.vel.y - this.lastVel.y) / dt + 9.81, az = (p.vel.z - this.lastVel.z) / dt;
+    this.lastVel.set(p.vel.x, p.vel.y, p.vel.z);
+    const g = Math.min(15, Math.hypot(ax, ay, az) / 9.81);
+    this.gForce += (g - this.gForce) * Math.min(1, dt * 4);
+  }
+
   private updateTargetsHud(camPos: Vector3): void {
     const items: HudTarget[] = [];
     const locks = new Set(this.combat.locks);
     const aim = aimDirection(this.player);
+    const tagging = this.time < this.tagUntil;
+    let primary: { e: Enemy; c: { x: number; y: number; z: number }; d: number; score: number } | null = null;
     for (const e of this.enemies.enemies) {
       if (!e.alive || isCloaked(e)) continue;
       const c = this.enemies.center(e);
       const dx = c.x - camPos.x, dy = c.y - camPos.y, dz = c.z - camPos.z;
       const d = Math.hypot(dx, dy, dz);
-      if (d > 420 || dx * aim.x + dy * aim.y + dz * aim.z < 1) continue;
+      const ahead = dx * aim.x + dy * aim.y + dz * aim.z;
+      const tagged = tagging && d < 600;
+      if ((d > 420 && !tagged) || ahead < 1) continue;
+      const assist = e === this.combat.assistTarget;
       items.push({
         x: c.x,
         y: c.y,
         z: c.z,
         hp: e.hp / e.maxHp,
         locked: locks.has(e),
-        assist: e === this.combat.assistTarget,
+        assist,
         kind: e.kind,
         scale: Math.max(0.6, Math.min(1.3, 60 / d + 0.5)),
+        tagged,
       });
+      // Primary target for analysis: the aim-assist target, else the one nearest the crosshair.
+      const off = 1 - ahead / d;
+      const score = assist ? -1 : off;
+      if (d < 420 && (assist || off < 0.03) && (!primary || score < primary.score)) primary = { e, c, d, score };
     }
+    // Analysis builds up while you keep a target in your sights.
+    for (const id of this.scanProg.keys()) if (!this.enemies.enemies.some((e) => e.id === id && e.alive)) this.scanProg.delete(id);
+    let card: ScanCard | null = null;
     // Cached size: reading clientWidth here would force a full page layout
     // right after the HUD's DOM writes (a big cost on slow phones).
     const w = this.canvasW, h = this.canvasH;
     const viewport = this.cam.camera.viewport.toGlobal(w, h);
     const tm = this.scene.getTransformMatrix();
-    this.hud.updateTargets(items, (x, y, z) => {
+    const project = (x: number, y: number, z: number) => {
       this.projectV.set(x, y, z);
       const v = Vector3.Project(this.projectV, this.projectM, tm, viewport);
       return { x: v.x, y: v.y, ok: v.z > 0 && v.z < 1 && v.x > -50 && v.x < w + 50 && v.y > -50 && v.y < h + 50 };
-    });
+    };
+    this.hud.updateTargets(items, project);
+    if (primary && this.player.suited && !this.remote) {
+      const prog = Math.min(1, (this.scanProg.get(primary.e.id) ?? 0) + 1 / 30 / 0.9);
+      this.scanProg.set(primary.e.id, prog);
+      const s = project(primary.c.x, primary.c.y, primary.c.z);
+      if (s.ok) {
+        const intel = intelFor(primary.e.kind);
+        // Keep the card on screen: flip it to the left near the right edge.
+        const x = s.x > w - 230 ? s.x - 250 : s.x;
+        card = { x, y: s.y, progress: prog, name: intel.name, cls: intel.cls, threat: intel.threat, hull: primary.e.hp / primary.e.maxHp, dist: primary.d, weakness: intel.weakness };
+      }
+    }
+    this.hud.setScanCard(card);
+    this.updateMissileWarning(1 / 30);
+  }
+
+  /** Incoming homing missiles: a blinking warning with an arrow toward the nearest one. */
+  private updateMissileWarning(dt: number): void {
+    const p = this.player;
+    let best: { x: number; z: number; d: number } | null = null;
+    if (p.suited && !this.remote) {
+      for (const m of this.projectiles.projectiles) {
+        if (m.kind !== "missile" || m.homing !== p) continue;
+        const d = Math.hypot(m.x - p.pos.x, m.y - p.pos.y, m.z - p.pos.z);
+        if (d < 400 && (!best || d < best.d)) best = { x: m.x, z: m.z, d };
+      }
+    }
+    if (!best) {
+      this.hud.setMissile(false);
+      return;
+    }
+    const bearing = Math.atan2(best.x - p.pos.x, best.z - p.pos.z) - p.viewYaw;
+    this.hud.setMissile(true, Math.atan2(Math.sin(bearing), Math.cos(bearing)), best.d);
+    this.missileBeep -= dt;
+    if (this.missileBeep <= 0) {
+      this.missileBeep = Math.max(0.12, best.d / 600);
+      this.bus.emit("missileWarn", {});
+    }
   }
 
   /** Civilian HUD line, touch labels and compass marker for the suit. */

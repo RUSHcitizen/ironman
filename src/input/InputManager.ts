@@ -203,6 +203,7 @@ export class InputManager {
     this.shiftTap = false;
     s.sharpTurn = this.keySharp || t.consumeSharp();
     s.beam = this.hit("KeyZ") || t.consume("beam");
+    s.scan = this.hit("KeyN") || t.consume("scan");
     s.flares = this.hit("KeyJ") || t.consume("flare");
     s.cinematic = this.hit("KeyK");
     this.keySharp = 0;

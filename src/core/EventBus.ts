@@ -58,4 +58,6 @@ export interface GameEvents extends Record<string, unknown> {
   achievement: { id: string; name: string };
   contract: { text: string; reward: number };
   thunder: { distance: number };
+  scan: { found: number };
+  missileWarn: Record<string, never>;
 }

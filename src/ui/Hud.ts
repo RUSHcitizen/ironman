@@ -12,6 +12,22 @@ export interface HudTarget {
   assist: boolean;
   kind: string;
   scale: number;
+  /** Tagged by an area scan (shown through walls). */
+  tagged?: boolean;
+}
+
+/** F.R.I.D.A.Y. target analysis card. */
+export interface ScanCard {
+  x: number;
+  y: number;
+  /** Analysis progress 0..1 (details appear at 1). */
+  progress: number;
+  name: string;
+  cls: string;
+  threat: string;
+  hull: number;
+  dist: number;
+  weakness: string;
 }
 
 export interface HudMarker {
@@ -80,6 +96,28 @@ export class Hud {
     this.el.id = "hud";
     this.el.innerHTML = `
       <div class="h-vignette"></div>
+      <div class="h-frame" aria-hidden="true">
+        <i class="f-hex f-l"></i><i class="f-hex f-r"></i>
+        <svg class="f-c f-tl" viewBox="0 0 60 60"><path d="M2 40 V2 H40 M8 22 V8 H22"/></svg>
+        <svg class="f-c f-tr" viewBox="0 0 60 60"><path d="M58 40 V2 H20 M52 22 V8 H38"/></svg>
+        <svg class="f-c f-bl" viewBox="0 0 60 60"><path d="M2 20 V58 H40 M8 38 V52 H22"/></svg>
+        <svg class="f-c f-br" viewBox="0 0 60 60"><path d="M58 20 V58 H20 M52 38 V52 H38"/></svg>
+        <i class="f-scanline"></i>
+      </div>
+      <div class="h-sweep" aria-hidden="true"><i></i></div>
+      <div class="h-scancard">
+        <small class="sc-head">F.R.I.D.A.Y. · <span class="v-sc-state">ANALYSING</span></small>
+        <div class="sc-bar"><i class="v-sc-prog"></i></div>
+        <b class="v-sc-name"></b>
+        <span class="v-sc-cls"></span>
+        <div class="sc-row"><span>THREAT</span><b class="v-sc-threat"></b></div>
+        <div class="sc-row"><span>HULL</span><b class="v-sc-hull"></b></div>
+        <div class="sc-row"><span>RANGE</span><b class="v-sc-dist"></b></div>
+        <em class="v-sc-weak"></em>
+      </div>
+      <div class="h-missile"><i class="v-msl-arrow">▲</i><b>MISSILE LOCK</b><span class="v-msl-d"></span></div>
+      <div class="h-telemetry v-tele"></div>
+      <div class="h-boot"><b>F.R.I.D.A.Y. ONLINE</b><span>ARC REACTOR · 100%</span><span>FLIGHT STABILISERS · OK</span><span>REPULSORS · OK</span><span>TARGETING · OK</span><span>THREAT ANALYSIS · ACTIVE</span></div>
       <div class="h-hypoxia"></div>
       <div class="h-top">
         <div class="h-compass"><div class="h-tape"></div><div class="h-markers"></div><div class="h-needle"></div></div>
@@ -193,7 +231,7 @@ export class Hud {
       }
       if (el.style.display) el.style.display = "";
       el.style.transform = `translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,0) scale(${it.scale.toFixed(2)})`;
-      const cls = `h-target k-${it.kind}${it.locked ? " locked" : ""}${it.assist ? " assist" : ""}`;
+      const cls = `h-target k-${it.kind}${it.locked ? " locked" : ""}${it.assist ? " assist" : ""}${it.tagged ? " tagged" : ""}`;
       if (el.className !== cls) el.className = cls;
       const hp = `scaleX(${Math.max(0, it.hp).toFixed(3)})`;
       const u = el.firstElementChild!.nextElementSibling!.firstElementChild as HTMLElement;
@@ -201,6 +239,68 @@ export class Hud {
       n++;
     }
     for (let k = n; k < this.targetEls.length; k++) if (this.targetEls[k].style.display !== "none") this.targetEls[k].style.display = "none";
+  }
+
+  private cardShown = false;
+
+  /** Target analysis card beside the primary target (null hides it). */
+  setScanCard(c: ScanCard | null): void {
+    const el = this.q(".h-scancard");
+    if (!c) {
+      if (this.cardShown) {
+        this.cardShown = false;
+        el.classList.remove("on");
+      }
+      return;
+    }
+    if (!this.cardShown) {
+      this.cardShown = true;
+      el.classList.add("on");
+    }
+    el.style.transform = `translate3d(${c.x.toFixed(0)}px,${c.y.toFixed(0)}px,0)`;
+    const done = c.progress >= 1;
+    el.classList.toggle("done", done);
+    this.text(".v-sc-state", done ? "TARGET ANALYSED" : `ANALYSING ${Math.round(c.progress * 100)}%`);
+    this.q(".v-sc-prog").style.transform = `scaleX(${Math.min(1, c.progress).toFixed(2)})`;
+    this.text(".v-sc-name", done ? c.name : scramble(c.name, c.progress));
+    this.text(".v-sc-cls", done ? c.cls : "· · ·");
+    this.text(".v-sc-threat", done ? c.threat : "--");
+    this.q(".v-sc-threat").className = `v-sc-threat t-${done ? c.threat.toLowerCase() : "na"}`;
+    this.text(".v-sc-hull", `${Math.round(c.hull * 100)}%`);
+    this.text(".v-sc-dist", `${Math.round(c.dist)} M`);
+    this.text(".v-sc-weak", done ? c.weakness : "");
+  }
+
+  /** Area scan: a bright line sweeps down the visor over a grid flash. */
+  scanSweep(): void {
+    restart(this.q(".h-sweep"), "on");
+  }
+
+  /** Live telemetry ticker. */
+  setTelemetry(text: string): void {
+    this.text(".v-tele", text);
+  }
+
+  private missileOn = false;
+
+  /** Incoming-missile warning; `angle` = bearing relative to view (0 = ahead, + = right). */
+  setMissile(on: boolean, angle = 0, dist = 0): void {
+    if (on !== this.missileOn) {
+      this.missileOn = on;
+      this.el.classList.toggle("missile", on);
+    }
+    if (!on) return;
+    this.q(".v-msl-arrow").style.transform = `rotate(${((angle * 180) / Math.PI).toFixed(0)}deg)`;
+    this.text(".v-msl-d", `${Math.round(dist)} M`);
+  }
+
+  /** HUD boot-up: panels flicker on in turn while F.R.I.D.A.Y. runs a systems check. */
+  boot(): void {
+    this.el.classList.remove("booting");
+    requestAnimationFrame(() => {
+      this.el.classList.add("booting");
+      window.setTimeout(() => this.el.classList.remove("booting"), 2600);
+    });
   }
 
   private bannerTimer: number | undefined;
@@ -548,6 +648,18 @@ export class Hud {
  * Re-trigger a CSS animation class on the next frame. (The classic
  * "remove, read offsetWidth, re-add" trick forces a full page layout.)
  */
+/** Name half-decoded during analysis: unresolved letters cycle through glyphs. */
+function scramble(name: string, progress: number): string {
+  const glyphs = "#%&@$*+=<>/\\[]01";
+  const solved = Math.floor(name.length * progress);
+  let out = "";
+  for (let k = 0; k < name.length; k++) {
+    const ch = name[k];
+    out += k < solved || ch === " " ? ch : glyphs[(k * 7 + Math.floor(performance.now() / 70)) % glyphs.length];
+  }
+  return out;
+}
+
 function restart(el: HTMLElement, cls: string): void {
   el.classList.remove(cls);
   requestAnimationFrame(() => el.classList.add(cls));

@@ -54,6 +54,12 @@ export class SuitAudio {
         setTimeout(() => this.noiseBurst(1.6, 90, 0.4 * v, true), 260);
       }, (e.distance / 343) * 1000);
     });
+    // F.R.I.D.A.Y. scan: a rising sweep, then a result ping (lower when hostiles are found).
+    bus.on("scan", (e) => {
+      this.zap(300, 2400, 0.9, "sine", 0.06);
+      setTimeout(() => this.blip(e.found > 0 ? 660 : 990), 950);
+    });
+    bus.on("missileWarn", () => this.blip(1760));
     // Superhero landing: a deep slam with a rumble.
     bus.on("superLanding", () => {
       this.thud(1);

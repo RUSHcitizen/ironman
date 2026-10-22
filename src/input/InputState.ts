@@ -25,6 +25,8 @@ export interface InputState {
   trick: TrickRequest | null;
   /** Charge-free chest Unibeam (edge). */
   beam: boolean;
+  /** F.R.I.D.A.Y. area scan (edge). */
+  scan: boolean;
   /** Toggle the HUD (cinematic mode) (edge). */
   cinematic: boolean;
   /** Pop countermeasure flares (edge). */
@@ -59,6 +61,7 @@ export function emptyInput(): InputState {
     roll: 0,
     sharpTurn: 0,
     beam: false,
+    scan: false,
     flares: false,
     cinematic: false,
     menu: false,
