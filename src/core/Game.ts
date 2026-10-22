@@ -48,7 +48,7 @@ import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { MissionRenderer } from "../gameplay/MissionRenderer";
 import { SunFlare } from "../world/SunFlare";
 import { Achievements } from "../gameplay/Achievements";
-import type { ReactorTarget } from "../gameplay/Missions";
+import { BOMB_RANGE, type ReactorTarget } from "../gameplay/Missions";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 
@@ -712,6 +712,49 @@ export class Game {
     this.bus.emit("superLanding", { hits: hit });
   }
 
+  /**
+   * Gesture targets for the armour: the right palm scans a bomb being defused
+   * (with a scanner beam); the left hand reaches for a pickup being pulled in.
+   */
+  private updateSuitGestures(p: PlayerController): void {
+    p.scanAt = null;
+    p.reachAt = null;
+    if (!p.suited || this.remote) return;
+    const c = p.center;
+    const m = this.events.mission;
+    if (m?.kind === "bombs") {
+      for (const b of m.points) {
+        if (b.done || b.progress <= 0 || Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z) > BOMB_RANGE) continue;
+        p.scanAt = { x: b.x, y: b.y + 0.5, z: b.z };
+        const rx = Math.cos(p.bodyYaw), rz = -Math.sin(p.bodyYaw);
+        this.projectiles.beam({ x: c.x + rx * 0.5, y: c.y + 0.3, z: c.z + rz * 0.5 }, p.scanAt, "telegraph");
+        break;
+      }
+    }
+    let best = 11;
+    for (const it of this.pickups.items) {
+      const d = Math.hypot(it.x - c.x, it.y - c.y, it.z - c.z);
+      if (d < best) {
+        best = d;
+        p.reachAt = it;
+      }
+    }
+  }
+
+  private damageFxTimer = 0;
+  /** A badly damaged suit sparks and trails smoke (more as integrity falls). */
+  private updateSuitDamageFx(dt: number, p: PlayerController): void {
+    const hp = p.suit.overallIntegrity;
+    if (!p.suited || this.remote || hp >= 35 || p.dead) return;
+    this.damageFxTimer -= dt;
+    if (this.damageFxTimer > 0) return;
+    this.damageFxTimer = hp < 15 ? 0.08 : 0.2;
+    const c = p.center;
+    const at = { x: c.x + (Math.random() - 0.5) * 0.8, y: c.y + (Math.random() - 0.3) * 1.2, z: c.z + (Math.random() - 0.5) * 0.8 };
+    if (Math.random() < 0.55) this.projectiles.fx.push({ kind: "spark", ...at, size: 0.5 + Math.random() * 0.5, t: 0, life: 0.12, yaw: 0, pitch: 0 });
+    else this.projectiles.trail(at);
+  }
+
   /** Keep a defended reactor in the enemies' target list while its mission runs. */
   private syncReactorTarget(): void {
     const r = this.events.reactor;
@@ -956,6 +999,8 @@ export class Game {
     for (const item of this.pickups.update(dt, c.x, c.y, c.z, p.suited && !this.remote && !p.dead)) this.collect(item);
     this.pickupRenderer.update(this.pickups.items, this.time);
     this.missionRenderer.update(this.events.mission, this.time);
+    this.updateSuitGestures(p);
+    this.updateSuitDamageFx(dt, p);
     this.sunFlare.update(dt, this.cam.camera, camPos, this.env.sunDir, this.world, this.env.time !== "night" && this.settings.data.quality !== "low", this.canvasW, this.canvasH);
     this.hitPulse = Math.max(0, this.hitPulse - dt * 2.5);
     if (this.pipeline) this.pipeline.chromaticAberration.aberrationAmount = this.hitPulse * 45 + (p.hypersonic ? 14 : 0) + p.rush * 8;

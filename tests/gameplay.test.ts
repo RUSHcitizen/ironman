@@ -5,7 +5,7 @@ import { CollisionWorld } from "../src/world/Collision";
 import { PlayerController } from "../src/player/PlayerController";
 import { EventBus, type GameEvents } from "../src/core/EventBus";
 import { emptyInput } from "../src/input/InputState";
-import { planMission, BOMB_DEFUSE_TIME, COURIER_ESCAPE, type MissionContext } from "../src/gameplay/Missions";
+import { planMission, BOMB_DEFUSE_TIME, COURIER_ESCAPE, STUNT_NEEDED, SKYDIVE_PULL, type MissionContext } from "../src/gameplay/Missions";
 import { EnemyManager } from "../src/combat/Enemies";
 import { Achievements } from "../src/gameplay/Achievements";
 import { Rng } from "../src/core/math";
@@ -150,6 +150,63 @@ describe("special objectives", () => {
     m2.reactor!.takeHit(1000);
     m2.update(0.1, ctxAt(enemies, 2000, 50, 2000));
     expect(m2.status).toBe("lost");
+  });
+});
+
+describe("escort, rooftop run and skydive", () => {
+  const base = (enemies: EnemyManager, w: CollisionWorld): MissionContext => ({ px: 0, py: 50, pz: 0, suited: true, enemies, world: w });
+
+  it("medevac escort: the chopper flies to the hospital pad under attack; it is lost if shot down", () => {
+    const w = towers();
+    const enemies = new EnemyManager(w);
+    const m = planMission("escort", w, new Rng(21), 0, 0, enemies, 30)!;
+    const h = m.reactor!;
+    const pad = m.points[0];
+    const d0 = Math.hypot(pad.x - h.center.x, pad.z - h.center.z);
+    expect(d0).toBeGreaterThan(400);
+    let attacked = false;
+    for (let t = 0; t < 60 && m.status === "active"; t += 0.1) {
+      m.update(0.1, base(enemies, w));
+      if (enemies.aliveInGroup(30) > 0) attacked = true;
+      for (const e of enemies.enemies) if (e.group === 30) enemies.damage(e, 5000); // you keep it covered
+      // It always clears the rooftops on the way.
+      expect(h.center.y).toBeGreaterThan(w.surfaceBelow(h.center.x, 1000, h.center.z, 1, 0));
+    }
+    expect(attacked).toBe(true);
+    expect(m.status).toBe("won");
+    const m2 = planMission("escort", w, new Rng(22), 0, 0, enemies, 31)!;
+    m2.reactor!.takeHit(1000);
+    m2.update(0.1, base(enemies, w));
+    expect(m2.status).toBe("lost");
+  });
+
+  it("rooftop run counts only time spent fast and low", () => {
+    const w = new CollisionWorld();
+    const enemies = new EnemyManager(w);
+    const m = planMission("stunt", w, new Rng(1), 0, 0, enemies, 1)!;
+    for (let t = 0; t < 5; t += 0.1) m.update(0.1, { ...base(enemies, w), speed: 90, agl: 120 }); // too high
+    for (let t = 0; t < 5; t += 0.1) m.update(0.1, { ...base(enemies, w), speed: 40, agl: 10 }); // too slow
+    expect(m.stuntTime).toBe(0);
+    for (let t = 0; t < STUNT_NEEDED + 0.2; t += 0.1) m.update(0.1, { ...base(enemies, w), speed: 90, agl: 12 });
+    expect(m.status).toBe("won");
+  });
+
+  it("skydive: free-fall from high up and re-engage low to win; too early or too late fails", () => {
+    const w = new CollisionWorld();
+    const enemies = new EnemyManager(w);
+    const run = (pullAgl: number | "ground") => {
+      const m = planMission("skydive", w, new Rng(2), 0, 0, enemies, 1)!;
+      m.update(0.1, { ...base(enemies, w), py: 400, freefall: true, agl: 400 }); // not high enough yet
+      expect(m.skyStage).toBe("climb");
+      m.update(0.1, { ...base(enemies, w), py: 700, freefall: true, agl: 700 });
+      expect(m.skyStage).toBe("fall");
+      if (pullAgl === "ground") m.update(0.1, { ...base(enemies, w), py: 0, freefall: true, agl: 0, grounded: true });
+      else m.update(0.1, { ...base(enemies, w), py: pullAgl, freefall: false, agl: pullAgl });
+      return m.status;
+    };
+    expect(run(SKYDIVE_PULL - 30)).toBe("won");
+    expect(run(SKYDIVE_PULL + 100)).toBe("lost");
+    expect(run("ground")).toBe("lost");
   });
 });
 

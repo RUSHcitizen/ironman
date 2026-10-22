@@ -158,6 +158,10 @@ export class PlayerController {
   superLanding = 0;
   /** Victory celebration (set to 1 after a big win, decays) - animation only. */
   cheer = 0;
+  /** Point the suit is scanning (defusing a bomb) - animation only, set by the game. */
+  scanAt: { x: number; y: number; z: number } | null = null;
+  /** Pickup being pulled in (the left hand reaches for it) - animation only. */
+  reachAt: { x: number; y: number; z: number } | null = null;
   /** Hand that fired the last repulsor shot (+1 right, -1 left). */
   fireHand = 1;
   /** Air-braking in flight (drives the flare-out pose). */

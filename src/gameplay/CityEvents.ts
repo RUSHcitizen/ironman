@@ -95,6 +95,9 @@ const TEMPLATES: Template[] = [
   { title: "Stolen Stark tech", detail: "Recover the scattered data cores before they self-destruct", place: "air", squad: [], mission: "cores" },
   { title: "Catch the courier", detail: "A drone is fleeing with stolen tech - run it down", place: "air", squad: [], mission: "courier", minLevel: 1 },
   { title: "Protect the arc reactor", detail: "Waves of attackers are going for the reactor - hold the line", place: "roof", squad: [], mission: "defend", minLevel: 2 },
+  { title: "Medevac escort", detail: "A medevac chopper is crossing hostile skies - keep it in the air", place: "air", squad: [], mission: "escort", minLevel: 1 },
+  { title: "Rooftop run", detail: "Fly flat out, low over the rooftops - bank the seconds", place: "air", squad: [], mission: "stunt" },
+  { title: "Skydive: low pull", detail: "Climb high, cut thrust, and pull out as late as you dare", place: "air", squad: [], mission: "skydive" },
   { title: "Flight challenge", detail: "Fly through every ring before the clock runs out - each ring is a speed boost", place: "air", squad: [], course: true },
   { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
@@ -209,7 +212,7 @@ export class CityEvents {
 
   private missionCtx(p: PlayerController) {
     const c = p.center;
-    return { px: c.x, py: c.y, pz: c.z, suited: p.suited, enemies: this.enemies };
+    return { px: c.x, py: c.y, pz: c.z, suited: p.suited, enemies: this.enemies, speed: p.speed, agl: p.agl, freefall: p.freefall, grounded: p.grounded, world: this.world };
   }
 
   get objective(): [string, string] {
@@ -311,6 +314,8 @@ export class CityEvents {
     const ctx = this.missionCtx(p);
     m.update(dt, ctx);
     const mk = m.marker(ctx);
+    // Stunt and skydive happen wherever you are: no beacon.
+    this.beam.setEnabled(mk !== null);
     if (mk) {
       c.x = mk.x;
       c.y = mk.y;

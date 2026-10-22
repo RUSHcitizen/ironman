@@ -48,6 +48,10 @@ export class MissionRenderer {
   private pillar: Part;
   private reactor: Part;
   private reactorGlow: Part;
+  private heli: Part;
+  private rotor: Part;
+  private heliGlow: Part;
+  private pad: Part;
   private mat = new Matrix();
   private q = new Quaternion();
   private s = new Vector3();
@@ -82,6 +86,24 @@ export class MissionRenderer {
       ),
     );
     this.reactorGlow = new Part(glow(g.merge("reactorCore", [g.sphere(1.0, W, 0, 2.2, 0, 12), g.cyl(1.9, 1.9, 0.12, W, 0, 1.05, 0, 16)])));
+    // Medevac helicopter: white cabin, tail boom, skids; red cross and beacons glow.
+    const white: RGB = [0.85, 0.86, 0.88];
+    this.heli = new Part(
+      lit(
+        g.merge("medevac", [
+          g.sphere(1.6, white, 0, 0, 0.4, 12, 1, 0.85, 1.5),
+          g.box(0.5, 0.5, 5.2, white, 0, 0.3, -3.6),
+          g.box(0.12, 1.4, 0.9, white, 0, 0.9, -6.0),
+          g.box(0.12, 0.12, 4.0, D, -0.9, -1.4, 0.3),
+          g.box(0.12, 0.12, 4.0, D, 0.9, -1.4, 0.3),
+          g.cyl(0.12, 0.12, 0.6, D, 0, 1.45, 0.3, 6),
+        ]),
+      ),
+    );
+    this.rotor = new Part(lit(g.merge("medevacRotor", [g.box(9.5, 0.06, 0.32, D, 0, 0, 0), g.box(0.32, 0.06, 9.5, D, 0, 0, 0)])));
+    this.heliGlow = new Part(glow(g.merge("medevacCross", [g.box(0.06, 0.9, 0.3, W, 1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, 1.62, 0.1, 0.4), g.box(0.06, 0.9, 0.3, W, -1.62, 0.1, 0.4), g.box(0.06, 0.3, 0.9, W, -1.62, 0.1, 0.4), g.sphere(0.12, W, 0, -0.9, 1.6, 4)])));
+    // Hospital landing pad: a glowing square with an H.
+    this.pad = new Part(glow(g.merge("hospitalPad", [g.box(10, 0.06, 0.4, W, 0, 0, 5), g.box(10, 0.06, 0.4, W, 0, 0, -5), g.box(0.4, 0.06, 10, W, 5, 0, 0), g.box(0.4, 0.06, 10, W, -5, 0, 0), g.box(0.5, 0.07, 4, W, -1.2, 0, 0), g.box(0.5, 0.07, 4, W, 1.2, 0, 0), g.box(2.4, 0.07, 0.5, W, 0, 0, 0)])));
   }
 
   private put(part: Part, x: number, y: number, z: number, yaw: number, sx: number, sy: number, sz: number, c: RGB): void {
@@ -114,6 +136,29 @@ export class MissionRenderer {
           const a = 0.14 + Math.sin(time * 3 + i) * 0.04;
           this.put(this.pillar, c.x, c.y - 2, c.z, 0, 1, 1, 1, [0.3 * a, 1.1 * a, 1.6 * a]);
         }
+      } else if (mission.kind === "escort" && mission.reactor) {
+        const h = mission.reactor;
+        const c = h.center;
+        const yaw = Math.atan2(h.vel.x, h.vel.z);
+        const hit = Math.max(0, 1 - h.hitAgo * 4);
+        // Nose down into its flight, with a little wobble when hit.
+        Quaternion.RotationYawPitchRollToRef(yaw, 0.12, Math.sin(time * 30) * 0.08 * hit, this.q);
+        Matrix.ComposeToRef(this.s.set(1, 1, 1), this.q, this.t.set(c.x, c.y, c.z), this.mat);
+        if (this.heli.n < MAX) {
+          this.mat.copyToArray(this.heli.m, this.heli.n * 16);
+          this.heli.c.set([1 + hit, 1, 1, 1], this.heli.n * 4);
+          this.heli.n++;
+        }
+        if (this.heliGlow.n < MAX) {
+          this.mat.copyToArray(this.heliGlow.m, this.heliGlow.n * 16);
+          const blink = Math.sin(time * 8) > 0 ? 1.4 : 0.5;
+          this.heliGlow.c.set([1.4, 0.1 * blink, 0.08, 1], this.heliGlow.n * 4);
+          this.heliGlow.n++;
+        }
+        this.put(this.rotor, c.x, c.y + 1.75, c.z, time * 22, 1, 1, 1, [1, 1, 1]);
+        const pad = mission.points[0];
+        const pulse = 0.6 + Math.sin(time * 3) * 0.3;
+        this.put(this.pad, pad.x, pad.y + 0.05, pad.z, 0, 1, 1, 1, [0.3 * pulse, 1.2 * pulse, 0.5 * pulse]);
       } else if (mission.kind === "defend" && mission.reactor) {
         const r = mission.reactor;
         const b = r.center;
@@ -125,6 +170,6 @@ export class MissionRenderer {
         this.put(this.reactorGlow, b.x, b.y - 2, b.z, time * 0.8, pulse, 1, pulse, [0.3 * life + hit * 1.5, 0.8 * life, 1.5 * life]);
       }
     }
-    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow]) p.flush();
+    for (const p of [this.bomb, this.bombLight, this.bar, this.core, this.pillar, this.reactor, this.reactorGlow, this.heli, this.rotor, this.heliGlow, this.pad]) p.flush();
   }
 }

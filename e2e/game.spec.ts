@@ -272,7 +272,7 @@ test.describe("desktop controls", () => {
     type M = { mission: { kind: string; status: string; remaining: number } | null; achievements: number };
     await page.keyboard.press("Escape");
     await expect(page.locator("#menu")).toBeVisible();
-    await expect(page.locator(".m-achlist li")).toHaveCount(22);
+    await expect(page.locator(".m-achlist li")).toHaveCount(25);
     await page.locator('[data-m="Bomb threat"]').click();
     await expect(page.locator("#menu")).toBeHidden();
     await until(page, (s) => (s as unknown as M).mission?.kind === "bombs");
@@ -322,6 +322,23 @@ test.describe("desktop controls", () => {
     await page.evaluate(() => { const g = (window as unknown as G).__GAME; g.events.spawnNow(g.player, "Protect the arc reactor"); });
     const s = await until(page, (st) => ((st as unknown as M).mission?.wave ?? 0) >= 1, 40_000);
     expect((s as unknown as M).mission!.reactorHp).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("medevac escort, rooftop run and skydive missions start from the menu", async ({ page }) => {
+    const errors = await boot(page);
+    type M = { mission: { kind: string; reactorHp: number | null } | null };
+    for (const [title, kind, text] of [
+      ["Medevac escort", "escort", /Medevac hull 100%/],
+      ["Rooftop run", "stunt", /Rooftop run 0\.0\/12 s/],
+      ["Skydive: low pull", "skydive", /Climb above 600 m/],
+    ] as const) {
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#menu")).toBeVisible();
+      await page.locator(`[data-m="${title}"]`).click();
+      await until(page, (s) => (s as unknown as M).mission?.kind === kind);
+      await expect(page.locator(".h-objective")).toContainText(text);
+    }
     expect(errors).toEqual([]);
   });
 

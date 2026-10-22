@@ -47,13 +47,18 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Stolen Stark tech:** fly through six glowing data cores, some on roofs and some high in the sky.
 - **Catch the courier:** run the courier drone down before it gets 1.1 km away.
 - **Protect the arc reactor:** four waves attack a rooftop reactor that enemies shoot at like they shoot at you. Don't let it fall.
+- **Medevac escort:** a white helicopter with a red cross flies to a glowing hospital pad 450–650 m away, climbing over rooftops on the way. Three waves of attackers go for it, and it is lost if its hull reaches 0.
+- **Rooftop run:** bank 12 s flying faster than 248 km/h within 30 m of the rooftops or street.
+- **Skydive (low pull):** climb above 600 m, cut thrust, and re-engage below 80 m above the ground. Too early fails, and so does hitting the ground.
 - The pause menu has buttons to start any mission right away. Special objectives come up more often among random incidents.
-- **22 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
+- **25 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
 
 **New animations**
 - **Superhero landing pose:** knee and fist planted, head bowed, then a slow rise.
 - **Victory pose:** a fist punched to the sky and pumping after objectives, incidents and boss kills.
 - Hovering still, the head scans the city. Collecting a pickup flashes the reactor, eyes and palms.
+- **Defusing:** the right palm is held out at the bomb with a scanner beam, and the torso turns toward it. The left hand reaches for a pickup as it is pulled in.
+- **A badly damaged suit** (below 35%) throws sparks and trails smoke, and does so faster below 15%.
 - **Crashing wrecks:** downed aircraft (drones, jets, gunships, bombers, the carrier, the rogue armour and others) spiral down burning with a smoke trail, then explode where they hit, hurting hostiles below.
 - New enemy motion: the bomber wallows and banks, mines tumble and shiver, turret barrels kick back, the rogue armour leans and rolls like a suit, and the courier's cargo glows as it surges.
 - **HUD:** the objective-complete banner sweeps in, and the achievement toast slides down with a gold glint.
@@ -491,7 +496,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **90 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **93 unit tests** pass, covering:
+  - Milestone 17 (cont.): the medevac flies to its pad clear of the roofs while waves attack it (and is lost if shot down), the rooftop run only counts fast-and-low seconds, and the skydive wins only for a low pull.
   - Milestone 17:
     - The bomber drops a stick of bombs near its target. Mines wake, chase and detonate (and blow when shot). Flak bursts around the target. The rogue armour strafes, fires missiles, dashes and dodges. The courier flees.
     - Kill streaks and their multiplier. Pickups settle, get pulled in and collected, can't be collected out of the suit, and expire. A hard landing flags a superhero landing.
@@ -520,7 +526,8 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **42 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **43 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Medevac escort, rooftop run and skydive start from the pause menu with their objective text.**
   - **Missions started from the pause menu: all three bombs defused by hovering beside them, then all six data cores collected. The achievement list is shown.**
   - **The courier is shot down and drops salvage; reactor defence starts its first wave.**
   - **A triple kill shows the streak, a dropped power cell is collected, and a dive with the thrusters cut ends in a SUPERHERO LANDING.**

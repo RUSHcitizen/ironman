@@ -67,6 +67,8 @@ export class SettingsMenu {
             <button data-m="Bomb threat">Bomb threat</button><button data-m="Stolen Stark tech">Data cores</button>
             <button data-m="Catch the courier">Courier chase</button><button data-m="Protect the arc reactor">Defend reactor</button>
             <button data-m="ROGUE ARMOUR">Rogue Armour</button><button data-m="Bombing run">Bombing run</button>
+            <button data-m="Medevac escort">Medevac escort</button><button data-m="Rooftop run">Rooftop run</button>
+            <button data-m="Skydive: low pull">Skydive</button>
           </div>
         </section>
         <details class="m-ach">

@@ -10,10 +10,13 @@ import type { Rng } from "../core/math";
  *             defuse completes) before the timer runs out;
  *  - cores:   fly through every stolen data core scattered over roofs and sky;
  *  - courier: chase down a fleeing courier drone before it escapes;
- *  - defend:  protect an arc reactor from waves of attackers.
+ *  - defend:  protect an arc reactor from waves of attackers;
+ *  - escort:  shepherd a medevac helicopter across the city under attack;
+ *  - stunt:   rack up seconds flying flat out and low over the rooftops;
+ *  - skydive: climb high, cut thrust, and pull out as low as you dare.
  * Pure simulation; placement uses collision-world queries only.
  */
-export type MissionKind = "bombs" | "cores" | "courier" | "defend";
+export type MissionKind = "bombs" | "cores" | "courier" | "defend" | "escort" | "stunt" | "skydive";
 
 export interface MissionPoint {
   x: number;
@@ -28,6 +31,19 @@ export const BOMB_DEFUSE_TIME = 2.5;
 export const BOMB_RANGE = 7;
 export const CORE_RANGE = 5;
 export const COURIER_ESCAPE = 1100;
+/** Rooftop run: fly faster than this (m/s) within STUNT_AGL m of the surface. */
+export const STUNT_SPEED = 69;
+export const STUNT_AGL = 30;
+export const STUNT_NEEDED = 12;
+/** Skydive: free-fall from above this height, re-engage below SKYDIVE_PULL (AGL). */
+export const SKYDIVE_TOP = 600;
+export const SKYDIVE_PULL = 80;
+const ESCORT_SPEED = 16;
+const ESCORT_WAVES: EnemyKind[][] = [
+  ["drone", "drone", "kamikaze"],
+  ["jet", "kamikaze", "kamikaze", "swarmer", "swarmer"],
+  ["gunship", "drone", "kamikaze"],
+];
 const REACTOR_HP = 100;
 const WAVES: EnemyKind[][] = [
   ["drone", "drone", "kamikaze"],
@@ -39,6 +55,7 @@ const WAVES: EnemyKind[][] = [
 /** The arc reactor you defend: enemies target and shoot it like they would you. */
 export class ReactorTarget implements CombatTarget {
   readonly center: V3;
+  /** Moves with the escorted helicopter (stays zero for the reactor). */
   readonly vel: V3 = { x: 0, y: 0, z: 0 };
   hp = REACTOR_HP;
   active = true;
@@ -69,6 +86,12 @@ export interface MissionContext {
   pz: number;
   suited: boolean;
   enemies: EnemyManager;
+  /** Optional flight state (stunt / skydive objectives). */
+  speed?: number;
+  agl?: number;
+  freefall?: boolean;
+  grounded?: boolean;
+  world?: CollisionWorld;
 }
 
 export class Mission {
@@ -79,9 +102,14 @@ export class Mission {
   /** Enemy group used by courier / defend waves. */
   group = 0;
   wave = 0;
-  private waveTimer = 3;
+  waveTimer = 3;
   /** Why it was lost (HUD text). */
   failReason = "";
+  /** Stunt: seconds banked flying fast and low. Skydive: stage. */
+  stuntTime = 0;
+  skyStage: "climb" | "fall" = "climb";
+  /** Lowest altitude above ground reached before pulling out (skydive score). */
+  pullAgl = Infinity;
 
   constructor(
     readonly kind: MissionKind,
@@ -104,6 +132,8 @@ export class Mission {
       return c ? { x: c.x, y: c.y, z: c.z } : null;
     }
     if (this.kind === "defend" && this.reactor) return this.reactor.center;
+    if (this.kind === "escort" && this.reactor) return this.reactor.center;
+    if (this.kind === "stunt" || this.kind === "skydive") return null;
     let best: MissionPoint | null = null;
     let bd = Infinity;
     for (const p of this.points) {
@@ -135,6 +165,16 @@ export class Mission {
       }
       case "defend":
         return `Reactor ${Math.round(this.reactor?.hp ?? 0)}% · wave ${Math.min(this.wave, WAVES.length)}/${WAVES.length} · ${clock}`;
+      case "escort": {
+        const d = this.points[0] && this.reactor ? Math.hypot(this.points[0].x - this.reactor.center.x, this.points[0].z - this.reactor.center.z) : 0;
+        return `Medevac hull ${Math.round(this.reactor?.hp ?? 0)}% · ${Math.round(d)} m to the hospital · keep the attackers off it`;
+      }
+      case "stunt":
+        return `Rooftop run ${this.stuntTime.toFixed(1)}/${STUNT_NEEDED} s · over ${Math.round(STUNT_SPEED * 3.6)} km/h below ${STUNT_AGL} m · ${clock}`;
+      case "skydive":
+        return this.skyStage === "climb"
+          ? `Climb above ${SKYDIVE_TOP} m, then cut thrust (H / CUT) · ${clock}`
+          : `Free-falling · re-engage below ${SKYDIVE_PULL} m above the ground - but not too late!`;
     }
   }
 
@@ -166,6 +206,63 @@ export class Mission {
         else if (this.timeLeft <= 0) this.fail("The courier got away");
         break;
       }
+      case "escort": {
+        const h = this.reactor!;
+        h.hitAgo += dt;
+        if (h.hp <= 0) {
+          this.fail("The medevac went down");
+          break;
+        }
+        // Fly toward the hospital pad, climbing over anything in the way.
+        const dest = this.points[0];
+        const dx = dest.x - h.center.x, dz = dest.z - h.center.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 8) {
+          this.status = "won";
+          break;
+        }
+        const roof = ctx.world ? ctx.world.surfaceBelow(h.center.x + (dx / d) * 30, 1000, h.center.z + (dz / d) * 30, 6, 0) : 0;
+        const wantY = Math.max(roof + 30, dest.y + (d < 80 ? 6 : 30));
+        h.vel.x = (dx / d) * ESCORT_SPEED;
+        h.vel.z = (dz / d) * ESCORT_SPEED;
+        h.vel.y = Math.max(-6, Math.min(8, (wantY - h.center.y) * 0.8));
+        h.center.x += h.vel.x * dt;
+        h.center.y += h.vel.y * dt;
+        h.center.z += h.vel.z * dt;
+        this.waveTimer -= dt;
+        if (this.wave < ESCORT_WAVES.length && this.waveTimer <= 0) {
+          this.spawnAround(ctx.enemies, h.center, ESCORT_WAVES[this.wave]);
+          this.wave++;
+          this.waveTimer = 14;
+        }
+        if (this.timeLeft <= 0) this.fail("The medevac ran out of fuel");
+        break;
+      }
+      case "stunt": {
+        const fast = ctx.suited && (ctx.speed ?? 0) > STUNT_SPEED && (ctx.agl ?? 999) < STUNT_AGL && !ctx.grounded;
+        if (fast) this.stuntTime += dt;
+        if (this.stuntTime >= STUNT_NEEDED) this.status = "won";
+        else if (this.timeLeft <= 0) this.fail("Not enough time on the deck");
+        break;
+      }
+      case "skydive": {
+        if (this.skyStage === "climb") {
+          if (ctx.freefall && ctx.py > SKYDIVE_TOP) {
+            this.skyStage = "fall";
+            this.pullAgl = Infinity;
+          }
+        } else {
+          const agl = ctx.agl ?? 999;
+          if (ctx.grounded) this.fail("Pulled too late - you hit the ground");
+          else if (!ctx.freefall) {
+            this.pullAgl = agl;
+            if (agl <= SKYDIVE_PULL) this.status = "won";
+            else this.fail(`Pulled at ${Math.round(agl)} m - too early`);
+          }
+        }
+        if (this.status === "active" && this.timeLeft <= 0) this.fail("Out of time");
+        break;
+      }
       case "defend": {
         const r = this.reactor!;
         r.hitAgo += dt;
@@ -188,6 +285,16 @@ export class Mission {
       }
     }
     if (this.status !== "active" && this.reactor) this.reactor.active = false;
+  }
+
+  private spawnAround(enemies: EnemyManager, at: V3, kinds: EnemyKind[]): void {
+    const a0 = this.rng.range(0, Math.PI * 2);
+    for (const k of kinds) {
+      const a = a0 + this.rng.range(-0.7, 0.7);
+      const d = this.rng.range(150, 200);
+      const e = enemies.spawn(k, at.x + Math.cos(a) * d, at.y + this.rng.range(10, 35), at.z + Math.sin(a) * d, this.group);
+      e.aware = true;
+    }
   }
 
   private spawnWave(enemies: EnemyManager): void {
@@ -246,6 +353,22 @@ export function planMission(kind: MissionKind, world: CollisionWorld, rng: Rng, 
       enemies.spawn("courier", x, top + 25, z, group);
       return m;
     }
+    case "escort": {
+      // Pick up near (x, z); the hospital pad is a rooftop 450-650 m away.
+      const pads = findRoofs(world, rng, x, z, 1, 450, 650, 12);
+      if (pads.length === 0) return null;
+      const pad = pads[0];
+      const start = world.surfaceBelow(x, 1000, z, 6, 0) + 35;
+      const m = new Mission(kind, [{ x: pad.x, y: pad.y, z: pad.z, done: false, progress: 0 }], 120, rng);
+      m.group = group;
+      m.reactor = new ReactorTarget(x, start - 2, z);
+      m.waveTimer = 4;
+      return m;
+    }
+    case "stunt":
+      return new Mission(kind, [], 70, rng);
+    case "skydive":
+      return new Mission(kind, [], 120, rng);
     case "defend": {
       const roofs = findRoofs(world, rng, x, z, 1, 0, 120, 10);
       const at = roofs[0] ?? { x, y: world.surfaceBelow(x, 1000, z, 2, 0), z };

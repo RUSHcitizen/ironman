@@ -54,6 +54,10 @@ export interface AvatarState {
   readonly superLanding?: number;
   /** Victory celebration (1 when it starts, decays to 0). */
   readonly cheer?: number;
+  /** Scanning a point (bomb defusal): right palm held out at it. */
+  readonly scanAt?: { x: number; y: number; z: number } | null;
+  /** Reaching for a pickup with the left hand. */
+  readonly reachAt?: { x: number; y: number; z: number } | null;
   /** Repulsor recoil 0..1, and the hand that fired (+1 right, -1 left). */
   readonly recoil?: number;
   readonly fireHand?: number;
@@ -158,6 +162,8 @@ export class ArmorModel {
   private idleT = 0;
   /** Seconds hovering still (the head starts looking around). */
   private hoverIdle = 0;
+  /** Torso turn toward a scanned bomb. */
+  private scanTurn = 0;
   readonly meshes: AbstractMesh[] = [];
 
   constructor(
@@ -999,6 +1005,19 @@ export class ArmorModel {
         pose[j] = [a0[0] + (b0[0] - a0[0]) * k, a0[1] + (b0[1] - a0[1]) * k];
       }
     }
+    // Scanning a bomb (right palm out at it) / reaching for a pickup (left hand).
+    let turnTo = 0;
+    for (const [at, side] of [[p.scanAt, 1], [p.reachAt, -1]] as const) {
+      if (!at || !p.suited || p.mode === "flight") continue;
+      const dx = at.x - p.pos.x, dy = at.y - (p.pos.y + 1.5), dz = at.z - p.pos.z;
+      const el = Math.atan2(dy, Math.hypot(dx, dz));
+      const bearing = Math.atan2(Math.sin(Math.atan2(dx, dz) - p.bodyYaw), Math.cos(Math.atan2(dx, dz) - p.bodyYaw));
+      const sh = side > 0 ? "shR" : "shL", elb = side > 0 ? "elR" : "elL";
+      pose[sh] = [clamp(-Math.PI / 2 - el, -2.7, -0.3), side * (0.12 + Math.max(0, side * bearing) * 0.6)];
+      pose[elb] = [side > 0 ? -0.05 : -0.25, 0];
+      if (side > 0) turnTo = bearing;
+    }
+    this.scanTurn += (clamp(turnTo, -0.8, 0.8) * 0.5 - this.scanTurn) * damp(6, dt);
     // Choreographed suit-up: present each limb as its plates arrive.
     let suitLook = 0;
     if (this.latch?.staged && p.mode === "ground" && planar < 0.5 && !p.dead) {
@@ -1157,13 +1176,13 @@ export class ArmorModel {
     this.joints.neck.node.rotation.y = this.lookYaw * 0.65 + this.suitLook;
     // Torso twists toward the firing hand, swinging side to side as the hands alternate.
     this.twist += ((p.aimTimer > 0 && p.suited && p.mode !== "flight" ? (p.fireHand ?? 1) * -0.16 : 0) - this.twist) * damp(10, dt);
-    this.joints.spine.node.rotation.y = this.lookYaw * 0.3 + this.twist;
+    this.joints.spine.node.rotation.y = this.lookYaw * 0.3 + this.twist + this.scanTurn;
 
     // Thrusters.
     const airborne = p.mode !== "ground" && p.suited && this.armorShown;
     const boot = airborne ? 0.25 + p.thrust * (p.afterburner ? 1.9 : 1.1) : 0;
     const palm = p.mode === "hover" ? 0.25 + p.thrust * 0.45 : p.mode === "flight" ? 0.12 + (p.afterburner ? 0.35 : 0) : 0;
-    const charged = p.aimTimer > 0 && p.suited ? 0.12 : 0;
+    const charged = (p.aimTimer > 0 || p.scanAt) && p.suited ? 0.12 : 0;
     for (const f of this.flames) {
       // Palms: a hot repulsor blast from the hand that just fired, and a faint
       // charged glow on both while the repulsors are hot.
