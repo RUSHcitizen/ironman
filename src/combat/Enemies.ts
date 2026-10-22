@@ -343,7 +343,7 @@ export class EnemyManager {
       // Shot mines still go off (chain reactions through a minefield).
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : e.kind === "mine" ? 14 : 0, true);
       this.weapons?.wreck(c, size);
-      this.bus?.emit("kill", { kind: e.kind, total: this.kills });
+      this.bus?.emit("kill", { kind: e.kind, total: this.kills, ...c });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
       e.state = "retreat";
       e.stateTimer = 2.2;

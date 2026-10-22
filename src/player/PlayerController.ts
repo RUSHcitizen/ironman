@@ -154,6 +154,8 @@ export class PlayerController {
   recoil = 0;
   /** Hit flinch (1 when hit, decays) and the side it came from (-1 left / +1 right). */
   flinch = 0;
+  /** Superhero landing (1 on touchdown, decays) - drives the three-point pose. */
+  superLanding = 0;
   /** Hand that fired the last repulsor shot (+1 right, -1 left). */
   fireHand = 1;
   /** Air-braking in flight (drives the flare-out pose). */
@@ -208,7 +210,7 @@ export class PlayerController {
     this.failed = false;
     this.freefall = this.blackout = this.dead = this.chute = false;
     this.deadTime = 0;
-    this.recoil = this.flinch = 0;
+    this.recoil = this.flinch = this.superLanding = 0;
     this.suit.oxygen = 100;
     this.oxygenWarned = 100;
     this.zone = "air";
@@ -439,6 +441,7 @@ export class PlayerController {
     this.rush = Math.max(0, this.rush - dt * (this.mode === "flight" ? 0.12 : 0.6));
     this.suit.update(dt);
     if (this.landingTimer > 0) this.landingTimer -= dt;
+    this.superLanding = Math.max(0, this.superLanding - dt * 1.1);
     if (this.aimTimer > 0) this.aimTimer -= dt;
     if (this.rocketTimer > 0) this.rocketTimer -= dt;
     if (this.beamTimer > 0) this.beamTimer -= dt;
@@ -854,7 +857,7 @@ export class PlayerController {
           this.bus?.emit("impact", { speed: fallSpeed });
           this.alert(`Hard landing at ${Math.round(fallSpeed * 3.6)} km/h - armour ${Math.round(this.suit.overallIntegrity)}%`, dmg > 25 ? "critical" : "warn");
         }
-        if (!this.grounded && fallSpeed > 14) this.landed(fallSpeed > 22);
+        if (!this.grounded && fallSpeed > 14) this.landed(fallSpeed > 22, fallSpeed);
         this.grounded = true;
         this.chute = false;
         this.freefall = false;
@@ -879,7 +882,7 @@ export class PlayerController {
         this.vel.y = 0;
         this.grounded = true;
         this.setMode("ground");
-        this.landed(hard || fallSpeed > 16);
+        this.landed(hard || fallSpeed > 16, fallSpeed);
       } else {
         // Shallow approach: skim the surface.
         this.viewPitch = Math.max(this.viewPitch, 0);
@@ -922,10 +925,13 @@ export class PlayerController {
     this.bus?.emit("playerDied", { cause, speed });
   }
 
-  private landed(hard: boolean): void {
-    this.landingTimer = hard ? 0.75 : 0.25;
+  private landed(hard: boolean, speed = 0): void {
+    // A hard landing in the suit is a superhero landing: one knee and a fist
+    // down, held a moment longer.
+    this.superLanding = hard && this.suited && !this.remote ? 1 : 0;
+    this.landingTimer = this.superLanding ? 0.95 : hard ? 0.75 : 0.25;
     if (hard && this.suited) this.suit.damage(1.5, ["legs"]);
-    this.bus?.emit("landed", { hard });
+    this.bus?.emit("landed", { hard, speed, suited: this.suited });
   }
 
   /** Move along X (axis 0) or Z (axis 2). Returns blocked speed (m/s) if hit. */

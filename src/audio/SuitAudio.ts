@@ -46,6 +46,18 @@ export class SuitAudio {
       this.noiseBurst(0.12, 3200, 0.12, false);
     });
     bus.on("trick", () => this.noiseBurst(0.5, 1200, 0.22, false));
+    // Superhero landing: a deep slam with a rumble.
+    bus.on("superLanding", () => {
+      this.thud(1);
+      this.noiseBurst(0.7, 260, 0.6, true);
+    });
+    // Pickups: a bright rising chime.
+    bus.on("pickup", () => {
+      this.blip(990);
+      setTimeout(() => this.blip(1480), 70);
+    });
+    // Kill streak call-outs climb in pitch.
+    bus.on("streak", (e) => this.zap(500 + e.chain * 90, 1400 + e.chain * 120, 0.18, "triangle", 0.07));
     // Unibeam: a rising whine while charging, then a deep blast.
     bus.on("unibeam", (e) => {
       if (e.charging) this.zap(200, 1800, 0.45, "sawtooth", 0.08);

@@ -24,7 +24,7 @@ export interface GameEvents extends Record<string, unknown> {
   alert: { text: string; level: AlertLevel; ttl?: number };
   modeChanged: { mode: string };
   impact: { speed: number };
-  landed: { hard: boolean };
+  landed: { hard: boolean; speed: number; suited: boolean };
   areaChanged: { name: string };
   qualityChanged: { quality: string };
   /** Suit transformation started (toSuited) / finished (suited). */
@@ -50,5 +50,8 @@ export interface GameEvents extends Record<string, unknown> {
   playerDied: { cause: "fall" | "water"; speed: number };
   weapon: { kind: "repulsor" | "rocket" | "enemyBolt" | "missile" | "laser"; x: number; y: number; z: number };
   explosion: { x: number; y: number; z: number; size: number };
-  kill: { kind: string; total: number };
+  kill: { kind: string; total: number; x: number; y: number; z: number };
+  superLanding: { hits: number };
+  pickup: { kind: string };
+  streak: { chain: number; label: string };
 }

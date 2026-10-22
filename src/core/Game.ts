@@ -42,6 +42,9 @@ import { Progress as HeroProgress, RANKS } from "../gameplay/Progress";
 
 const rankLow = (i: number) => RANKS[i][0];
 import { Contrails } from "../player/Contrails";
+import { KillStreak } from "../gameplay/Streaks";
+import { Pickups, type Pickup } from "../gameplay/Pickups";
+import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 
@@ -75,6 +78,12 @@ export class Game {
   projectiles!: ProjectileSystem;
   combat!: Combat;
   private enemyRenderer!: EnemyRenderer;
+  /** Kill streaks (chained kills: call-outs and an XP multiplier). */
+  readonly streak = new KillStreak();
+  pickups!: Pickups;
+  private pickupRenderer!: PickupRenderer;
+  /** Slow-motion "hero moment" (real seconds left) after a big kill. */
+  private slowmo = 0;
   private projRenderer!: ProjectileRenderer;
   private speedFx!: SpeedFx;
   /** The armour as an independent unit (parked, sentry, flying in). */
@@ -182,6 +191,8 @@ export class Game {
     };
     this.combat = new Combat(this.world, this.enemies, this.projectiles, this.bus);
     this.enemyRenderer = new EnemyRenderer(scene, this.mats);
+    this.pickups = new Pickups(this.world);
+    this.pickupRenderer = new PickupRenderer(scene, this.mats);
     this.projRenderer = new ProjectileRenderer(scene, this.mats);
     this.speedFx = new SpeedFx(scene, this.mats);
     this.clouds = new Clouds(scene);
@@ -285,6 +296,7 @@ export class Game {
       this.cam.addShake(e.hard ? 0.7 : 0.15);
       const p = this.player;
       this.projectiles.dust({ x: p.pos.x, y: p.pos.y, z: p.pos.z }, e.hard ? 0.9 : 0.35);
+      if (e.hard && e.suited && !this.remote) this.superheroLanding(e.speed);
       this.updateHint();
     });
     bus.on("suitTransform", (e) => {
@@ -312,9 +324,22 @@ export class Game {
     bus.on("trick", (e) => this.hud.popup(e.combo > 1 ? `${e.name} ×${e.combo}` : e.name));
     bus.on("nearMiss", (e) => this.hud.popup(e.streak > 1 ? `CLOSE CALL ×${e.streak}` : "CLOSE CALL"));
     bus.on("kill", (e) => {
-      const score = ENEMY_STATS[e.kind as EnemyKind].score;
-      this.hud.popup(`${e.kind.toUpperCase()} DOWN · +${score}`);
+      const stats = ENEMY_STATS[e.kind as EnemyKind];
+      const st = this.streak.kill(this.time);
+      const score = Math.round(stats.score * st.multiplier);
+      this.hud.popup(st.label ? `${st.label} ×${st.multiplier.toFixed(2).replace(/0$/, "")} · +${score}` : `${e.kind.toUpperCase()} DOWN · +${score}`);
       this.progress.add(score);
+      if (st.label) {
+        this.cam.addKick(0.05 + Math.min(0.1, st.chain * 0.01));
+        this.bus.emit("streak", { chain: st.chain, label: st.label });
+      }
+      this.pickups.onKill(e.kind as EnemyKind, e.x, e.y, e.z);
+      // Bosses go down in slow motion.
+      if (stats.hp >= 600) {
+        this.slowmo = 1.1;
+        this.cam.addShake(0.8);
+        this.hud.popup(`${e.kind.toUpperCase()} DESTROYED · +${score}`);
+      }
     });
     bus.on("rescue", (e) => {
       if (e.saved) {
@@ -621,6 +646,56 @@ export class Game {
     this.bus.emit("alert", { text: "Returned to Avengers Tower landing pad", level: "info" });
   }
 
+  /**
+   * Superhero landing: slamming down in the suit sends out a shockwave that
+   * damages and throws nearby hostiles (harder landings hit harder).
+   */
+  private superheroLanding(speed: number): void {
+    const p = this.player;
+    const radius = 16;
+    const power = Math.min(1.6, 0.7 + speed / 60);
+    let hit = 0;
+    for (const e of this.enemies.enemies) {
+      if (!e.alive) continue;
+      const c = this.enemies.center(e);
+      const d = Math.hypot(c.x - p.pos.x, c.y - p.pos.y, c.z - p.pos.z);
+      if (d > radius) continue;
+      const k = 1 - d / radius;
+      this.enemies.damage(e, 70 * power * k);
+      const push = 18 * k;
+      e.vx += ((c.x - p.pos.x) / (d || 1)) * push;
+      e.vz += ((c.z - p.pos.z) / (d || 1)) * push;
+      e.vy += 8 * k;
+      hit++;
+    }
+    const at = { x: p.pos.x, y: p.pos.y + 0.2, z: p.pos.z };
+    this.projectiles.dust(at, 1.8);
+    this.projectiles.scrape(at, 80);
+    this.cam.addShake(0.9);
+    this.cam.addKick(0.1);
+    this.hud.popup(hit > 0 ? `SUPERHERO LANDING · ${hit} HIT` : "SUPERHERO LANDING");
+    if (hit > 0) this.progress.add(50 * hit);
+    this.bus.emit("superLanding", { hits: hit });
+  }
+
+  /** Apply collected salvage. */
+  private collect(item: Pickup): void {
+    const p = this.player;
+    if (item.kind === "repair") {
+      p.suit.repair(18);
+      this.hud.popup("+ REPAIR");
+    } else if (item.kind === "power") {
+      p.suit.charge(30);
+      this.hud.popup("+ POWER");
+    } else {
+      this.combat.refill();
+      this.hud.popup("+ ROCKETS REARMED");
+    }
+    this.cam.addKick(0.04);
+    this.projectiles.fx.push({ kind: "spark", x: item.x, y: item.y, z: item.z, size: 1.4, t: 0, life: 0.2, yaw: 0, pitch: 0 });
+    this.bus.emit("pickup", { kind: item.kind });
+  }
+
   /** Debug/test helper: spawn an enemy relative to the player's facing. */
   spawnEnemy(kind: EnemyKind, forward: number, up: number, right = 0): void {
     const p = this.player;
@@ -734,7 +809,10 @@ export class Game {
   }
 
   private frame(): void {
-    const dt = Math.min(0.05, this.engine.getDeltaTime() / 1000);
+    const real = Math.min(0.05, this.engine.getDeltaTime() / 1000);
+    // Hero moment: time slows briefly after a boss goes down.
+    const dt = this.slowmo > 0 ? real * 0.3 : real;
+    this.slowmo = Math.max(0, this.slowmo - real);
     if (!this.paused) {
       // Track the simulation's own CPU cost per frame (excludes GPU work).
       const t0 = performance.now();
@@ -817,6 +895,9 @@ export class Game {
     this.projectiles.update(dt);
     if (this.projectiles.hitsThisFrame > 0) this.hud.hitMarker();
     this.enemyRenderer.update(this.enemies);
+    const c = p.center;
+    for (const item of this.pickups.update(dt, c.x, c.y, c.z, p.suited && !this.remote && !p.dead)) this.collect(item);
+    this.pickupRenderer.update(this.pickups.items, this.time);
     this.projRenderer.update(this.projectiles, camPos);
     this.speedFx.update(camPos, p);
     this.clouds.update(dt, camPos);
@@ -885,6 +966,7 @@ export class Game {
     if (this.slowHud <= 0) {
       this.slowHud = 0.1;
       this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 0, this.combat.rocketReload);
+      this.hud.setStreak(this.streak.chain, this.streak.remaining(this.time) / 3.5);
       this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
       const rank = this.progress.rank;
       const lo = rankLow(rank.index);

@@ -138,6 +138,7 @@ export class Hud {
         <div class="d-xp"><i class="v-xp"></i></div>
       </div>
       <div class="h-popup"></div>
+      <div class="h-streak"><b class="v-streak"></b><span><i class="v-streakbar"></i></span></div>
       <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
       <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Suit parked</b></div>
       <div class="h-mode"><b class="v-mode">GROUND</b><span class="v-hint"></span></div>
@@ -197,6 +198,15 @@ export class Hud {
       n++;
     }
     for (let k = n; k < this.targetEls.length; k++) if (this.targetEls[k].style.display !== "none") this.targetEls[k].style.display = "none";
+  }
+
+  /** Kill-streak chip: chain length and the fraction of the window left (0..1). */
+  setStreak(chain: number, left: number): void {
+    const on = chain > 1 && left > 0;
+    this.el.classList.toggle("streaking", on);
+    if (!on) return;
+    this.text(".v-streak", `STREAK ×${chain}`);
+    this.q(".v-streakbar").style.transform = `scaleX(${left.toFixed(2)})`;
   }
 
   /** `reload` = seconds until the rocket pod is rearmed (0 when full). */
