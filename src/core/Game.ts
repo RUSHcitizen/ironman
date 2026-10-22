@@ -905,7 +905,7 @@ export class Game {
 
   /** The toughest engaged heavy unit nearby gets a boss bar. */
   private updateBossBar(dt: number): void {
-    const names: Partial<Record<EnemyKind, string>> = { titan: "TITAN", carrier: "DREADNOUGHT CARRIER", warbot: "WARBOT", spider: "SPIDER WALKER", gunship: "GUNSHIP", tank: "HOVER TANK" };
+    const names: Partial<Record<EnemyKind, string>> = { titan: "TITAN", carrier: "DREADNOUGHT CARRIER", rival: "ROGUE ARMOUR", bomber: "HEAVY BOMBER", warbot: "WARBOT", spider: "SPIDER WALKER", gunship: "GUNSHIP", tank: "HOVER TANK" };
     let best: (typeof this.enemies.enemies)[number] | null = null;
     const p = this.player.pos;
     for (const e of this.enemies.enemies) {
@@ -930,7 +930,7 @@ export class Game {
     b.length = 0;
     for (const e of this.enemies.enemies) {
       if (!e.alive || isCloaked(e)) continue;
-      b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "titan" || e.kind === "spider" });
+      b.push({ x: e.x, z: e.z, kind: AIR_KINDS.has(e.kind) ? "air" : "hostile", big: e.kind === "carrier" || e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "titan" || e.kind === "spider" || e.kind === "bomber" || e.kind === "rival" });
     }
     for (const m of this.hud.markers) b.push({ x: m.x, z: m.z, kind: m.kind === "event" ? "event" : m.kind === "suit" ? "suit" : "poi" });
     this.hud.updateRadar(1, this.player, b);

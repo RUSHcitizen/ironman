@@ -20,10 +20,17 @@ export type EnemyKind =
   | "sentinel"
   | "spider"
   | "cloaker"
-  | "titan";
+  | "titan"
+  | "bomber"
+  | "mine"
+  | "turret"
+  | "rival";
 
 /** Flying kinds (spawned in the air, not on a surface). */
-export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker"]);
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker", "bomber", "mine", "rival"]);
+
+/** Air mines detonate within this distance of a target. */
+export const MINE_TRIGGER = 4.5;
 
 /** EMP pulse radius of the jammer drone. */
 export const EMP_RADIUS = 32;
@@ -59,6 +66,10 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   spider: { hp: 170, radius: 2.6, centerY: 1.6, range: 320, score: 550 },
   cloaker: { hp: 40, radius: 1.1, centerY: 0, range: 260, score: 400 },
   titan: { hp: 950, radius: 5, centerY: 5.8, range: 420, score: 2500 },
+  bomber: { hp: 320, radius: 4.2, centerY: 0, range: 520, score: 900 },
+  mine: { hp: 10, radius: 0.9, centerY: 0, range: 110, score: 60 },
+  turret: { hp: 150, radius: 1.8, centerY: 1.3, range: 400, score: 450 },
+  rival: { hp: 600, radius: 1.2, centerY: 0, range: 420, score: 2200 },
 };
 
 /** Is this enemy currently invisible (cloaked)? */
@@ -291,6 +302,14 @@ export class EnemyManager {
       // Senses the lock and slips sideways while still invisible.
       e.strafe *= -1;
       e.dodgeCooldown = 2;
+    } else if (e.kind === "rival" && e.state !== "charge" && this.rng.chance(0.55)) {
+      // The rogue armour barrel-rolls out of the line of fire.
+      const s = this.rng.chance(0.5) ? 1 : -1;
+      e.vx += Math.cos(e.yaw) * s * 45;
+      e.vz += -Math.sin(e.yaw) * s * 45;
+      e.vy += this.rng.range(-6, 10);
+      e.jet = 1;
+      e.dodgeCooldown = 1.6;
     } else if ((e.kind === "trooper" || e.kind === "sniper") && e.state !== "hop" && this.rng.chance(0.25)) {
       this.startHop(e);
       e.dodgeCooldown = 3;
@@ -319,9 +338,10 @@ export class EnemyManager {
       e.alive = false;
       this.kills++;
       const c = this.center(e);
-      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider";
-      const size = e.kind === "carrier" || e.kind === "titan" ? 16 : big ? 9 : e.kind === "kamikaze" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
-      this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : 0, true);
+      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider" || e.kind === "bomber" || e.kind === "rival" || e.kind === "turret";
+      const size = e.kind === "carrier" || e.kind === "titan" ? 16 : big ? 9 : e.kind === "kamikaze" || e.kind === "mine" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
+      // Shot mines still go off (chain reactions through a minefield).
+      this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : e.kind === "mine" ? 14 : 0, true);
       this.weapons?.wreck(c, size);
       this.bus?.emit("kill", { kind: e.kind, total: this.kills });
     } else if (e.kind === "drone" && e.hp < e.maxHp * 0.35 && e.state !== "retreat") {
@@ -405,6 +425,18 @@ export class EnemyManager {
           break;
         case "titan":
           this.updateWarbot(e, dt, p, d);
+          break;
+        case "bomber":
+          this.updateBomber(e, dt, p, d);
+          break;
+        case "mine":
+          this.updateMine(e, dt, p, d);
+          break;
+        case "turret":
+          this.updateTurret(e, dt, p, d);
+          break;
+        case "rival":
+          this.updateRival(e, dt, p, d);
           break;
       }
     }
@@ -525,7 +557,7 @@ export class EnemyManager {
     e.burstTimer = interval;
     e.burstLeft--;
     const from = this.center(e);
-    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : e.kind === "gunship" ? -1 : e.kind === "carrier" ? -5 : 0;
+    from.y += e.kind === "trooper" ? 0.3 : e.kind === "warbot" ? 1.2 : e.kind === "gunship" ? -1 : e.kind === "carrier" ? -5 : e.kind === "bomber" ? -1.5 : 0;
     this.weapons?.bolt(from, this.aimAt(from, p, speed, spread), speed, damage);
   }
 
@@ -1136,6 +1168,183 @@ export class EnemyManager {
    * Cloaker: invisible stealth drone. It shimmers into view only to fire a
    * burst, then fades again. Hitting it knocks the cloak off briefly.
    */
+  /**
+   * Heavy bomber: flies straight carpet-bombing runs over the target, drops a
+   * stick of bombs while overhead, then extends and turns for another pass.
+   * A tail gunner covers its six.
+   */
+  private updateBomber(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    const alt = Math.max(e.anchor.y, t.y + 45);
+    if (!e.aware) {
+      e.orbit += dt * 0.08;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 180, e.anchor.y, e.anchor.z + Math.sin(e.orbit) * 180, 30, dt, 0.6);
+    } else if (e.state === "retreat") {
+      // Extend past the target, then swing round.
+      e.stateTimer -= dt;
+      this.steerTo(e, e.x + e.vx * 3 + Math.cos(e.phase * 0.4) * 40, alt, e.z + e.vz * 3 + Math.sin(e.phase * 0.4) * 40, 48, dt, 0.5);
+      if (e.stateTimer <= 0) e.state = "engage";
+    } else {
+      // Run in toward the target's position.
+      this.steerTo(e, t.x, alt, t.z, 48, dt, 0.7);
+      const flat = Math.hypot(t.x - e.x, t.z - e.z);
+      e.charge = Math.max(0, 1 - flat / 120);
+      e.fireTimer -= dt;
+      if (flat < 70 && e.fireTimer <= 0) {
+        // Bombs away: they keep some of the bomber's speed and arc down.
+        e.fireTimer = 0.25;
+        const from = { x: e.x, y: e.y - 2.2, z: e.z };
+        this.weapons?.shell(from, { x: e.vx * 0.7, y: -4, z: e.vz * 0.7 }, 22);
+      }
+      // Past the target and opening the range: extend for the next pass.
+      const passed = (t.x - e.x) * e.vx + (t.z - e.z) * e.vz < 0;
+      if (passed && flat > 50) {
+        e.state = "retreat";
+        e.stateTimer = this.rng.range(5, 7);
+        e.charge = 0;
+      }
+    }
+    // Tail gunner.
+    e.missileTimer -= dt;
+    if (e.aware && e.los && e.missileTimer <= 0 && d < 260) {
+      e.missileTimer = this.rng.range(2.5, 4);
+      e.burstLeft = 4;
+    }
+    this.burst(e, dt, p, 110, 4, 0.12, 0.03);
+    const sp = Math.hypot(e.vx, e.vz);
+    if (sp > 2) this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 1.2);
+    this.flyMove(e, dt, 30);
+  }
+
+  /**
+   * Air mine: hangs in the sky (bobbing), wakes when something flies close,
+   * drifts after it blinking faster and faster, and detonates on contact.
+   */
+  private updateMine(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    const near = p.targetable && d < ENEMY_STATS.mine.range * 0.45;
+    if (!near) {
+      e.charge = Math.max(0, e.charge - dt);
+      this.steerTo(e, e.anchor.x, e.anchor.y + Math.sin(e.phase * 1.3) * 1.2, e.anchor.z, 3, dt, 1);
+      this.flyMove(e, dt, 2);
+      return;
+    }
+    e.charge = Math.min(1, e.charge + dt * 0.8);
+    this.steerTo(e, t.x, t.y, t.z, 9 + e.charge * 9, dt, 1.5);
+    this.flyMove(e, dt, 1);
+    if (d < MINE_TRIGGER) {
+      e.alive = false;
+      this.weapons?.explode(this.center(e), 6, 16, true);
+    }
+  }
+
+  /**
+   * Rooftop flak turret: tracks flyers and fires bursts of air-burst shells
+   * that detonate around the target's predicted position.
+   */
+  private updateTurret(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.yaw += dt * 0.3; // sweeping the sky
+      e.charge = 0;
+      return;
+    }
+    this.faceTowards(e, t, dt, 3);
+    e.fireTimer -= dt;
+    if (e.fireTimer <= 0 && e.los && d < ENEMY_STATS.turret.range) {
+      e.fireTimer = this.rng.range(2.2, 3.2);
+      e.burstLeft = 3;
+      e.charge = 1;
+    }
+    e.charge = Math.max(0, e.charge - dt * 0.8);
+    if (e.burstLeft > 0) {
+      e.burstTimer -= dt;
+      if (e.burstTimer <= 0) {
+        e.burstTimer = 0.28;
+        e.burstLeft--;
+        e.flash = Math.max(e.flash, 0.4);
+        // Flak: aim ahead of the target and scatter, so moving targets get missed.
+        const tof = d / 220;
+        const r = 7 + this.rng.range(0, 7);
+        const a = this.rng.range(0, Math.PI * 2);
+        const at = { x: t.x + p.vel.x * tof * 0.7 + Math.cos(a) * r, y: t.y + p.vel.y * tof * 0.7 + this.rng.range(-3, 5), z: t.z + p.vel.z * tof * 0.7 + Math.sin(a) * r };
+        this.weapons?.beam(this.center(e), at, "telegraph");
+        this.weapons?.explode(at, 4.5, 6, true);
+      }
+    }
+  }
+
+  /**
+   * Rogue armour (mini-boss): a rival powered suit. Circle-strafes firing
+   * paired repulsor blasts, launches missile salvos, barrel-rolls away from
+   * your shots and makes boosted ramming dashes.
+   */
+  private updateRival(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    e.jet = Math.max(0, e.jet - dt * 2);
+    if (!e.aware) {
+      e.orbit += dt * 0.4;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 30, e.anchor.y + Math.sin(e.phase) * 3, e.anchor.z + Math.sin(e.orbit) * 30, 18, dt, 1.5);
+      this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 3);
+      this.flyMove(e, dt, 6);
+      return;
+    }
+    this.faceTowards(e, t, dt, 8);
+    e.stateTimer -= dt;
+    if (e.state === "charge") {
+      // Boosted ramming dash.
+      e.jet = 1;
+      const dir = norm({ x: t.x - e.x, y: t.y - e.y, z: t.z - e.z });
+      this.steerTo(e, t.x + dir.x * 20, t.y + dir.y * 20, t.z + dir.z * 20, 105, dt, 4);
+      if (d < 5) {
+        this.weapons?.explode(this.center(e), 3.5, 14, true);
+        e.state = "retreat";
+        e.stateTimer = 1.5;
+      } else if (e.stateTimer <= 0) {
+        e.state = "engage";
+        e.stateTimer = this.rng.range(4, 7);
+      }
+    } else if (e.state === "retreat") {
+      const away = norm({ x: e.x - t.x, y: 0.4, z: e.z - t.z });
+      this.steerTo(e, e.x + away.x * 60, e.y + away.y * 60, e.z + away.z * 60, 70, dt, 3);
+      if (e.stateTimer <= 0) {
+        e.state = "engage";
+        e.stateTimer = this.rng.range(4, 7);
+      }
+    } else {
+      e.moveTimer -= dt;
+      if (e.moveTimer <= 0) {
+        e.moveTimer = this.rng.range(1.2, 2.6);
+        if (this.rng.chance(0.5)) e.strafe *= -1;
+      }
+      e.orbit += e.strafe * dt * 0.9;
+      const radius = 45 + Math.sin(e.phase * 0.6) * 12;
+      this.steerTo(e, t.x + Math.cos(e.orbit) * radius, t.y + 8 + Math.sin(e.phase * 1.1) * 6, t.z + Math.sin(e.orbit) * radius, 58, dt, 2.5);
+      // Paired repulsor blasts.
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0 && e.los && d < ENEMY_STATS.rival.range) {
+        e.fireTimer = this.rng.range(0.9, 1.5);
+        e.burstLeft = 2;
+      }
+      // Missile salvo.
+      e.missileTimer -= dt;
+      if (e.missileTimer <= 0 && e.los) {
+        e.missileTimer = this.rng.range(7, 10);
+        const from = this.center(e);
+        for (let k = 0; k < 4; k++) {
+          const dir = this.aimAt(from, p, 80, 0.25);
+          this.weapons?.missile(from, { x: dir.x, y: dir.y + 0.3, z: dir.z }, 9);
+        }
+      }
+      if (e.stateTimer <= 0 && d < 160) {
+        e.state = "charge";
+        e.stateTimer = 2.2;
+      }
+    }
+    this.burst(e, dt, p, 160, 5, 0.12, 0.02);
+    this.flyMove(e, dt, 5);
+  }
+
   private updateCloaker(e: Enemy, dt: number, p: CombatTarget, d: number): void {
     const t = p.center;
     e.orbit += e.strafe * dt * 0.5;

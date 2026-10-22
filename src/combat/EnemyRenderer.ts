@@ -333,6 +333,90 @@ export class EnemyRenderer {
       2,
     );
 
+    // Heavy bomber: a flying wing with four rear engines and a tail gun.
+    const bomberHull: RGB = [0.2, 0.21, 0.24];
+    make(
+      "bomber",
+      g.merge("bomberBody", [
+        g.box(15, 0.5, 3.6, bomberHull, 0, 0, -0.6),
+        g.box(9, 0.6, 2.4, bomberHull, 0, 0.05, 1.6),
+        g.sphere(1.4, GUN, 0, 0.3, 1.2, 10, 1, 0.7, 3.2),
+        g.box(0.2, 2.0, 1.6, DARK, -2.6, 1.0, -2.2),
+        g.box(0.2, 2.0, 1.6, DARK, 2.6, 1.0, -2.2),
+        g.cyl(0.55, 0.55, 2.0, DARK, -4.6, -0.3, -2.0, 10, Math.PI / 2),
+        g.cyl(0.55, 0.55, 2.0, DARK, -2.0, -0.3, -2.2, 10, Math.PI / 2),
+        g.cyl(0.55, 0.55, 2.0, DARK, 2.0, -0.3, -2.2, 10, Math.PI / 2),
+        g.cyl(0.55, 0.55, 2.0, DARK, 4.6, -0.3, -2.0, 10, Math.PI / 2),
+        g.box(1.8, 0.7, 1.4, DARK, 0, -0.6, 0.6),
+        g.cyl(0.12, 0.12, 1.6, DARK, 0, 0.2, -3.6, 6, Math.PI / 2),
+      ]),
+      g.merge("bomberGlow", [
+        g.cyl(0.42, 0.42, 0.1, W1, -4.6, -0.3, -3.05, 10, Math.PI / 2),
+        g.cyl(0.42, 0.42, 0.1, W1, -2.0, -0.3, -3.25, 10, Math.PI / 2),
+        g.cyl(0.42, 0.42, 0.1, W1, 2.0, -0.3, -3.25, 10, Math.PI / 2),
+        g.cyl(0.42, 0.42, 0.1, W1, 4.6, -0.3, -3.05, 10, Math.PI / 2),
+        g.sphere(0.2, W1, -7.5, 0, -0.6, 4),
+        g.sphere(0.2, W1, 7.5, 0, -0.6, 4),
+        g.box(1.4, 0.12, 0.9, W1, 0, -0.98, 0.6),
+      ]),
+      4,
+    );
+    // Air mine: a spiked sphere with a blinking core band.
+    make(
+      "mine",
+      g.merge("mineBody", [
+        g.sphere(0.6, GUN, 0, 0, 0, 10),
+        g.cyl(0.0, 0.12, 0.55, DARK, 0, 0.7, 0, 6),
+        g.cyl(0.12, 0.0, 0.55, DARK, 0, -0.7, 0, 6),
+        g.cyl(0.0, 0.12, 0.55, DARK, 0.7, 0, 0, 6, 0, -Math.PI / 2),
+        g.cyl(0.0, 0.12, 0.55, DARK, -0.7, 0, 0, 6, 0, Math.PI / 2),
+        g.cyl(0.0, 0.12, 0.55, DARK, 0, 0, 0.7, 6, Math.PI / 2),
+        g.cyl(0.0, 0.12, 0.55, DARK, 0, 0, -0.7, 6, -Math.PI / 2),
+      ]),
+      g.merge("mineGlow", [g.cyl(0.64, 0.64, 0.12, W1, 0, 0, 0, 14)]),
+      40,
+    );
+    // Rooftop flak turret: armoured base, rotating head, twin barrels.
+    make(
+      "turret",
+      g.merge("turretBody", [
+        g.box(3.0, 0.8, 3.0, DARK, 0, 0.4, 0),
+        g.cyl(1.1, 1.3, 0.6, GUN, 0, 1.1, 0, 12),
+        g.box(1.9, 1.0, 1.7, GUN, 0, 1.75, 0),
+        g.cyl(0.16, 0.16, 2.8, DARK, -0.45, 1.85, 1.9, 8, Math.PI / 2),
+        g.cyl(0.16, 0.16, 2.8, DARK, 0.45, 1.85, 1.9, 8, Math.PI / 2),
+      ]),
+      g.merge("turretGlow", [g.sphere(0.14, W1, -0.45, 1.85, 3.3, 4), g.sphere(0.14, W1, 0.45, 1.85, 3.3, 4), g.box(1.2, 0.12, 0.05, W1, 0, 2.0, 0.87)]),
+      12,
+    );
+    // Rogue armour: a gunmetal rival suit with an orange visor and reactor.
+    const steel: RGB = [0.32, 0.33, 0.36];
+    const black: RGB = [0.07, 0.07, 0.08];
+    make(
+      "rival",
+      g.merge("rivalBody", [
+        g.sphere(0.42, steel, 0, 0.35, 0, 10, 1.1, 1.0, 0.75),
+        g.box(0.6, 0.35, 0.4, black, 0, -0.05, 0),
+        g.sphere(0.17, steel, 0, 0.95, 0.02, 8, 1, 1.15, 1.05),
+        g.sphere(0.16, black, -0.5, 0.6, 0, 6),
+        g.sphere(0.16, black, 0.5, 0.6, 0, 6),
+        g.cyl(0.08, 0.07, 0.75, steel, -0.55, 0.2, 0, 8),
+        g.cyl(0.08, 0.07, 0.75, steel, 0.55, 0.2, 0, 8),
+        g.cyl(0.1, 0.08, 0.9, steel, -0.15, -0.65, 0, 8),
+        g.cyl(0.1, 0.08, 0.9, steel, 0.15, -0.65, 0, 8),
+        g.box(0.5, 0.45, 0.18, black, 0, 0.35, -0.38),
+      ]),
+      g.merge("rivalGlow", [
+        g.cyl(0.1, 0.1, 0.04, W1, 0, 0.4, 0.33, 12, Math.PI / 2),
+        g.box(0.18, 0.04, 0.03, W1, 0, 1.0, 0.18),
+        g.sphere(0.06, W1, -0.15, -1.13, 0, 4),
+        g.sphere(0.06, W1, 0.15, -1.13, 0, 4),
+        g.sphere(0.05, W1, -0.55, -0.2, 0, 4),
+        g.sphere(0.05, W1, 0.55, -0.2, 0, 4),
+      ]),
+      3,
+    );
+
     // Shield bubble (one per shield drone), faint additive purple.
     this.bubble = CreateSphere("shieldBubble", { diameter: 2, segments: 16 }, scene);
     this.bubble.material = mats.additive("shieldMat", Color3.White(), 1);
@@ -438,6 +522,25 @@ export class EnemyRenderer {
     } else if (e.kind === "carrier") {
       pitch = Math.sin(e.phase * 0.3) * 0.03;
       roll = Math.sin(e.phase * 0.23) * 0.04;
+    } else if (e.kind === "bomber") {
+      // Lumbering banks into its turns, a slow wallow otherwise.
+      const side = e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw);
+      roll = Math.max(-0.5, Math.min(0.5, -side * 0.03)) + Math.sin(e.phase * 0.7) * 0.03;
+      pitch = Math.sin(e.phase * 0.5) * 0.02;
+    } else if (e.kind === "mine") {
+      // Tumbles slowly; shivers when armed.
+      roll = e.phase * 0.6 + (e.charge > 0 ? Math.sin(e.phase * 40) * 0.05 * e.charge : 0);
+      pitch = e.phase * 0.4;
+    } else if (e.kind === "turret") {
+      // Barrels raised toward the sky, kicking back as each shell fires.
+      pitch = -0.5 + e.flash * 0.15;
+    } else if (e.kind === "rival") {
+      // Flies like a suit: leans into its velocity, flat out on a dash.
+      const fwd = e.vx * Math.sin(e.yaw) + e.vz * Math.cos(e.yaw);
+      const side = e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw);
+      pitch = e.state === "charge" ? 1.35 : Math.max(-0.4, Math.min(0.9, fwd * 0.02));
+      roll = Math.max(-0.9, Math.min(0.9, -side * 0.03)) + e.jet * Math.sin(e.phase * 14) * 0.6;
+      y += Math.sin(e.phase * 3) * 0.12;
     }
     const spin = e.kind === "jammer" ? e.phase * (1.5 + e.charge * 12) : e.kind === "shielder" ? e.phase * 0.9 : 0;
     Quaternion.RotationYawPitchRollToRef(e.yaw + spin, pitch, roll, this.q);
@@ -492,6 +595,29 @@ export class EnemyRenderer {
       gr = 0.4 + Math.sin(e.phase * 30) * 0.2;
       gg = 0.9;
       gb = 1.3;
+    } else if (e.kind === "bomber") {
+      // Engines burn orange; the belly light flashes red over the drop zone.
+      gr = 1.3;
+      gg = 0.45 + (e.charge > 0.5 && Math.sin(e.phase * 20) > 0 ? -0.3 : 0);
+      gb = 0.12;
+    } else if (e.kind === "mine") {
+      // Slow red pulse; frantic blinking once it is chasing you.
+      const rate = 3 + e.charge * 30;
+      const on = Math.sin(e.phase * rate) > 0 ? 1 : 0.15;
+      gr = 1.4 * on;
+      gg = 0.1 * on;
+      gb = 0.05;
+    } else if (e.kind === "turret") {
+      const c = 0.5 + e.charge * 1.5 + e.flash * 2;
+      gr = c;
+      gg = 0.45 * c;
+      gb = 0.1;
+    } else if (e.kind === "rival") {
+      // Orange reactor and visor, boots flaring on a dash.
+      const c = 1 + e.jet * 1.2;
+      gr = 1.4 * c;
+      gg = 0.55 * c;
+      gb = 0.12;
     } else if (e.kind === "warbot" || e.kind === "tank" || e.kind === "sniper" || e.kind === "spider" || e.kind === "titan") {
       const c = 0.5 + e.charge * 1.5;
       gr = c;

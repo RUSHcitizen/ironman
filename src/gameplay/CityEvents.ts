@@ -83,6 +83,11 @@ const TEMPLATES: Template[] = [
   { title: "Spider walkers", detail: "Six-legged walkers lobbing mortars down the avenue", place: "street", squad: ["spider", "spider", "trooper", "trooper"], minLevel: 2 },
   { title: "Ghost squadron", detail: "Cloaked drones - they only show when they fire", place: "air", squad: ["cloaker", "cloaker", "cloaker", "drone"], minLevel: 2 },
   { title: "TITAN AWAKENS", detail: "Super-heavy mech - dodge the laser and the stomp", place: "street", squad: ["titan", "sentinel", "sentinel", "spider"], minLevel: 4 },
+  { title: "Bombing run", detail: "Heavy bombers carpet-bombing the streets - shoot them down before the next pass", place: "air", squad: ["bomber", "jet", "jet"], minLevel: 2 },
+  { title: "Minefield", detail: "Air mines drifting over the district - thread through or pop them from range", place: "air", squad: ["mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "jammer"], minLevel: 1 },
+  { title: "Flak alley", detail: "Rooftop flak turrets - keep jinking, the bursts lead you", place: "roof", squad: ["turret", "turret", "turret", "drone", "drone"], minLevel: 1 },
+  { title: "ROGUE ARMOUR", detail: "A rival suit wants a duel - it dodges, dashes and fires missiles", place: "air", squad: ["rival", "swarmer", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
+  { title: "Blitz", detail: "Bombers, flak and mines all at once", place: "roof", squad: ["bomber", "turret", "turret", "mine", "mine", "mine", "mine", "rival"], minLevel: 5 },
   { title: "Flight challenge", detail: "Fly through every ring before the clock runs out - each ring is a speed boost", place: "air", squad: [], course: true },
   { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
@@ -535,18 +540,20 @@ export class CityEvents {
   private placeSquad(t: Template, x: number, y: number, z: number, top: number, group: number): void {
     for (const kind of t.squad) {
       if (AIR_KINDS.has(kind)) {
-        const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(4, 16);
-        const lift = kind === "carrier" ? 75 : kind === "gunship" || kind === "jet" ? 35 : 18;
-        this.enemies.spawn(kind, x + Math.cos(a) * r, Math.max(y, top + lift) + this.rng.range(-4, 6), z + Math.sin(a) * r, group);
+        // Mines are strewn over a wide volume; everything else flies in formation.
+        const a = this.rng.range(0, Math.PI * 2), r = kind === "mine" ? this.rng.range(10, 55) : this.rng.range(4, 16);
+        const lift = kind === "carrier" ? 75 : kind === "bomber" ? 65 : kind === "gunship" || kind === "jet" ? 35 : kind === "rival" ? 22 : 18;
+        const dy = kind === "mine" ? this.rng.range(-15, 25) : this.rng.range(-4, 6);
+        this.enemies.spawn(kind, x + Math.cos(a) * r, Math.max(y, top + lift) + dy, z + Math.sin(a) * r, group);
         continue;
       }
       // Ground units: find a nearby spot at the same surface height that is not inside a building.
       for (let k = 0; k < 20; k++) {
-        const r = kind === "warbot" || kind === "titan" ? 0 : kind === "tank" || kind === "spider" ? this.rng.range(0, 25) : this.rng.range(2, t.place === "roof" ? 9 : 14);
+        const r = kind === "warbot" || kind === "titan" ? 0 : kind === "tank" || kind === "spider" || kind === "turret" ? this.rng.range(0, 25) : this.rng.range(2, t.place === "roof" ? 9 : 14);
         const a = this.rng.range(0, Math.PI * 2);
         const gx = x + Math.cos(a) * r, gz = z + Math.sin(a) * r;
         const s = this.world.surfaceBelow(gx, top + 1, gz, 0.4);
-        const half = kind === "titan" ? 4.2 : kind === "tank" || kind === "warbot" || kind === "spider" ? 2.4 : 0.5;
+        const half = kind === "titan" ? 4.2 : kind === "tank" || kind === "warbot" || kind === "spider" || kind === "turret" ? 2.4 : 0.5;
         const blocked = this.world.overlaps(gx - half, s + 0.4, gz - half, gx + half, s + 1.8, gz + half);
         if (Math.abs(s - top) < 0.6 && !blocked) {
           this.enemies.spawn(kind, gx, s, gz, group);

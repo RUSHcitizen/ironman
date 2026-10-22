@@ -367,3 +367,95 @@ describe("new enemy types", () => {
     expect(d.y).toBeGreaterThan(80);
   });
 });
+
+describe("bombers, mines, flak and the rogue armour", () => {
+  /** An enemy manager with a recording weapons stub and a target we can move. */
+  function arena(at = { x: 0, y: 30, z: 0 }) {
+    const world = new CollisionWorld();
+    const enemies = new EnemyManager(world);
+    const log: { kind: string; at: { x: number; y: number; z: number }; vel?: { x: number; y: number; z: number } }[] = [];
+    enemies.weapons = {
+      bolt: (from) => log.push({ kind: "bolt", at: from }),
+      missile: (from) => log.push({ kind: "missile", at: from }),
+      explode: (a) => log.push({ kind: "explode", at: a }),
+      beam: (_f, to) => log.push({ kind: "beam", at: to }),
+      shell: (from, vel) => log.push({ kind: "shell", at: from, vel }),
+      shockwave: () => {},
+      wreck: () => {},
+      emp: () => {},
+    };
+    const target = { center: { ...at }, vel: { x: 0, y: 0, z: 0 }, targetable: true, evading: false, takeHit: () => true };
+    const step = (seconds: number) => {
+      for (let t = 0; t < seconds; t += 1 / 60) enemies.update(1 / 60, [target]);
+    };
+    return { enemies, log, target, step };
+  }
+
+  it("the bomber flies over the target dropping a stick of bombs, then extends for another pass", () => {
+    const a = arena({ x: 0, y: 10, z: 0 });
+    const b = a.enemies.spawn("bomber", 0, 70, -250);
+    b.aware = true;
+    a.step(12);
+    const bombs = a.log.filter((l) => l.kind === "shell");
+    expect(bombs.length).toBeGreaterThan(3);
+    // Bombs fall from beneath the bomber, near the target, and keep forward speed.
+    for (const s of bombs) {
+      expect(Math.hypot(s.at.x, s.at.z)).toBeLessThan(90);
+      expect(s.vel!.y).toBeLessThan(0);
+    }
+    expect(b.y).toBeGreaterThan(40);
+  });
+
+  it("air mines wake when you come close, chase, and detonate on contact (and chain when shot)", () => {
+    const a = arena({ x: 0, y: 50, z: 0 });
+    const far = a.enemies.spawn("mine", 300, 50, 0);
+    const near = a.enemies.spawn("mine", 30, 50, 0);
+    a.step(8);
+    expect(near.alive).toBe(false);
+    expect(a.log.some((l) => l.kind === "explode")).toBe(true);
+    expect(far.alive).toBe(true);
+    expect(Math.hypot(far.x - 300, far.z)).toBeLessThan(3); // never woke
+    const n = a.log.length;
+    a.enemies.damage(far, 50);
+    expect(far.alive).toBe(false);
+    expect(a.log.length).toBeGreaterThan(n); // a shot mine still blows
+  });
+
+  it("flak turrets track the target and burst shells around where it is heading", () => {
+    const a = arena({ x: 0, y: 80, z: 100 });
+    const tur = a.enemies.spawn("turret", 0, 0, 0);
+    a.step(6);
+    const bursts = a.log.filter((l) => l.kind === "explode");
+    expect(bursts.length).toBeGreaterThanOrEqual(3);
+    for (const b of bursts) expect(Math.hypot(b.at.x - 0, b.at.y - 80, b.at.z - 100)).toBeLessThan(25);
+    // Turned to face the target (north, +z).
+    expect(Math.abs(Math.atan2(Math.sin(tur.yaw), Math.cos(tur.yaw)))).toBeLessThan(0.3);
+    expect(tur.x).toBe(0);
+  });
+
+  it("the rogue armour strafes with repulsors, fires missile salvos, dashes in and dodges when shot at", () => {
+    const a = arena({ x: 0, y: 40, z: 0 });
+    const r = a.enemies.spawn("rival", 0, 45, 80);
+    r.aware = true;
+    let dashed = false;
+    for (let t = 0; t < 20; t += 1 / 60) {
+      a.enemies.update(1 / 60, [a.target]);
+      if (r.state === "charge") dashed = true;
+    }
+    expect(a.log.filter((l) => l.kind === "bolt").length).toBeGreaterThan(6);
+    expect(a.log.filter((l) => l.kind === "missile").length).toBeGreaterThanOrEqual(4);
+    expect(dashed).toBe(true);
+    // Threatened: it often rolls aside.
+    let dodged = 0;
+    for (let k = 0; k < 20; k++) {
+      r.dodgeCooldown = 0;
+      r.state = "engage";
+      const v0 = Math.hypot(r.vx, r.vz);
+      a.enemies.threaten(r);
+      if (Math.hypot(r.vx, r.vz) > v0 + 20) dodged++;
+      r.vx = r.vz = 0;
+    }
+    expect(dodged).toBeGreaterThan(4);
+  });
+});
+
