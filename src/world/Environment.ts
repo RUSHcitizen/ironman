@@ -188,6 +188,40 @@ export class Environment {
     this.applyLight();
   }
 
+  private ground!: Mesh;
+  private water!: Mesh;
+  private patchKey = "";
+
+  /** Re-centre the ground and water patches under the camera (call every frame). */
+  followCamera(x: number, z: number): void {
+    // Cover everything out to the fog (which reaches further when you climb).
+    const reach = Math.min(30000, Math.max(1500, this.scene.fogEnd + 400));
+    const snap = (v: number, step: number) => Math.round(v / step) * step;
+    const half = snap(reach, 100);
+    // Ground: 10 m asphalt tiles, clipped to the island.
+    const lo = Math.ceil(ISLAND_MIN / 10) * 10, hi = Math.floor(ISLAND_MAX / 10) * 10;
+    const gx0 = Math.max(lo, snap(x, 10) - half), gx1 = Math.min(hi, snap(x, 10) + half);
+    const gz0 = Math.max(lo, snap(z, 10) - half), gz1 = Math.min(hi, snap(z, 10) + half);
+    // Water: 25 m tiles, never clipped.
+    const wx = snap(x, 25), wz = snap(z, 25), wh = snap(Math.max(half, 3000), 25);
+    const key = `${gx0},${gx1},${gz0},${gz1},${wx},${wz},${wh}`;
+    if (key === this.patchKey) return;
+    this.patchKey = key;
+    const g = this.ground;
+    const gw = gx1 - gx0, gd = gz1 - gz0;
+    g.setEnabled(gw > 0 && gd > 0);
+    if (gw > 0 && gd > 0) {
+      g.position.set((gx0 + gx1) / 2, 0, (gz0 + gz1) / 2);
+      g.scaling.set(gw, 1, gd);
+      const t = this.mats.asphalt.diffuseTexture as Texture;
+      t.uScale = gw / 10;
+      t.vScale = gd / 10;
+    }
+    this.water.position.set(wx, WATER_Y, wz);
+    this.water.scaling.set(wh * 2, 1, wh * 2);
+    if (this.waterTex) this.waterTex.uScale = this.waterTex.vScale = (wh * 2) / 25;
+  }
+
   update(time: number, dt = 0): void {
     if (this.flashT > 0) {
       // Flicker, then fade.
@@ -295,33 +329,48 @@ export class Environment {
     this.sunDisc = sunDisc;
   }
 
+  /**
+   * Street surface and harbour water are finely subdivided patches that
+   * follow the camera (snapped to whole texture tiles so the texture never
+   * swims). One island-sized quad would have kilometre-long triangles and
+   * texture coordinates in the thousands, which GPUs interpolate badly:
+   * black, flickering, over-bright road.
+   */
   private buildTerrain(): void {
-    const size = ISLAND_MAX - ISLAND_MIN;
-    const ground = CreateGround("ground", { width: size, height: size }, this.scene);
-    ground.position.set((ISLAND_MIN + ISLAND_MAX) / 2, 0, (ISLAND_MIN + ISLAND_MAX) / 2);
-    const asphalt = this.mats.asphalt.diffuseTexture as Texture;
-    asphalt.uScale = asphalt.vScale = size / 10;
+    const ground = CreateGround("ground", { width: 1, height: 1, subdivisions: 32 }, this.scene);
     ground.material = this.mats.asphalt;
     ground.receiveShadows = true;
     ground.isPickable = false;
-    ground.freezeWorldMatrix();
     ground.metadata = { drawOrder: 1 };
+    this.ground = ground;
 
-    // The harbour reaches well past the island on every side (one tile per 25 m).
-    const sea = size + 24000;
-    const water = CreateGround("water", { width: sea, height: sea }, this.scene);
+    const water = CreateGround("water", { width: 1, height: 1, subdivisions: 32 }, this.scene);
     water.position.y = WATER_Y;
     this.waterTex = this.mats.water.diffuseTexture as Texture;
-    this.waterTex.uScale = this.waterTex.vScale = sea / 25;
     water.material = this.mats.water;
     water.isPickable = false;
-    water.freezeWorldMatrix();
     water.metadata = { drawOrder: 1 };
+    this.water = water;
+    this.followCamera(0, 0);
 
-    // Sea wall and waterfront promenade.
+    // Sea wall and waterfront promenade, built from pieces at most 1 km long
+    // (kilometre-scale triangles with huge texture coordinates render badly).
     const b = new GeometryBatch(8, 8);
+    type Faces = Parameters<GeometryBatch["box"]>[3];
+    const piece = (box: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }, color: RGB, faces?: Faces) => {
+      const alongX = box.maxX - box.minX >= box.maxZ - box.minZ;
+      const a0 = alongX ? box.minX : box.minZ, a1 = alongX ? box.maxX : box.maxZ;
+      for (let a = a0; a < a1; a += 1000) {
+        const e = Math.min(a1, a + 1000);
+        b.box(alongX ? { ...box, minX: a, maxX: e } : { ...box, minZ: a, maxZ: e }, color, "world", faces);
+      }
+    };
     const wall: RGB = [0.55, 0.53, 0.5];
-    b.box({ minX: ISLAND_MIN, minY: WATER_Y - 3, minZ: ISLAND_MIN, maxX: ISLAND_MAX, maxY: 0, maxZ: ISLAND_MAX }, wall, "world", { sides: true });
+    const W0 = ISLAND_MIN, W1 = ISLAND_MAX, wy0 = WATER_Y - 3;
+    piece({ minX: W0, minY: wy0, minZ: W0, maxX: W1, maxY: 0, maxZ: W0 + 0.5 }, wall, { sides: true });
+    piece({ minX: W0, minY: wy0, minZ: W1 - 0.5, maxX: W1, maxY: 0, maxZ: W1 }, wall, { sides: true });
+    piece({ minX: W0, minY: wy0, minZ: W0, maxX: W0 + 0.5, maxY: 0, maxZ: W1 }, wall, { sides: true });
+    piece({ minX: W1 - 0.5, minY: wy0, minZ: W0, maxX: W1, maxY: 0, maxZ: W1 }, wall, { sides: true });
     const inner = ROAD_WIDTH / 2;
     const prom: RGB = [0.78, 0.76, 0.72];
     const slabs = [
@@ -330,16 +379,13 @@ export class Environment {
       { minX: ISLAND_MIN, minZ: DISTRICT_MIN - inner, maxX: DISTRICT_MIN - inner, maxZ: DISTRICT_MAX + inner },
       { minX: DISTRICT_MAX + inner, minZ: DISTRICT_MIN - inner, maxX: ISLAND_MAX, maxZ: DISTRICT_MAX + inner },
     ];
-    for (const s of slabs) {
-      const box = { ...s, minY: 0, maxY: SIDEWALK_HEIGHT };
-      b.box(box, prom, "world", { top: true, sides: true });
-    }
+    for (const sl of slabs) piece({ ...sl, minY: 0, maxY: SIDEWALK_HEIGHT }, prom, { top: true, sides: true });
     const rail: RGB = [0.2, 0.22, 0.24];
     const r0 = ISLAND_MIN + 0.3, r1 = ISLAND_MAX - 0.3;
-    b.box({ minX: r0, minY: 0.9, minZ: r0, maxX: r1, maxY: 1.0, maxZ: r0 + 0.08 }, rail, "world");
-    b.box({ minX: r0, minY: 0.9, minZ: r1 - 0.08, maxX: r1, maxY: 1.0, maxZ: r1 }, rail, "world");
-    b.box({ minX: r0, minY: 0.9, minZ: r0, maxX: r0 + 0.08, maxY: 1.0, maxZ: r1 }, rail, "world");
-    b.box({ minX: r1 - 0.08, minY: 0.9, minZ: r0, maxX: r1, maxY: 1.0, maxZ: r1 }, rail, "world");
+    piece({ minX: r0, minY: 0.9, minZ: r0, maxX: r1, maxY: 1.0, maxZ: r0 + 0.08 }, rail);
+    piece({ minX: r0, minY: 0.9, minZ: r1 - 0.08, maxX: r1, maxY: 1.0, maxZ: r1 }, rail);
+    piece({ minX: r0, minY: 0.9, minZ: r0, maxX: r0 + 0.08, maxY: 1.0, maxZ: r1 }, rail);
+    piece({ minX: r1 - 0.08, minY: 0.9, minZ: r0, maxX: r1, maxY: 1.0, maxZ: r1 }, rail);
     const m = b.build("promenade", this.scene, this.mats.concrete);
     if (m) m.receiveShadows = true;
   }

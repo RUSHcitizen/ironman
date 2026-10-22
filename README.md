@@ -70,6 +70,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **HUD:** the objective-complete banner sweeps in, and the achievement toast slides down with a gold glint.
 
 **Graphics**
+- **Road glitch fix:** the street surface was one 122 km quad with texture coordinates in the tens of thousands. GPUs interpolate that badly, so the road flickered, went black or turned over-bright. The street and harbour are now finely subdivided patches that follow the camera, snapped to whole texture tiles so nothing swims, and the shoreline is built from 1 km pieces. The High preset's sharpen and grain filters were removed because they made the fine road texture shimmer.
 - **Weather** (pause menu: Clear / Rain / Storm):
   - Rain streaks surround the camera and stream toward you as you fly.
   - Fog closes in, and the sky and light go grey. This fades out once you climb above the cloud deck at about 500–1000 m.
@@ -79,7 +80,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Sun lens flare** (Medium and High): a soft glare, an anamorphic streak and faint ghosts across the view. It hides behind buildings and fades at the screen edge.
   - It is drawn as a light screen overlay, because Babylon's built-in flare drew at the screen centre with large-world rendering on.
 - **Explosion heat flash:** a warm flash over the view from big nearby blasts.
-- **High preset:** sharpening, fine film grain, and chromatic aberration that pulses when you are hit and at hypersonic/RUSH speeds.
+- **High preset:** chromatic aberration that pulses when you are hit and at hypersonic/RUSH speeds.
 
 ## Milestone 16 – cinematic suit-up
 

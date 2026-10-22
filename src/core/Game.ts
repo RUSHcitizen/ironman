@@ -918,13 +918,8 @@ export class Game {
     pl.bloomScale = 0.5;
     pl.fxaaEnabled = true;
     pl.imageProcessingEnabled = true;
-    // Lens character: crisper edges, fine film grain, and chromatic
-    // aberration that pulses on hits and at hypersonic speed.
-    pl.sharpenEnabled = true;
-    pl.sharpen.edgeAmount = 0.22;
-    pl.grainEnabled = true;
-    pl.grain.intensity = 5;
-    pl.grain.animated = true;
+    // Chromatic aberration that pulses on hits and at hypersonic speed.
+    // (No sharpen / grain: they made the fine road texture shimmer.)
     pl.chromaticAberrationEnabled = true;
     pl.chromaticAberration.aberrationAmount = 0;
     pl.chromaticAberration.radialIntensity = 0.8;
@@ -1073,6 +1068,7 @@ export class Game {
     this.env.update(this.time, dt);
     this.updateWeather(dt, camPos);
     this.env.setAltitude(camPos.y);
+    this.env.followCamera(camPos.x, camPos.z);
     this.traffic.update(dt, p.pos.x, p.pos.z, p.pos.y);
     this.props.setSignalPhase(this.traffic.phase);
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
