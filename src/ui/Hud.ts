@@ -129,6 +129,7 @@ export class Hud {
       <div class="h-radar"><canvas width="220" height="220"></canvas></div>
       <div class="h-targets"></div>
       <div class="h-dmg"></div>
+      <div class="h-blast"></div>
       <div class="h-weap">
         <small>REPULSORS</small><b class="v-rpl">READY</b>
         <small>MICRO-ROCKETS <span class="v-rkt"></span></small><div class="v-pips"></div>
@@ -372,6 +373,11 @@ export class Hud {
     const el = this.q(".h-dmg");
     // Web Animations: restarts without forcing a layout.
     el.animate([{ opacity: Math.min(0.85, 0.25 + amount / 25) }, { opacity: 0 }], { duration: 600, easing: "ease-out" });
+  }
+
+  /** Heat flash from a big nearby explosion (0..1). */
+  blastFlash(amount: number): void {
+    this.q(".h-blast").animate([{ opacity: Math.min(0.7, amount) }, { opacity: 0 }], { duration: 420, easing: "ease-out" });
   }
 
   hitMarker(): void {

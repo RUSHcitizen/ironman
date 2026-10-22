@@ -88,6 +88,8 @@ export class Environment {
   private skyMesh!: Mesh;
   private sunDisc!: Mesh;
   time: TimeOfDay = "sunset";
+  /** Unit vector toward the sun (or moon at night). */
+  readonly sunDir = SUN_DIR.clone();
   private lastSpace = -1;
   /** 0 at ground level, 1 in space. */
   space = 0;
@@ -175,6 +177,7 @@ export class Environment {
     this.hemi.intensity = pal.hemiI;
     this.scene.ambientColor = pal.ground.scale(0.7);
     this.sunDisc.position = dir.scale(6200);
+    this.sunDir.copyFrom(dir);
     this.sunDisc.scaling.setAll(pal.discR / 230);
     (this.sunDisc.material as StandardMaterial).emissiveColor = pal.disc.clone();
     for (const m of [this.mats.masonry, this.mats.glass]) if (m.emissiveTexture) m.emissiveTexture.level = pal.windows;

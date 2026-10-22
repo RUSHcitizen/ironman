@@ -46,6 +46,7 @@ import { KillStreak } from "../gameplay/Streaks";
 import { Pickups, type Pickup } from "../gameplay/Pickups";
 import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { MissionRenderer } from "../gameplay/MissionRenderer";
+import { SunFlare } from "../world/SunFlare";
 import { Achievements } from "../gameplay/Achievements";
 import type { ReactorTarget } from "../gameplay/Missions";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
@@ -86,6 +87,9 @@ export class Game {
   pickups!: Pickups;
   private pickupRenderer!: PickupRenderer;
   private missionRenderer!: MissionRenderer;
+  private sunFlare!: SunFlare;
+  /** Chromatic-aberration kick from taking hits (High quality only). */
+  private hitPulse = 0;
   achievements!: Achievements;
   /** The reactor currently in the enemies' target list (defend missions). */
   private reactorTarget: ReactorTarget | null = null;
@@ -168,6 +172,7 @@ export class Game {
     this.mats = new WorldMaterials(scene);
     await progress(0.1, "Building harbour");
     this.env = new Environment(scene, this.mats);
+    this.sunFlare = new SunFlare(this.uiRoot);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
     await progress(0.15, "Surveying 299 km² of city");
@@ -326,6 +331,7 @@ export class Game {
     bus.on("suitChanged", () => this.syncTouchMode());
     bus.on("playerHit", (e) => {
       this.hud.damageFlash(e.damage);
+      this.hitPulse = Math.min(1, this.hitPulse + e.damage / 15);
       this.cam.addShake(Math.min(0.6, e.damage / 25));
     });
     bus.on("evaded", () => this.hud.popup("EVADED"));
@@ -406,6 +412,7 @@ export class Game {
       this.peds.panic(e.x, e.z, 40 + e.size * 4);
       const d = Math.hypot(e.x - this.player.pos.x, e.y - this.player.pos.y, e.z - this.player.pos.z);
       if (d < 60) this.cam.addShake(Math.min(0.8, (e.size / 10) * (1 - d / 60)));
+      if (e.size >= 5 && d < 140) this.hud.blastFlash((e.size / 18) * (1 - d / 140));
     });
     bus.on("playerDied", (e) => {
       const fast = Math.round(e.speed * 3.6);
@@ -818,6 +825,16 @@ export class Game {
     pl.bloomScale = 0.5;
     pl.fxaaEnabled = true;
     pl.imageProcessingEnabled = true;
+    // Lens character: crisper edges, fine film grain, and chromatic
+    // aberration that pulses on hits and at hypersonic speed.
+    pl.sharpenEnabled = true;
+    pl.sharpen.edgeAmount = 0.22;
+    pl.grainEnabled = true;
+    pl.grain.intensity = 5;
+    pl.grain.animated = true;
+    pl.chromaticAberrationEnabled = true;
+    pl.chromaticAberration.aberrationAmount = 0;
+    pl.chromaticAberration.radialIntensity = 0.8;
     this.pipeline = pl;
   }
 
@@ -939,6 +956,9 @@ export class Game {
     for (const item of this.pickups.update(dt, c.x, c.y, c.z, p.suited && !this.remote && !p.dead)) this.collect(item);
     this.pickupRenderer.update(this.pickups.items, this.time);
     this.missionRenderer.update(this.events.mission, this.time);
+    this.sunFlare.update(dt, this.cam.camera, camPos, this.env.sunDir, this.world, this.env.time !== "night" && this.settings.data.quality !== "low", this.canvasW, this.canvasH);
+    this.hitPulse = Math.max(0, this.hitPulse - dt * 2.5);
+    if (this.pipeline) this.pipeline.chromaticAberration.aberrationAmount = this.hitPulse * 45 + (p.hypersonic ? 14 : 0) + p.rush * 8;
     this.syncReactorTarget();
     this.projRenderer.update(this.projectiles, camPos);
     this.speedFx.update(camPos, p);

@@ -26,6 +26,44 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 17 – more enemies, more fun, missions, achievements, animations and graphics
+
+**New enemies (five)**
+- **Heavy bomber:** makes carpet-bombing passes over you, dropping a stick of bombs that keep their forward speed. A tail gunner covers its rear, and it extends and turns for another pass.
+- **Air mines:** fields of spiked mines hang in the sky. They wake when you come close, drift after you blinking faster and faster, and detonate on contact. A shot mine still blows, so you can chain them.
+- **Rooftop flak turret:** tracks flyers and fires air-burst shells around where you are heading. Keep jinking.
+- **Rogue armour (mini-boss):** a rival suit that circle-strafes with paired repulsor blasts, fires four-missile salvos, makes boosted ramming dashes and barrel-rolls out of your fire.
+- **Courier drone:** runs from you with stolen tech, weaving over the rooftops and surging when hit.
+- New incidents: Bombing run, Minefield, Flak alley, ROGUE ARMOUR, and Blitz (all of the above at once).
+
+**More fun everywhere**
+- **Kill streaks:** kills within 3.5 s chain into DOUBLE KILL, TRIPLE, QUAD, MULTI KILL, RAMPAGE, UNSTOPPABLE and GODLIKE. XP is multiplied by up to 3×, and a HUD chip shows the streak with a draining bar.
+- **Salvage pickups:** wrecks drop repair kits (green), power cells (blue) and rocket packs (orange, a full rearm). Big enemies always drop two. Pickups settle above the ground with a light pillar, so you can spot them from afar, and are pulled in when you fly close.
+- **Superhero landings:** a hard landing in the suit sends out a shockwave that damages and throws nearby hostiles.
+- **Boss hero moments:** time slows briefly when a boss goes down.
+
+**New objectives**
+- **Bomb threat:** three bombs sit on different rooftops. Hover beside each one until its defuse bar fills, before the clock runs out. The warning lights blink faster as time runs low.
+- **Stolen Stark tech:** fly through six glowing data cores, some on roofs and some high in the sky.
+- **Catch the courier:** run the courier drone down before it gets 1.1 km away.
+- **Protect the arc reactor:** four waves attack a rooftop reactor that enemies shoot at like they shoot at you. Don't let it fall.
+- The pause menu has buttons to start any mission right away. Special objectives come up more often among random incidents.
+- **22 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
+
+**New animations**
+- **Superhero landing pose:** knee and fist planted, head bowed, then a slow rise.
+- **Victory pose:** a fist punched to the sky and pumping after objectives, incidents and boss kills.
+- Hovering still, the head scans the city. Collecting a pickup flashes the reactor, eyes and palms.
+- **Crashing wrecks:** downed aircraft (drones, jets, gunships, bombers, the carrier, the rogue armour and others) spiral down burning with a smoke trail, then explode where they hit, hurting hostiles below.
+- New enemy motion: the bomber wallows and banks, mines tumble and shiver, turret barrels kick back, the rogue armour leans and rolls like a suit, and the courier's cargo glows as it surges.
+- **HUD:** the objective-complete banner sweeps in, and the achievement toast slides down with a gold glint.
+
+**Graphics**
+- **Sun lens flare** (Medium and High): a soft glare, an anamorphic streak and faint ghosts across the view. It hides behind buildings and fades at the screen edge.
+  - It is drawn as a light screen overlay, because Babylon's built-in flare drew at the screen centre with large-world rendering on.
+- **Explosion heat flash:** a warm flash over the view from big nearby blasts.
+- **High preset:** sharpening, fine film grain, and chromatic aberration that pulses when you are hit and at hypersonic/RUSH speeds.
+
 ## Milestone 16 – cinematic suit-up
 
 - **The armour goes on one section at a time** whenever the suit docks with you on the ground, at the start of a game and on respawn:
@@ -453,7 +491,12 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **76 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **90 unit tests** pass, covering:
+  - Milestone 17:
+    - The bomber drops a stick of bombs near its target. Mines wake, chase and detonate (and blow when shot). Flak bursts around the target. The rogue armour strafes, fires missiles, dashes and dodges. The courier flees.
+    - Kill streaks and their multiplier. Pickups settle, get pulled in and collected, can't be collected out of the suit, and expire. A hard landing flags a superhero landing.
+    - Bomb defusal (win and timeout), data cores, the courier escaping or being caught, and reactor defence (waves, win and loss).
+    - Achievements unlock once each. Shot-down aircraft crash and explode on impact, hurting hostiles below.
   - Milestone 16: the suit-up runs chest, right arm, left arm, right leg, left leg, helmet, then faceplate, every plate lands inside its own section's window, control returns only after the faceplate, and the poses raise each arm out and lift each knee while looking at that limb.
   - Milestone 15: repulsor shots alternate hands every shot, and the rocket pod fires its pair and stays empty until it rearms 60 s later.
   - Milestone 14: the 122 km district (50× the old area) with lazy colliders at 55 km out, skyscraper clusters and names across the whole map, buildings checked on a sample of chunks right up to the edges, and enemies of every size spawned inside a tower ending up in clear space or on its roof (a flyer forced inside pops out over the top).
@@ -477,7 +520,10 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **39 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **42 browser tests** pass on the desktop and emulated-mobile projects, including:
+  - **Missions started from the pause menu: all three bombs defused by hovering beside them, then all six data cores collected. The achievement list is shown.**
+  - **The courier is shot down and drops salvage; reactor defence starts its first wave.**
+  - **A triple kill shows the streak, a dropped power cell is collected, and a dive with the thrusters cut ends in a SUPERHERO LANDING.**
   - **Hypersonic past Mach 1 high up, with no white sonic rings drawn.**
   - **RUSH: a full meter pops MAX RUSH, shows the HUD bar and then decays.**
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
