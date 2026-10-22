@@ -152,6 +152,8 @@ export class PlayerController {
   recoil = 0;
   /** Hit flinch (1 when hit, decays) and the side it came from (-1 left / +1 right). */
   flinch = 0;
+  /** Hand that fired the last repulsor shot (+1 right, -1 left). */
+  fireHand = 1;
   /** Air-braking in flight (drives the flare-out pose). */
   braking = false;
   flinchSide = 0;

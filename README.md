@@ -26,6 +26,16 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 15 – repulsor animations, alternating hands, 2 rockets a minute
+
+- **Repulsors alternate hands on every shot** (right, left, right…), on the ground, in hover and in flight, and each bolt leaves from that hand.
+- **New repulsor animations:**
+  - The firing arm punches straight out with the palm open, and the off hand is held cocked at the ready.
+  - The torso twists toward the firing hand, so it swings side to side as the hands alternate.
+  - The firing elbow kicks back with a shoulder jolt, and the body rocks away from the blast.
+  - Each shot throws a hot blast cone from that palm. While the repulsors are hot, both palms glow faintly.
+- **Micro-rockets: two a minute.** The pod holds 2 rockets, one per arm, and fires both at once (to two locked targets when it has them). It then rearms 60 s later. The HUD shows the countdown next to MICRO-ROCKETS, and the touch MSL button shows it as "MSL 42s".
+
 ## Milestone 14 – a 50× bigger map, enemies out of walls, no see-through buildings
 
 - **A 50× bigger map:** 382 × 382 chunks, about **122 km × 122 km (about 14,900 km²)**, against 299 km² before. There is a named skyscraper cluster roughly every 3.5 km, about 1,200 of them, and every 3×3-chunk region has its own district name.
@@ -279,7 +289,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Mouse look that just works.** Click the game to capture the mouse, then move it to look around (Esc releases it). If pointer lock is unavailable, dragging still looks around. Touchscreen laptops such as Chromebooks switch automatically between mouse and touch layouts depending on what you last used. Previously, on a touch-capable laptop the touch layer swallowed mouse clicks.
 - **Weapons:**
   - **Repulsors** (hold left mouse / `X` / BLAST): rapid palm blasts with aim assist that leads moving targets.
-  - **Arm micro-rockets** (right mouse / `R` / MSL): up to 4 rockets at once that lock onto separate targets in the reticle cone, home in, and explode with splash damage. 8 rockets that regenerate.
+  - **Arm micro-rockets** (right mouse / `R` / MSL): a pair of rockets that lock onto separate targets in the reticle cone, home in, and explode with splash damage. The pod rearms 60 s after firing, so it's 2 rockets a minute (since Milestone 15).
   - You can shoot down incoming missiles.
 - **Bad guys with real moves:**
   - **Attack drones:** orbit-strafe around you, flip direction, fire 3-round bursts, **dodge** when you aim at them, and retreat to regroup when badly damaged.
@@ -429,7 +439,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **72 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **74 unit tests** pass, covering:
+  - Milestone 15: repulsor shots alternate hands every shot, and the rocket pod fires its pair and stays empty until it rearms 60 s later.
   - Milestone 14: the 122 km district (50× the old area) with lazy colliders at 55 km out, skyscraper clusters and names across the whole map, buildings checked on a sample of chunks right up to the edges, and enemies of every size spawned inside a tower ending up in clear space or on its roof (a flyer forced inside pops out over the top).
   - Milestone 13: cruise and afterburner are exactly 75% of the Milestone 11 values, and the hypersonic stage breaks Mach 1 only in thin air.
   - Milestone 12: a glancing wall hit scrapes along the wall and keeps you flying with most of your speed, and skimming low and fast builds RUSH, raises your speed past cruise, then fades once you climb high.

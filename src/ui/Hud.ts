@@ -131,7 +131,7 @@ export class Hud {
       <div class="h-dmg"></div>
       <div class="h-weap">
         <small>REPULSORS</small><b class="v-rpl">READY</b>
-        <small>MICRO-ROCKETS</small><div class="v-pips"></div>
+        <small>MICRO-ROCKETS <span class="v-rkt"></span></small><div class="v-pips"></div>
         <small>UNIBEAM · FLARES</small><b class="v-beam">READY · READY</b>
         <small>THREATS NEUTRALISED</small><b class="v-kills">0</b>
         <small class="v-rank-t">HERO RANK</small><b class="v-rank">ROOKIE</b>
@@ -199,7 +199,8 @@ export class Hud {
     for (let k = n; k < this.targetEls.length; k++) if (this.targetEls[k].style.display !== "none") this.targetEls[k].style.display = "none";
   }
 
-  setWeapons(rockets: number, max: number, kills: number, repulsorReady: boolean): void {
+  /** `reload` = seconds until the rocket pod is rearmed (0 when full). */
+  setWeapons(rockets: number, max: number, kills: number, repulsorReady: boolean, reload = 0): void {
     if (this.pipCount !== max) {
       this.pipCount = max;
       this.q(".v-pips").innerHTML = "<i></i>".repeat(max);
@@ -209,6 +210,7 @@ export class Hud {
       const pips = this.q(".v-pips").children;
       for (let k = 0; k < pips.length; k++) pips[k].classList.toggle("on", k < rockets);
     }
+    this.text(".v-rkt", rockets < max ? `· ${Math.ceil(reload)} s` : "");
     this.text(".v-kills", String(kills));
     this.text(".v-rpl", repulsorReady ? "READY" : "LOW POWER");
   }

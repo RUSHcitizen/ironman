@@ -286,8 +286,10 @@ test.describe("desktop controls", () => {
       g.spawnEnemy("trooper", 35, 0, 0);
     });
     await page.keyboard.press("KeyR");
-    const fired = await until(page, (st) => st.rockets < 8);
-    expect(fired.rockets).toBeLessThan(8);
+    const fired = await until(page, (st) => st.rockets < 2);
+    expect(fired.rockets).toBe(0);
+    // Two rockets a minute: the HUD shows the rearm countdown.
+    await expect(page.locator(".v-rkt")).toHaveText(/\d+ s/);
     await page.keyboard.down("KeyX");
     const s = await until(page, (st) => st.kills >= 1, 90_000);
     await page.keyboard.up("KeyX");
@@ -383,7 +385,8 @@ test.describe("touch controls (emulated)", () => {
 
     // Rockets via MSL.
     await tap(page, ".t-msl", 14);
-    await until(page, (s) => s.rockets < 8);
+    await until(page, (s) => s.rockets < 2);
+    await expect(page.locator(".t-msl small")).toHaveText(/MSL \d+s/);
 
     await tap(page, ".t-fly", 13);
     await until(page, (s) => s.mode === "flight");

@@ -49,7 +49,39 @@ describe("combat", () => {
     expect(s.combat.locks).toContain(e);
     run(s, 3, {}, { rockets: true });
     expect(e.alive).toBe(false);
-    expect(s.combat.rockets).toBeLessThan(8);
+    expect(s.combat.rockets).toBe(0);
+  });
+
+  it("micro-rockets: a pair per minute - the pod is empty until it rearms 60 s later", () => {
+    const s = setup();
+    s.player.viewPitch = 0.05;
+    run(s, 0.1, {}, { rockets: true });
+    expect(s.combat.rockets).toBe(0);
+    expect(s.combat.rocketReload).toBeGreaterThan(59);
+    run(s, 0.1, {}, { rockets: true }); // nothing left to fire
+    expect(s.combat.rockets).toBe(0);
+    run(s, 58);
+    expect(s.combat.rockets).toBe(0);
+    run(s, 2.2);
+    expect(s.combat.rockets).toBe(2);
+    expect(s.combat.rocketReload).toBe(0);
+  });
+
+  it("repulsor shots alternate hands every shot, on the ground and in flight", () => {
+    const s = setup();
+    s.player.viewPitch = 0;
+    const hands: number[] = [];
+    let last = -1;
+    const dt = 1 / 60;
+    for (let t = 0; t < 1.2; t += dt) {
+      const inp = { ...emptyInput(), fire: true };
+      s.player.update(dt, inp);
+      s.combat.update(dt, inp, s.player, { x: 0, y: 1.5, z: -4 });
+      if (s.player.recoil > last + 0.3) hands.push(s.player.fireHand);
+      last = s.player.recoil;
+    }
+    expect(hands.length).toBeGreaterThan(4);
+    for (let k = 1; k < hands.length; k++) expect(hands[k]).toBe(-hands[k - 1]);
   });
 
   it("drones engage and damage a suited player but ignore a civilian", () => {

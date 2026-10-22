@@ -6,7 +6,9 @@ import { ENEMY_STATS, isCloaked, type Enemy, type EnemyManager } from "./Enemies
 import type { ProjectileSystem } from "./Projectiles";
 import { dist, norm, segmentPointDistance, type V3 } from "./math3";
 
-export const MAX_ROCKETS = 8;
+/** Micro-rocket pod: two rockets (one per arm), rearmed a minute after firing. */
+export const MAX_ROCKETS = 2;
+export const ROCKET_RELOAD = 60;
 /** Unibeam: chest laser, charged briefly then fired down the aim line. */
 export const UNIBEAM = { cost: 25, charge: 0.45, cooldown: 4, damage: 180, reach: 700, width: 2.2 };
 export const FLARE_COOLDOWN = 6;
@@ -24,7 +26,9 @@ export class Combat {
   /** Enemy the repulsors will snap to (aim assist). */
   assistTarget: Enemy | null = null;
   private repulsorCooldown = 0;
-  private rocketRegen = 0;
+  /** Seconds until the rocket pod is rearmed (0 when full). */
+  rocketReload = 0;
+  /** Hand the next repulsor shot comes from (+1 right, -1 left); alternates every shot. */
   private side = 1;
   private lockTimer = 0;
   aimAssist = 0.07; // radians; larger on touch
@@ -42,14 +46,14 @@ export class Combat {
 
   refill(): void {
     this.rockets = MAX_ROCKETS;
+    this.rocketReload = 0;
   }
 
   update(dt: number, input: InputState, p: PlayerController, camPos: V3): void {
     this.repulsorCooldown -= dt;
-    this.rocketRegen += dt;
-    if (this.rocketRegen > 1.4) {
-      this.rocketRegen = 0;
-      this.rockets = Math.min(MAX_ROCKETS, this.rockets + 1);
+    if (this.rockets < MAX_ROCKETS) {
+      this.rocketReload = Math.max(0, this.rocketReload - dt);
+      if (this.rocketReload <= 0) this.rockets = MAX_ROCKETS;
     }
     const armed = p.suited && p.transformTimer <= 0;
     const aim = aimDirection(p);
@@ -73,8 +77,11 @@ export class Combat {
       this.repulsorCooldown = 0.15;
       p.aimTimer = 0.7;
       p.recoil = 1;
-      const from = this.muzzle(p, aim, this.side);
-      this.side = p.mode === "flight" ? -this.side : 1;
+      // Alternate hands every shot: right, left, right...
+      const hand = this.side;
+      this.side = -this.side;
+      p.fireHand = hand;
+      const from = this.muzzle(p, aim, hand);
       const target = this.assistTarget ? this.leadPoint(from, this.assistTarget, 240) : this.aimPoint(camPos, aim);
       this.projectiles.playerBolt(from, norm({ x: target.x - from.x, y: target.y - from.y, z: target.z - from.z }));
       if (this.assistTarget) this.enemies.threaten(this.assistTarget);
@@ -83,10 +90,12 @@ export class Combat {
 
     if (input.rockets) {
       if (this.rockets <= 0) {
-        this.bus?.emit("alert", { text: "Micro-rockets reloading", level: "warn", ttl: 2 });
+        this.bus?.emit("alert", { text: `Micro-rockets rearming · ${Math.ceil(this.rocketReload)} s`, level: "warn", ttl: 2 });
       } else {
-        const n = Math.min(this.rockets, this.locks.length > 0 ? 4 : 2);
-        this.rockets -= n;
+        // The whole pod (one rocket per arm) goes at once; the next pair is a minute away.
+        const n = this.rockets;
+        this.rockets = 0;
+        this.rocketReload = ROCKET_RELOAD;
         p.rocketTimer = 0.8;
         p.aimTimer = Math.max(p.aimTimer, 0.5);
         const r = { x: Math.cos(p.viewYaw), y: 0, z: -Math.sin(p.viewYaw) };

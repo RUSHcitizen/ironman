@@ -168,11 +168,12 @@ export class TouchControls {
     this.buttons.beam.classList.toggle("charging", on);
   }
 
-  private rocketsShown = -1;
-  setRockets(n: number): void {
-    if (n === this.rocketsShown) return;
-    this.rocketsShown = n;
-    this.buttons.msl.querySelector("small")!.textContent = `MSL ${n}`;
+  private rocketsShown = "";
+  setRockets(n: number, reload = 0): void {
+    const label = n > 0 ? `MSL ${n}` : `MSL ${Math.ceil(reload)}s`;
+    if (label === this.rocketsShown) return;
+    this.rocketsShown = label;
+    this.buttons.msl.querySelector("small")!.textContent = label;
   }
 
   consume(name: ButtonName): boolean {

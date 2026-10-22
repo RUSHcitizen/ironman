@@ -49,8 +49,9 @@ export interface AvatarState {
   readonly rush?: number;
   /** Where the pilot is looking (head and torso turn toward it). */
   readonly viewYaw?: number;
-  /** Repulsor recoil 0..1. */
+  /** Repulsor recoil 0..1, and the hand that fired (+1 right, -1 left). */
   readonly recoil?: number;
+  readonly fireHand?: number;
   /** Hit flinch 0..1 and side. */
   readonly flinch?: number;
   readonly flinchSide?: number;
@@ -92,7 +93,12 @@ export class ArmorModel {
   readonly root: TransformNode;
   private pivot: TransformNode;
   private joints = {} as Record<JointName, Joint>;
-  private flames: { mesh: Mesh; kind: "boot" | "palm"; seed: number }[] = [];
+  private flames: { mesh: Mesh; kind: "boot" | "palm"; seed: number; side: number }[] = [];
+  /** Repulsor blast flash per palm (decays fast), torso twist into the shot, and the last recoil seen. */
+  private blastL = 0;
+  private blastR = 0;
+  private twist = 0;
+  private lastRecoil = 0;
   private glowMat: StandardMaterial;
   private primaryMat: StandardMaterial;
   private trimMat: StandardMaterial;
@@ -231,7 +237,7 @@ export class ArmorModel {
       const palm = CreateDisc("palm", { radius: 0.03, tessellation: 12 }, scene);
       palm.rotation.x = -Math.PI / 2;
       add(palm, el, this.glowMat, 0, -0.39, 0, 0.9);
-      this.flame(el, 0, -0.39, 0, 0.09, "palm");
+      this.flame(el, 0, -0.39, 0, 0.09, "palm", side);
     }
 
     // Legs.
@@ -278,7 +284,7 @@ export class ArmorModel {
   }
 
   /** Additive flame cone hanging below a joint. Returns the flame mesh. */
-  private flame(parent: TransformNode, x: number, y: number, z: number, width: number, kind: "boot" | "palm"): Mesh {
+  private flame(parent: TransformNode, x: number, y: number, z: number, width: number, kind: "boot" | "palm", side = 0): Mesh {
     const outer = CreateCylinder("flame", { diameterTop: width, diameterBottom: 0, height: 1, tessellation: 10 }, this.scene);
     outer.bakeTransformIntoVertices(Matrix.Translation(0, -0.5, 0));
     const outerMat = new StandardMaterial("flameOuter", this.scene);
@@ -300,7 +306,7 @@ export class ArmorModel {
     inner.material = innerMat;
     inner.parent = outer;
     inner.isPickable = false;
-    this.flames.push({ mesh: outer, kind, seed: Math.random() * 10 });
+    this.flames.push({ mesh: outer, kind, seed: Math.random() * 10, side });
     return outer;
   }
 
@@ -843,8 +849,27 @@ export class ArmorModel {
         pose.elL = [-0.35, 0];
         pose.elR = [-0.35, 0];
       } else if (p.aimTimer > 0) {
-        pose.shR = [p.mode === "flight" ? -2.95 : -1.5 - up, 0.12];
-        pose.elR = [-0.05, 0];
+        // Repulsors alternate hands: the firing arm punches straight out at
+        // the target, palm open, while the other is held cocked at the ready.
+        const h = p.fireHand ?? 1;
+        const flight = p.mode === "flight";
+        const shot: [number, number] = [flight ? -2.95 : -1.5 - up, 0.12 * h];
+        const ready: [number, number] = [flight ? -2.2 : -1.05 - up * 0.8, 0.22 * h];
+        const elShot: [number, number] = [-0.05, 0];
+        const elReady: [number, number] = [-1.0, 0];
+        if (h > 0) {
+          pose.shR = shot;
+          pose.elR = elShot;
+          pose.shL = ready;
+          pose.elL = elReady;
+        } else {
+          pose.shL = shot;
+          pose.elL = elShot;
+          pose.shR = ready;
+          pose.elR = elReady;
+        }
+        // Lean into the shooting stance.
+        pose.spine = [(pose.spine?.[0] ?? 0) + (flight ? 0 : -0.06), (pose.spine?.[1] ?? 0) - h * 0.05];
       }
     }
     // Unibeam: chest thrust forward, arms swept back and out.
@@ -887,9 +912,24 @@ export class ArmorModel {
     } else this.idleT = 0;
     // Repulsor recoil: the firing forearm kicks back.
     const rc = p.recoil ?? 0;
-    if (rc > 0 && pose.shR) {
-      pose.shR = [pose.shR[0] + rc * 0.25, pose.shR[1]];
-      pose.elR = [(pose.elR?.[0] ?? 0) - rc * 0.45, 0];
+    const hand = p.fireHand ?? 1;
+    if (p.suited && rc > (this.lastRecoil ?? 0) + 0.3) {
+      // A new shot: flash that palm.
+      if (hand > 0) this.blastR = 1;
+      else this.blastL = 1;
+    }
+    this.lastRecoil = rc;
+    this.blastL = Math.max(0, this.blastL - dt * 9);
+    this.blastR = Math.max(0, this.blastR - dt * 9);
+    if (rc > 0) {
+      // The firing arm kicks back at the elbow, the shoulder jolts and the
+      // torso rocks away from the blast.
+      const sh = hand > 0 ? "shR" : "shL", el = hand > 0 ? "elR" : "elL";
+      const s0 = pose[sh] ?? [0, 0];
+      pose[sh] = [s0[0] + rc * 0.25, s0[1] + hand * rc * 0.08];
+      pose[el] = [(pose[el]?.[0] ?? 0) - rc * 0.45, 0];
+      pose.spine = [(pose.spine?.[0] ?? 0) - rc * 0.06, (pose.spine?.[1] ?? 0) + hand * rc * 0.05];
+      pose.neck = [(pose.neck?.[0] ?? 0) - rc * 0.04, pose.neck?.[1] ?? 0];
     }
     // Flares: arms flung out wide.
     const fl0 = p.flareTimer ?? 0;
@@ -944,14 +984,20 @@ export class ArmorModel {
     }
     this.lookYaw += (look - this.lookYaw) * damp(6, dt);
     this.joints.neck.node.rotation.y = this.lookYaw * 0.65;
-    this.joints.spine.node.rotation.y = this.lookYaw * 0.3;
+    // Torso twists toward the firing hand, swinging side to side as the hands alternate.
+    this.twist += ((p.aimTimer > 0 && p.suited && p.mode !== "flight" ? (p.fireHand ?? 1) * -0.16 : 0) - this.twist) * damp(10, dt);
+    this.joints.spine.node.rotation.y = this.lookYaw * 0.3 + this.twist;
 
     // Thrusters.
     const airborne = p.mode !== "ground" && p.suited && this.armorShown;
     const boot = airborne ? 0.25 + p.thrust * (p.afterburner ? 1.9 : 1.1) : 0;
     const palm = p.mode === "hover" ? 0.25 + p.thrust * 0.45 : p.mode === "flight" ? 0.12 + (p.afterburner ? 0.35 : 0) : 0;
+    const charged = p.aimTimer > 0 && p.suited ? 0.12 : 0;
     for (const f of this.flames) {
-      const base = f.kind === "boot" ? boot : palm;
+      // Palms: a hot repulsor blast from the hand that just fired, and a faint
+      // charged glow on both while the repulsors are hot.
+      const blast = f.kind === "palm" ? (f.side > 0 ? this.blastR : this.blastL) : 0;
+      const base = f.kind === "boot" ? boot : Math.max(palm, charged) + blast * 1.4;
       const flick = 0.82 + 0.18 * Math.sin(t * 47 + f.seed * 7) + 0.08 * Math.sin(t * 91 + f.seed);
       const len = base * flick;
       f.mesh.setEnabled(len > 0.02);

@@ -884,13 +884,13 @@ export class Game {
     this.slowHud -= dt;
     if (this.slowHud <= 0) {
       this.slowHud = 0.1;
-      this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 0);
+      this.hud.setWeapons(this.combat.rockets, MAX_ROCKETS, this.enemies.kills, p.suit.energy > 0, this.combat.rocketReload);
       this.hud.setSpecials(Math.max(0, this.combat.beamCooldown), this.combat.beamCharge >= 0, Math.max(0, this.combat.flareCooldown));
       const rank = this.progress.rank;
       const lo = rankLow(rank.index);
       this.hud.perfNote = `sim ${this.updateMs.toFixed(1)} ms · ${this.settings.data.quality.toUpperCase()}`;
       this.hud.setRank(rank.name, rank.next === null ? 1 : (this.progress.xp - lo) / (rank.next - lo));
-      this.input.touch.setRockets(this.combat.rockets);
+      this.input.touch.setRockets(this.combat.rockets, this.combat.rocketReload);
       this.hud.setCapturePrompt(this.input.needsCapture && p.suited);
     }
     // Audio parameters at 20 Hz (they glide smoothly anyway).
@@ -1085,6 +1085,7 @@ export class Game {
       enemies: this.enemies.alive.length,
       kills: this.enemies.kills,
       rockets: this.combat.rockets,
+      rocketReload: this.combat.rocketReload,
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,
