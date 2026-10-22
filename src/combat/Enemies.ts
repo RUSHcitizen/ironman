@@ -24,10 +24,11 @@ export type EnemyKind =
   | "bomber"
   | "mine"
   | "turret"
-  | "rival";
+  | "rival"
+  | "courier";
 
 /** Flying kinds (spawned in the air, not on a surface). */
-export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker", "bomber", "mine", "rival"]);
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker", "bomber", "mine", "rival", "courier"]);
 
 /** Air mines detonate within this distance of a target. */
 export const MINE_TRIGGER = 4.5;
@@ -70,6 +71,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   mine: { hp: 10, radius: 0.9, centerY: 0, range: 110, score: 60 },
   turret: { hp: 150, radius: 1.8, centerY: 1.3, range: 400, score: 450 },
   rival: { hp: 600, radius: 1.2, centerY: 0, range: 420, score: 2200 },
+  courier: { hp: 140, radius: 1.4, centerY: 0, range: 700, score: 1200 },
 };
 
 /** Is this enemy currently invisible (cloaked)? */
@@ -329,6 +331,7 @@ export class EnemyManager {
       e.vy += this.rng.range(0, k * 0.6);
       e.vz += this.rng.range(-k, k);
     }
+    if (e.kind === "courier") e.jet = 1; // spooked: surges away
     if (e.kind === "cloaker") {
       // Hit: the cloak drops for a moment.
       e.state = "engage";
@@ -338,7 +341,7 @@ export class EnemyManager {
       e.alive = false;
       this.kills++;
       const c = this.center(e);
-      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider" || e.kind === "bomber" || e.kind === "rival" || e.kind === "turret";
+      const big = e.kind === "warbot" || e.kind === "gunship" || e.kind === "tank" || e.kind === "jet" || e.kind === "spider" || e.kind === "bomber" || e.kind === "rival" || e.kind === "turret" || e.kind === "courier";
       const size = e.kind === "carrier" || e.kind === "titan" ? 16 : big ? 9 : e.kind === "kamikaze" || e.kind === "mine" ? 5 : e.kind === "swarmer" ? 1.6 : 3.2;
       // Shot mines still go off (chain reactions through a minefield).
       this.weapons?.explode(c, size, e.kind === "kamikaze" ? 8 : e.kind === "mine" ? 14 : 0, true);
@@ -437,6 +440,9 @@ export class EnemyManager {
           break;
         case "rival":
           this.updateRival(e, dt, p, d);
+          break;
+        case "courier":
+          this.updateCourier(e, dt, p, d);
           break;
       }
     }
@@ -1343,6 +1349,30 @@ export class EnemyManager {
     }
     this.burst(e, dt, p, 160, 5, 0.12, 0.02);
     this.flyMove(e, dt, 5);
+  }
+
+  /**
+   * Courier drone carrying stolen tech: never fights, just runs - weaving,
+   * hugging the rooftops, and surging when hit. Catch it before it escapes.
+   */
+  private updateCourier(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    e.jet = Math.max(0, e.jet - dt * 1.5);
+    if (!e.aware && d > 300) {
+      e.orbit += dt * 0.3;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 40, e.anchor.y, e.anchor.z + Math.sin(e.orbit) * 40, 20, dt, 1);
+    } else {
+      e.aware = true;
+      // Flee directly away, weaving side to side; low over the rooftops.
+      const away = norm({ x: e.x - t.x, y: 0, z: e.z - t.z });
+      const weave = Math.sin(e.phase * 1.7) * 35;
+      const roof = this.world.surfaceBelow(e.x + away.x * 40, 1000, e.z + away.z * 40, 2, 0);
+      const speed = 62 + e.jet * 45;
+      this.steerTo(e, e.x + away.x * 100 - away.z * weave, roof + 22 + Math.sin(e.phase * 0.9) * 8, e.z + away.z * 100 + away.x * weave, speed, dt, 2.2);
+    }
+    const sp = Math.hypot(e.vx, e.vz);
+    if (sp > 2) this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 5);
+    this.flyMove(e, dt, 12);
   }
 
   private updateCloaker(e: Enemy, dt: number, p: CombatTarget, d: number): void {

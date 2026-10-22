@@ -45,6 +45,9 @@ import { Contrails } from "../player/Contrails";
 import { KillStreak } from "../gameplay/Streaks";
 import { Pickups, type Pickup } from "../gameplay/Pickups";
 import { PickupRenderer } from "../gameplay/PickupRenderer";
+import { MissionRenderer } from "../gameplay/MissionRenderer";
+import { Achievements } from "../gameplay/Achievements";
+import type { ReactorTarget } from "../gameplay/Missions";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 
@@ -82,6 +85,10 @@ export class Game {
   readonly streak = new KillStreak();
   pickups!: Pickups;
   private pickupRenderer!: PickupRenderer;
+  private missionRenderer!: MissionRenderer;
+  achievements!: Achievements;
+  /** The reactor currently in the enemies' target list (defend missions). */
+  private reactorTarget: ReactorTarget | null = null;
   /** Slow-motion "hero moment" (real seconds left) after a big kill. */
   private slowmo = 0;
   private projRenderer!: ProjectileRenderer;
@@ -193,6 +200,7 @@ export class Game {
     this.enemyRenderer = new EnemyRenderer(scene, this.mats);
     this.pickups = new Pickups(this.world);
     this.pickupRenderer = new PickupRenderer(scene, this.mats);
+    this.missionRenderer = new MissionRenderer(scene, this.mats);
     this.projRenderer = new ProjectileRenderer(scene, this.mats);
     this.speedFx = new SpeedFx(scene, this.mats);
     this.clouds = new Clouds(scene);
@@ -218,7 +226,12 @@ export class Game {
           this.enemies.clear();
           this.events.spawnNow(this.player, "Flight challenge");
         },
+        onMission: (title) => {
+          this.enemies.clear();
+          this.events.spawnNow(this.player, title);
+        },
       }, this.device.isTouch);
+    this.achievements = new Achievements(this.bus);
     this.audio = new SuitAudio(this.bus);
     this.hud.setVisible(false);
     this.input.touch.setVisible(false);
@@ -368,6 +381,14 @@ export class Game {
     bus.on("scrape", (e) => {
       this.projectiles.scrape(e, e.speed);
       this.cam.addShake(Math.min(0.5, 0.15 + e.speed / 120));
+    });
+    bus.on("achievement", (e) => {
+      this.hud.popup(`★ ${e.name.toUpperCase()}`);
+      this.bus.emit("alert", { text: `Achievement unlocked: ${e.name}`, level: "success", ttl: 4 });
+      this.progress.add(250);
+    });
+    bus.on("objective", (e) => {
+      if (e.won) this.hud.popup("OBJECTIVE COMPLETE");
     });
     bus.on("rankUp", (e) => {
       this.hud.popup(`RANK UP · ${e.name}`);
@@ -597,6 +618,7 @@ export class Game {
   setPaused(p: boolean): void {
     if (!this.started) return;
     this.paused = p;
+    if (p) this.menu.setAchievements(this.achievements.list());
     this.menu.show(p);
     this.input.enabled = !p;
     this.input.reset();
@@ -676,6 +698,18 @@ export class Game {
     this.hud.popup(hit > 0 ? `SUPERHERO LANDING · ${hit} HIT` : "SUPERHERO LANDING");
     if (hit > 0) this.progress.add(50 * hit);
     this.bus.emit("superLanding", { hits: hit });
+  }
+
+  /** Keep a defended reactor in the enemies' target list while its mission runs. */
+  private syncReactorTarget(): void {
+    const r = this.events.reactor;
+    if (r === this.reactorTarget) return;
+    if (this.reactorTarget) {
+      const i = this.targets.indexOf(this.reactorTarget);
+      if (i >= 0) this.targets.splice(i, 1);
+    }
+    this.reactorTarget = r;
+    if (r) this.targets.push(r);
   }
 
   /** Apply collected salvage. */
@@ -898,6 +932,8 @@ export class Game {
     const c = p.center;
     for (const item of this.pickups.update(dt, c.x, c.y, c.z, p.suited && !this.remote && !p.dead)) this.collect(item);
     this.pickupRenderer.update(this.pickups.items, this.time);
+    this.missionRenderer.update(this.events.mission, this.time);
+    this.syncReactorTarget();
     this.projRenderer.update(this.projectiles, camPos);
     this.speedFx.update(camPos, p);
     this.clouds.update(dt, camPos);
@@ -1168,6 +1204,12 @@ export class Game {
       kills: this.enemies.kills,
       rockets: this.combat.rockets,
       rocketReload: this.combat.rocketReload,
+      mission: this.events.mission
+        ? { kind: this.events.mission.kind, status: this.events.mission.status, remaining: this.events.mission.remaining, wave: this.events.mission.wave, reactorHp: this.events.mission.reactor?.hp ?? null }
+        : null,
+      pickups: this.pickups.items.length,
+      streak: this.streak.chain,
+      achievements: this.achievements.unlocked.size,
       suitState: this.suitUnit.state,
       trick: p.trick?.kind ?? null,
       oxygen: p.suit.oxygen,

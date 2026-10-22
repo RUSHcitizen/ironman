@@ -17,6 +17,7 @@ import { AIR_KINDS, type EnemyKind, type EnemyManager } from "../combat/Enemies"
 import type { HudMarker } from "../ui/Hud";
 import { Rng } from "../core/math";
 import { DISTRICT_MIN, DISTRICT_MAX } from "../world/WorldConfig";
+import { planMission, type Mission, type MissionKind, type ReactorTarget } from "./Missions";
 
 type Placement = "air" | "roof" | "street";
 
@@ -32,6 +33,8 @@ interface Template {
   rescue?: boolean;
   /** A ring course to fly through against the clock. */
   course?: boolean;
+  /** A special objective (bombs, data cores, courier chase, defend the reactor). */
+  mission?: MissionKind;
 }
 
 const RING_COUNT = 10;
@@ -88,6 +91,10 @@ const TEMPLATES: Template[] = [
   { title: "Flak alley", detail: "Rooftop flak turrets - keep jinking, the bursts lead you", place: "roof", squad: ["turret", "turret", "turret", "drone", "drone"], minLevel: 1 },
   { title: "ROGUE ARMOUR", detail: "A rival suit wants a duel - it dodges, dashes and fires missiles", place: "air", squad: ["rival", "swarmer", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
   { title: "Blitz", detail: "Bombers, flak and mines all at once", place: "roof", squad: ["bomber", "turret", "turret", "mine", "mine", "mine", "mine", "rival"], minLevel: 5 },
+  { title: "Bomb threat", detail: "Three bombs on the rooftops - hover close to each to defuse it", place: "air", squad: [], mission: "bombs" },
+  { title: "Stolen Stark tech", detail: "Recover the scattered data cores before they self-destruct", place: "air", squad: [], mission: "cores" },
+  { title: "Catch the courier", detail: "A drone is fleeing with stolen tech - run it down", place: "air", squad: [], mission: "courier", minLevel: 1 },
+  { title: "Protect the arc reactor", detail: "Waves of attackers are going for the reactor - hold the line", place: "roof", squad: [], mission: "defend", minLevel: 2 },
   { title: "Flight challenge", detail: "Fly through every ring before the clock runs out - each ring is a speed boost", place: "air", squad: [], course: true },
   { title: "Civilian falling!", detail: "Someone's slipping off a rooftop - catch them before they hit the street", place: "roof", squad: [], rescue: true },
   { title: "Stalled cab on the avenue", detail: "Assist at street level", place: "street", squad: [] },
@@ -118,6 +125,8 @@ export class CityEvents {
   completed = 0;
   private time = 0;
   faller: Faller | null = null;
+  /** Active special objective, if any. */
+  mission: Mission | null = null;
   course: Course | null = null;
   private ringMesh: Mesh;
   private ringM = new Float32Array(RING_COUNT * 16);
@@ -193,9 +202,20 @@ export class CityEvents {
     return this.current ? [{ id: "event", label: "◆", x: this.current.x, z: this.current.z, kind: "event" }] : [];
   }
 
+  /** The reactor being defended (an extra target for enemies), if any. */
+  get reactor(): ReactorTarget | null {
+    return this.mission?.reactor ?? null;
+  }
+
+  private missionCtx(p: PlayerController) {
+    const c = p.center;
+    return { px: c.x, py: c.y, pz: c.z, suited: p.suited, enemies: this.enemies };
+  }
+
   get objective(): [string, string] {
     const c = this.current;
     if (!c) return ["", ""];
+    if (this.mission && this.lastPlayer) return [c.t.title.toUpperCase(), this.mission.text(this.missionCtx(this.lastPlayer))];
     if (c.t.course && this.course) {
       const co = this.course;
       const clock = co.next === 0 ? "clock starts at ring 1" : `${Math.max(0, co.timeLeft).toFixed(1)} s left`;
@@ -221,6 +241,12 @@ export class CityEvents {
 
   clear(): void {
     this.current = null;
+    if (this.mission) {
+      if (this.mission.reactor) this.mission.reactor.active = false;
+      // An escaped courier just vanishes.
+      if (this.mission.kind === "courier") for (const e of this.enemies.enemies) if (e.group === this.mission.group) e.alive = false;
+    }
+    this.mission = null;
     this.faller = null;
     this.course = null;
     this.ringMesh.setEnabled(false);
@@ -229,8 +255,12 @@ export class CityEvents {
     this.ring.setEnabled(false);
   }
 
+  /** Last player seen (for objective text). */
+  private lastPlayer: PlayerController | null = null;
+
   update(dt: number, p: PlayerController): boolean {
     this.time += dt;
+    this.lastPlayer = p;
     if (!this.current) {
       this.cooldown -= dt;
       if (this.cooldown <= 0) {
@@ -261,6 +291,7 @@ export class CityEvents {
         this.ring.position.set(c.x, c.y + 1.2, c.z);
       }
     }
+    if (this.mission) return this.updateMission(dt, p, c, this.mission);
     if (c.t.rescue) return this.updateRescue(dt, p, c);
     if (c.t.course) return this.updateCourse(dt, p, c);
     const done = c.total > 0 ? this.enemies.aliveInGroup(c.group) === 0 : this.distanceTo(p) < 10 && p.suited;
@@ -275,11 +306,37 @@ export class CityEvents {
     return false;
   }
 
+  /** Run the special objective; resolve it as won or lost. */
+  private updateMission(dt: number, p: PlayerController, c: Incident, m: Mission): boolean {
+    const ctx = this.missionCtx(p);
+    m.update(dt, ctx);
+    const mk = m.marker(ctx);
+    if (mk) {
+      c.x = mk.x;
+      c.y = mk.y;
+      c.z = mk.z;
+      this.beam.position.set(mk.x, mk.y + 200, mk.z);
+    }
+    if (m.status === "active") return false;
+    const won = m.status === "won";
+    if (won) {
+      this.completed++;
+      this.bus.emit("alert", { text: `${c.t.title}: done · nice work, boss`, level: "success" });
+      this.onComplete?.(true);
+    } else {
+      this.bus.emit("alert", { text: `${c.t.title} failed · ${m.failReason}`, level: "warn" });
+    }
+    this.bus.emit("objective", { kind: m.kind, won });
+    this.clear();
+    this.cooldown = this.rng.range(6, 12);
+    return true;
+  }
+
   private spawn(p: PlayerController, forced?: Template): void {
     const pool = TEMPLATES.filter((t) => (t.minLevel ?? 0) <= this.completed);
     // Mostly combat; assist calls now and then.
     const combat = pool.filter((t) => t.squad.length > 0);
-    const t = forced ?? (this.rng.chance(0.8) ? this.rng.pick(combat) : this.rng.pick(pool));
+    const t = forced ?? (this.rng.chance(0.65) ? this.rng.pick(combat) : this.rng.pick(pool));
     for (let tries = 0; tries < 60; tries++) {
       const a = this.rng.range(0, Math.PI * 2);
       const d = forced ? this.rng.range(110, 180) : this.rng.range(200, 480);
@@ -295,6 +352,12 @@ export class CityEvents {
         if (!drop) continue;
       }
       const group = this.nextGroup++;
+      let mission: Mission | null = null;
+      if (t.mission) {
+        mission = planMission(t.mission, this.world, this.rng, x, z, this.enemies, group);
+        if (!mission) continue;
+      }
+      this.mission = mission;
       const y = t.place === "air" ? top + this.rng.range(30, 55) : top;
       this.current = { t, x, y, z, group, total: t.squad.length };
       this.placeSquad(t, x, y, z, top, group);
@@ -315,7 +378,7 @@ export class CityEvents {
       this.beam.position.set(x, top + 200, z);
       this.ring.position.set(x, y + 1.2, z);
       this.beam.setEnabled(true);
-      this.ring.setEnabled(!t.course);
+      this.ring.setEnabled(!t.course && !t.mission);
       this.bus.emit("alert", { text: `${t.squad.length ? "Threat" : "Incident"}: ${t.title}`, level: t.squad.length ? "critical" : "warn", ttl: 5 });
       return;
     }

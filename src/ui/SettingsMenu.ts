@@ -5,6 +5,8 @@ export interface MenuActions {
   onRespawn: () => void;
   /** Start a ring-course flight challenge now. */
   onChallenge?: () => void;
+  /** Start a named incident / special objective now. */
+  onMission?: (title: string) => void;
 }
 
 /** Pause / settings overlay. Large touch targets, no hover-dependent UI. */
@@ -59,6 +61,18 @@ export class SettingsMenu {
           <p class="m-note m-device"></p>
         </section>
         <button data-a="challenge">Start flight challenge (ring course)</button>
+        <section>
+          <label>Start a mission now</label>
+          <div class="m-seg m-wrap m-missions">
+            <button data-m="Bomb threat">Bomb threat</button><button data-m="Stolen Stark tech">Data cores</button>
+            <button data-m="Catch the courier">Courier chase</button><button data-m="Protect the arc reactor">Defend reactor</button>
+            <button data-m="ROGUE ARMOUR">Rogue Armour</button><button data-m="Bombing run">Bombing run</button>
+          </div>
+        </section>
+        <details class="m-ach">
+          <summary>Achievements <output class="m-achcount"></output></summary>
+          <ul class="m-achlist"></ul>
+        </details>
         <button data-a="respawn">Return to Avengers Tower</button>
         <details ${isTouch ? "" : "open"}>
           <summary>Controls</summary>
@@ -89,6 +103,12 @@ export class SettingsMenu {
       this.actions.onChallenge?.();
       this.actions.onResume();
     });
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>("[data-m]")) {
+      b.addEventListener("click", () => {
+        this.actions.onMission?.(b.dataset.m!);
+        this.actions.onResume();
+      });
+    }
     this.el.querySelector('[data-a="respawn"]')!.addEventListener("click", () => {
       this.actions.onRespawn();
       this.actions.onResume();
@@ -114,6 +134,23 @@ export class SettingsMenu {
     });
     settings.onChange(() => this.sync());
     this.sync();
+  }
+
+  /** Achievement list (shown when the menu opens). */
+  setAchievements(list: { name: string; desc: string; done: boolean }[]): void {
+    const n = list.filter((a) => a.done).length;
+    this.el.querySelector(".m-achcount")!.textContent = `${n}/${list.length}`;
+    const ul = this.el.querySelector(".m-achlist")!;
+    ul.replaceChildren(
+      ...list.map((a) => {
+        const li = document.createElement("li");
+        li.className = a.done ? "done" : "";
+        li.innerHTML = `<b></b><span></span>`;
+        li.querySelector("b")!.textContent = `${a.done ? "★" : "☆"} ${a.name}`;
+        li.querySelector("span")!.textContent = a.desc;
+        return li;
+      }),
+    );
   }
 
   /** Device line: GPU and browser engine (to check real-device support). */

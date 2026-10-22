@@ -54,4 +54,6 @@ export interface GameEvents extends Record<string, unknown> {
   superLanding: { hits: number };
   pickup: { kind: string };
   streak: { chain: number; label: string };
+  objective: { kind: string; won: boolean };
+  achievement: { id: string; name: string };
 }

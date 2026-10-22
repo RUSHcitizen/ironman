@@ -267,6 +267,84 @@ test.describe("desktop controls", () => {
     expect(errors).toEqual([]);
   });
 
+  test("missions from the pause menu: defuse the rooftop bombs, then recover the data cores", async ({ page }) => {
+    const errors = await boot(page);
+    type M = { mission: { kind: string; status: string; remaining: number } | null; achievements: number };
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#menu")).toBeVisible();
+    await expect(page.locator(".m-achlist li")).toHaveCount(22);
+    await page.locator('[data-m="Bomb threat"]').click();
+    await expect(page.locator("#menu")).toBeHidden();
+    await until(page, (s) => (s as unknown as M).mission?.kind === "bombs");
+    await expect(page.locator(".h-objective")).toContainText(/Bombs defused 0\/3/);
+    // Hover beside each bomb until it is defused.
+    for (let k = 0; k < 3; k++) {
+      await page.evaluate((k) => {
+        const g = (window as unknown as { __GAME: { events: { mission: { points: { x: number; y: number; z: number }[] } }; teleport(...a: unknown[]): void } }).__GAME;
+        const b = g.events.mission.points[k];
+        g.teleport(b.x + 3, b.y + 1, b.z, 0, "hover");
+      }, k);
+      await until(page, (s) => ((s as unknown as M).mission?.remaining ?? 0) <= 2 - k || (s as unknown as M).mission === null, 60_000);
+    }
+    await until(page, (s) => (s as unknown as M).mission === null, 30_000);
+    await expect(page.locator(".h-alerts")).toContainText(/Bomb threat: done/);
+    expect(((await state(page)) as unknown as M).achievements).toBeGreaterThan(0);
+
+    // Data cores: fly through all six.
+    await page.keyboard.press("Escape");
+    await page.locator('[data-m="Stolen Stark tech"]').click();
+    await until(page, (s) => (s as unknown as M).mission?.kind === "cores");
+    for (let k = 0; k < 6; k++) {
+      await page.evaluate((k) => {
+        const g = (window as unknown as { __GAME: { events: { mission: { points: { x: number; y: number; z: number }[] } | null }; teleport(...a: unknown[]): void } }).__GAME;
+        const c = g.events.mission?.points[k];
+        if (c) g.teleport(c.x, c.y - 1, c.z, 0, "hover");
+      }, k);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    }
+    await until(page, (s) => (s as unknown as M).mission === null, 30_000);
+    await expect(page.locator(".h-alerts")).toContainText(/Stolen Stark tech: done/);
+    expect(errors).toEqual([]);
+  });
+
+  test("courier chase and reactor defence start, render and resolve", async ({ page }) => {
+    const errors = await boot(page);
+    type M = { mission: { kind: string; status: string; wave: number; reactorHp: number | null } | null };
+    type G = { __GAME: { events: { spawnNow(p: unknown, t: string): void }; player: unknown; enemies: { enemies: { kind: string; alive: boolean }[]; damage(e: unknown, n: number): void } } };
+    await page.evaluate(() => { const g = (window as unknown as G).__GAME; g.events.spawnNow(g.player, "Catch the courier"); });
+    await until(page, (s) => (s as unknown as M).mission?.kind === "courier");
+    await page.evaluate(() => { const g = (window as unknown as G).__GAME; for (const e of g.enemies.enemies) if (e.kind === "courier") g.enemies.damage(e, 5000); });
+    await until(page, (s) => (s as unknown as M).mission === null, 20_000);
+    await expect(page.locator(".h-alerts")).toContainText(/Catch the courier: done/);
+    // Salvage drops from the courier's wreck.
+    expect(((await state(page)) as unknown as { pickups: number }).pickups).toBeGreaterThanOrEqual(2);
+
+    await page.evaluate(() => { const g = (window as unknown as G).__GAME; g.events.spawnNow(g.player, "Protect the arc reactor"); });
+    const s = await until(page, (st) => ((st as unknown as M).mission?.wave ?? 0) >= 1, 40_000);
+    expect((s as unknown as M).mission!.reactorHp).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("kill streaks, salvage pickups and a superhero landing", async ({ page }) => {
+    const errors = await boot(page);
+    type G = { __GAME: { enemies: { enemies: unknown[]; damage(e: unknown, n: number): void }; pickups: { drop(k: string, x: number, y: number, z: number): void }; player: { pos: { x: number; y: number; z: number } } } };
+    await game(page, (g) => {
+      g.teleport(2.5, 30, -300, 0, "hover");
+      for (let k = 0; k < 3; k++) g.spawnEnemy("drone", 30 + k * 4, 2, k * 3);
+    });
+    await page.evaluate(() => { const g = (window as unknown as G).__GAME; for (const e of [...g.enemies.enemies]) g.enemies.damage(e, 1000); });
+    await expect(page.locator(".h-popup")).toContainText(/TRIPLE KILL|DOUBLE KILL/);
+    await expect(page.locator("#hud")).toHaveClass(/streaking/);
+    // A power cell dropped next to you is pulled in and collected.
+    await page.evaluate(() => { const g = (window as unknown as G).__GAME; const p = g.player.pos; g.pickups.drop("power", p.x + 4, p.y + 1, p.z); });
+    await until(page, (s) => (s as unknown as { pickups: number }).pickups === 0, 20_000);
+    // Superhero landing: drop from 80 m with the thrusters cut.
+    await game(page, (g) => g.teleport(2.5, 80, -300, 0, "hover"));
+    await page.keyboard.press("KeyH");
+    await expect(page.locator(".h-popup")).toContainText(/SUPERHERO LANDING/, { timeout: 30_000 });
+    expect(errors).toEqual([]);
+  });
+
   test("RUSH meter: fills the HUD bar, pops MAX RUSH and widens the view", async ({ page }) => {
     const errors = await boot(page);
     await game(page, (g) => g.teleport(2.5, 600, -300, 0, "flight", 200));

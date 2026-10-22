@@ -22,7 +22,7 @@ const COLLECT = 2.4;
 const MAX = 24;
 
 /** Big units always drop loot; small ones sometimes do. */
-const BIG: ReadonlySet<string> = new Set(["warbot", "gunship", "tank", "carrier", "spider", "titan", "bomber", "rival", "turret"]);
+const BIG: ReadonlySet<string> = new Set(["warbot", "gunship", "tank", "carrier", "spider", "titan", "bomber", "rival", "turret", "courier"]);
 
 /**
  * Salvage dropped by destroyed enemies: repair kits, power cells and rocket

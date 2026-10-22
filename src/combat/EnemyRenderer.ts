@@ -417,6 +417,21 @@ export class EnemyRenderer {
       3,
     );
 
+    // Courier: a sleek delivery drone clutching a glowing gold cargo case.
+    make(
+      "courier",
+      g.merge("courierBody", [
+        g.sphere(0.8, GUN, 0, 0, 0, 10, 1.1, 0.45, 1.6),
+        g.box(3.2, 0.08, 0.5, DARK, 0, 0.1, -0.3),
+        g.cyl(0.35, 0.35, 0.18, DARK, -1.5, 0.15, -0.3, 10),
+        g.cyl(0.35, 0.35, 0.18, DARK, 1.5, 0.15, -0.3, 10),
+        g.box(0.08, 0.6, 0.08, DARK, -0.35, -0.55, 0),
+        g.box(0.08, 0.6, 0.08, DARK, 0.35, -0.55, 0),
+      ]),
+      g.merge("courierGlow", [g.box(0.9, 0.5, 0.6, W1, 0, -0.95, 0), g.sphere(0.1, W1, 0, 0.05, 1.25, 4)]),
+      2,
+    );
+
     // Shield bubble (one per shield drone), faint additive purple.
     this.bubble = CreateSphere("shieldBubble", { diameter: 2, segments: 16 }, scene);
     this.bubble.material = mats.additive("shieldMat", Color3.White(), 1);
@@ -534,6 +549,11 @@ export class EnemyRenderer {
     } else if (e.kind === "turret") {
       // Barrels raised toward the sky, kicking back as each shell fires.
       pitch = -0.5 + e.flash * 0.15;
+    } else if (e.kind === "courier") {
+      // Banks hard through its weaves; the cargo swings under it.
+      const side = e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw);
+      roll = Math.max(-0.8, Math.min(0.8, -side * 0.03));
+      pitch = 0.15 + e.jet * 0.25;
     } else if (e.kind === "rival") {
       // Flies like a suit: leans into its velocity, flat out on a dash.
       const fwd = e.vx * Math.sin(e.yaw) + e.vz * Math.cos(e.yaw);
@@ -612,6 +632,12 @@ export class EnemyRenderer {
       gr = c;
       gg = 0.45 * c;
       gb = 0.1;
+    } else if (e.kind === "courier") {
+      // Gold cargo glow, pulsing faster when it surges.
+      const c = 1 + Math.sin(e.phase * (4 + e.jet * 20)) * 0.25;
+      gr = 1.5 * c;
+      gg = 1.1 * c;
+      gb = 0.3;
     } else if (e.kind === "rival") {
       // Orange reactor and visor, boots flaring on a dash.
       const c = 1 + e.jet * 1.2;
