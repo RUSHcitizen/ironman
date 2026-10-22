@@ -52,8 +52,9 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Rooftop run:** bank 12 s flying faster than 248 km/h within 30 m of the rooftops or street.
 - **Skydive (low pull):** climb above 600 m, cut thrust, and re-engage below 80 m above the ground. Too early fails, and so does hitting the ground.
 - The pause menu has buttons to start any mission right away. Special objectives come up more often among random incidents.
+- **Rooftop fires:** four roofs are burning. Hover low over each one to blow the flames out with the thrusters. Flames shrink as you work and flare back up if you leave them, and you have 100 s before they spread.
 - **Contracts:** three side objectives run at once, drawn from 23 kinds (destroy 8 drones, chain a triple kill, superhero-land on two hostiles, escort a medevac, nail a low pull, 10 near misses and more). Each pays XP when done and is replaced by a new one. They are listed with progress bars in the pause menu, and a toast announces each completion.
-- **25 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
+- **26 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
 
 **New animations**
 - **Superhero landing pose:** knee and fist planted, head bowed, then a slow rise.
@@ -67,6 +68,12 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **HUD:** the objective-complete banner sweeps in, and the achievement toast slides down with a gold glint.
 
 **Graphics**
+- **Weather** (pause menu: Clear / Rain / Storm):
+  - Rain streaks surround the camera and stream toward you as you fly.
+  - Fog closes in, and the sky and light go grey. This fades out once you climb above the cloud deck at about 500–1000 m.
+  - Storms add lightning bolts with forks that light up the sky, and thunder arrives after the flash at the speed of sound.
+  - Rain uses 260 / 700 / 1,300 drops on Low / Medium / High.
+  - Measured cost on the throttled-phone test: about 12.6 ms average per frame in a storm, against 11.5 ms in clear weather (the budget is 16 ms).
 - **Sun lens flare** (Medium and High): a soft glare, an anamorphic streak and faint ghosts across the view. It hides behind buildings and fades at the screen edge.
   - It is drawn as a light screen overlay, because Babylon's built-in flare drew at the screen centre with large-world rendering on.
 - **Explosion heat flash:** a warm flash over the view from big nearby blasts.
@@ -196,7 +203,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
     - Building a newly visible chunk is now spread over several frames (about 3 ms per frame) instead of done in one go.
     - The HUD caches its element lookups and only writes to the page when a value actually changes.
     - Measured on the emulated iPhone X layout at Low during a flying fight, the simulation's CPU cost is about 2.2 ms per frame on average, with the worst frame down from about 25 ms to 11 ms. At **4× CPU throttling** (to approximate a slow phone or Chromebook CPU) it's about 10 ms on average, with a peak around 38 ms (from 62 ms). The JS heap stays around 60–75 MB.
-    - A new browser test enforces a budget at 4× throttling: under 16 ms average and 80 ms peak, and under 250 MB heap. After the 2.5× speed-up (Milestone 11) this test flies at about 230 m/s.
+    - A new browser test enforces a budget at 4× throttling (now in both clear weather and a thunderstorm): under 16 ms average and 80 ms peak, and under 250 MB heap. After the 2.5× speed-up (Milestone 11) this test flies at about 230 m/s.
     - Fixes that keep it inside budget:
       - The target brackets no longer read the canvas size each update, which forced a full page layout. The size is now cached on resize.
       - HUD animations restart on the next frame instead of with the "read offsetWidth" trick.
@@ -499,7 +506,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **96 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **97 unit tests** pass, covering:
+  - Rooftop fires: hovering blows them out, fires left alone flare back, standing on the roof doesn't count, and the clock can run out.
   - Contracts advance only from matching events, pay out and are replaced. Arc drones zap targets in range. Killed troopers are thrown backwards and land.
   - Milestone 17 (cont.): the medevac flies to its pad clear of the roofs while waves attack it (and is lost if shot down), the rooftop run only counts fast-and-low seconds, and the skydive wins only for a low pull.
   - Milestone 17:
@@ -530,7 +538,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **43 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **44 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Medevac escort, rooftop run and skydive start from the pause menu with their objective text.**
   - **Missions started from the pause menu: all three bombs defused by hovering beside them, then all six data cores collected. The achievement list is shown.**
   - **The courier is shot down and drops salvage; reactor defence starts its first wave.**
