@@ -90,6 +90,7 @@ const TEMPLATES: Template[] = [
   { title: "Minefield", detail: "Air mines drifting over the district - thread through or pop them from range", place: "air", squad: ["mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "jammer"], minLevel: 1 },
   { title: "Flak alley", detail: "Rooftop flak turrets - keep jinking, the bursts lead you", place: "roof", squad: ["turret", "turret", "turret", "drone", "drone"], minLevel: 1 },
   { title: "ROGUE ARMOUR", detail: "A rival suit wants a duel - it dodges, dashes and fires missiles", place: "air", squad: ["rival", "swarmer", "swarmer", "swarmer", "swarmer"], minLevel: 3 },
+  { title: "Storm front", detail: "Arc drones chaining lightning - don't let them get close", place: "air", squad: ["arc", "arc", "arc", "arc", "jammer"], minLevel: 2 },
   { title: "Blitz", detail: "Bombers, flak and mines all at once", place: "roof", squad: ["bomber", "turret", "turret", "mine", "mine", "mine", "mine", "rival"], minLevel: 5 },
   { title: "Bomb threat", detail: "Three bombs on the rooftops - hover close to each to defuse it", place: "air", squad: [], mission: "bombs" },
   { title: "Stolen Stark tech", detail: "Recover the scattered data cores before they self-destruct", place: "air", squad: [], mission: "cores" },

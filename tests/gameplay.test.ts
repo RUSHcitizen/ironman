@@ -8,6 +8,7 @@ import { emptyInput } from "../src/input/InputState";
 import { planMission, BOMB_DEFUSE_TIME, COURIER_ESCAPE, STUNT_NEEDED, SKYDIVE_PULL, type MissionContext } from "../src/gameplay/Missions";
 import { EnemyManager } from "../src/combat/Enemies";
 import { Achievements } from "../src/gameplay/Achievements";
+import { Contracts, CONTRACTS } from "../src/gameplay/Contracts";
 import { Rng } from "../src/core/math";
 
 describe("kill streaks", () => {
@@ -227,3 +228,25 @@ describe("achievements", () => {
     expect(a.unlock("firstBlood")).toBe(false);
   });
 });
+
+describe("contracts", () => {
+  it("three distinct contracts advance from game events, pay out, and are replaced", () => {
+    const bus = new EventBus<GameEvents>();
+    const c = new Contracts(bus, 1234);
+    expect(c.active.length).toBe(3);
+    expect(new Set(c.active.map((a) => a.def.id)).size).toBe(3);
+    const paid: number[] = [];
+    bus.on("contract", (e) => paid.push(e.reward));
+    // Force a known contract into the first slot.
+    c.active[0] = { def: CONTRACTS.find((d) => d.id === "drones")!, progress: 0 };
+    for (let k = 0; k < 7; k++) bus.emit("kill", { kind: "drone", total: k, x: 0, y: 0, z: 0 });
+    bus.emit("kill", { kind: "tank", total: 8, x: 0, y: 0, z: 0 }); // wrong kind: no progress
+    expect(c.active[0].progress).toBe(7);
+    bus.emit("kill", { kind: "drone", total: 9, x: 0, y: 0, z: 0 });
+    expect(paid).toContain(400);
+    expect(c.completed).toBeGreaterThanOrEqual(1);
+    expect(c.active[0].def.id).not.toBe("drones");
+    expect(c.active[0].progress).toBe(0);
+  });
+});
+

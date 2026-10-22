@@ -140,7 +140,7 @@ export class Hud {
       </div>
       <div class="h-popup"></div>
       <div class="h-banner"><i></i><b class="v-banner"></b><i></i></div>
-      <div class="h-toast"><small>ACHIEVEMENT UNLOCKED</small><b class="v-toast"></b></div>
+      <div class="h-toast"><small class="v-toast-t">ACHIEVEMENT UNLOCKED</small><b class="v-toast"></b></div>
       <div class="h-streak"><b class="v-streak"></b><span><i class="v-streakbar"></i></span></div>
       <div class="h-capture">CLICK TO CAPTURE MOUSE · LOOK AROUND</div>
       <div class="h-civ"><small>CIVILIAN · HELMET OFF</small><b class="v-civ">Suit parked</b></div>
@@ -215,8 +215,9 @@ export class Hud {
     this.bannerTimer = window.setTimeout(() => el.classList.remove("on"), 2600);
   }
 
-  /** Achievement toast sliding in at the top. */
-  toast(name: string): void {
+  /** Toast sliding in at the top (achievements, contracts). */
+  toast(name: string, title = "ACHIEVEMENT UNLOCKED"): void {
+    this.text(".v-toast-t", title);
     this.text(".v-toast", `★ ${name}`);
     const el = this.q(".h-toast");
     restart(el, "on");

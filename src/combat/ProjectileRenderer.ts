@@ -126,7 +126,7 @@ export class ProjectileRenderer {
     const tube = CreateCylinder("beamTube", { diameter: 1, height: 1, tessellation: 12, cap: 0 }, scene);
     tube.bakeTransformIntoVertices(Matrix.RotationX(Math.PI / 2));
     tube.material = add;
-    this.beamTubes = new Batch(tube, 24);
+    this.beamTubes = new Batch(tube, 64);
   }
 
   update(ps: ProjectileSystem, cam: { x: number; y: number; z: number }): void {
@@ -160,6 +160,23 @@ export class ProjectileRenderer {
       const [yaw, pitch] = orient(dx / l, dy / l, dz / l);
       const mx = (b.a.x + b.b.x) / 2, my = (b.a.y + b.b.y) / 2, mz = (b.a.z + b.b.z) / 2;
       if (b.kind === "telegraph") this.bolts.push(mx, my, mz, yaw, pitch, 0, 0.12, 0.12, l, 1.2, 0.1, 0.05);
+      else if (b.kind === "arc") {
+        // Lightning: a jagged chain of short segments, re-jittered every frame.
+        const n = 4;
+        let px = b.a.x, py = b.a.y, pz = b.a.z;
+        for (let k = 1; k <= n; k++) {
+          const u = k / n;
+          const j = k < n ? Math.min(2, l * 0.08) : 0;
+          const qx = b.a.x + dx * u + (Math.random() - 0.5) * j, qy = b.a.y + dy * u + (Math.random() - 0.5) * j, qz = b.a.z + dz * u + (Math.random() - 0.5) * j;
+          const sx = qx - px, sy = qy - py, sz = qz - pz;
+          const sl = Math.hypot(sx, sy, sz) || 1;
+          const [syaw, spitch] = orient(sx / sl, sy / sl, sz / sl);
+          this.beamTubes.push((px + qx) / 2, (py + qy) / 2, (pz + qz) / 2, syaw, spitch, 0, 0.14, 0.14, sl, 0.25, 0.6, 1.8);
+          px = qx;
+          py = qy;
+          pz = qz;
+        }
+      }
       else if (b.kind === "unibeam") {
         // Thick white-cyan core inside a wide soft cyan sheath, shrinking out.
         const k = 1 - b.t / b.life;

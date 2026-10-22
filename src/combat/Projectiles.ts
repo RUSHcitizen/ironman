@@ -68,7 +68,7 @@ export interface Fx {
 export interface Beam {
   a: V3;
   b: V3;
-  kind: "telegraph" | "laser" | "unibeam";
+  kind: "telegraph" | "laser" | "unibeam" | "arc";
   t: number;
   life: number;
 }
@@ -167,8 +167,8 @@ export class ProjectileSystem implements EnemyWeapons {
     }
   }
 
-  beam(from: V3, to: V3, kind: "telegraph" | "laser" | "unibeam"): void {
-    this.beams.push({ a: { ...from }, b: { ...to }, kind, t: 0, life: kind === "laser" ? 0.35 : kind === "unibeam" ? 0.55 : 0 });
+  beam(from: V3, to: V3, kind: "telegraph" | "laser" | "unibeam" | "arc"): void {
+    this.beams.push({ a: { ...from }, b: { ...to }, kind, t: 0, life: kind === "laser" ? 0.35 : kind === "unibeam" ? 0.55 : kind === "arc" ? 0.12 : 0 });
   }
 
   private particle(p: Omit<Particle, "t" | "spin" | "smoke">): void {

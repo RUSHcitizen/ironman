@@ -452,6 +452,30 @@ describe("bombers, mines, flak and the rogue armour", () => {
     expect(tur.x).toBe(0);
   });
 
+  it("arc drones charge up and zap a target in range with a lightning arc", () => {
+    const a = arena({ x: 0, y: 40, z: 0 });
+    let hits = 0;
+    a.target.takeHit = () => (hits++, true);
+    const e = a.enemies.spawn("arc", 0, 42, 60);
+    e.aware = true;
+    a.step(6);
+    expect(hits).toBeGreaterThan(0);
+    expect(a.log.some((l) => l.kind === "beam")).toBe(true);
+  });
+
+  it("foot soldiers are blasted backwards off their feet when killed", () => {
+    const a = arena({ x: 0, y: 2, z: 0 });
+    const t = a.enemies.spawn("trooper", 0, 0, 50);
+    t.yaw = Math.PI; // facing the player (toward -z)
+    a.enemies.damage(t, 1000);
+    expect(a.enemies.crashing).toContain(t);
+    a.step(0.3);
+    expect(t.y).toBeGreaterThan(0.5); // airborne
+    expect(t.z).toBeGreaterThan(50); // thrown away from where it faced
+    a.step(3);
+    expect(a.enemies.crashing.length).toBe(0);
+  });
+
   it("the rogue armour strafes with repulsors, fires missile salvos, dashes in and dodges when shot at", () => {
     const a = arena({ x: 0, y: 40, z: 0 });
     const r = a.enemies.spawn("rival", 0, 45, 80);

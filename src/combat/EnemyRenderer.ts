@@ -432,6 +432,19 @@ export class EnemyRenderer {
       2,
     );
 
+    // Arc drone: a core sphere with three tesla prongs and a coil band.
+    make(
+      "arc",
+      g.merge("arcBody", [
+        g.sphere(0.55, GUN, 0, 0, 0, 10),
+        g.cyl(0.05, 0.08, 1.1, DARK, 0, 0.75, 0, 6),
+        g.cyl(0.05, 0.08, 1.1, DARK, 0.65, -0.37, 0, 6, 0, -2.1),
+        g.cyl(0.05, 0.08, 1.1, DARK, -0.65, -0.37, 0, 6, 0, 2.1),
+      ]),
+      g.merge("arcGlow", [g.cyl(0.62, 0.62, 0.1, W1, 0, 0, 0, 14), g.sphere(0.12, W1, 0, 1.32, 0, 4), g.sphere(0.12, W1, 1.15, -0.66, 0, 4), g.sphere(0.12, W1, -1.15, -0.66, 0, 4)]),
+      16,
+    );
+
     // Shield bubble (one per shield drone), faint additive purple.
     this.bubble = CreateSphere("shieldBubble", { diameter: 2, segments: 16 }, scene);
     this.bubble.material = mats.additive("shieldMat", Color3.White(), 1);
@@ -549,6 +562,10 @@ export class EnemyRenderer {
     } else if (e.kind === "turret") {
       // Barrels raised toward the sky, kicking back as each shell fires.
       pitch = -0.5 + e.flash * 0.15;
+    } else if (e.kind === "arc") {
+      // Spins, faster as the charge builds; jitters just before it fires.
+      roll = Math.sin(e.phase * 3) * 0.1 + (e.charge > 0.8 ? Math.sin(e.phase * 60) * 0.06 : 0);
+      y += Math.sin(e.phase * 2.6) * 0.2;
     } else if (e.kind === "courier") {
       // Banks hard through its weaves; the cargo swings under it.
       const side = e.vx * Math.cos(e.yaw) - e.vz * Math.sin(e.yaw);
@@ -567,7 +584,7 @@ export class EnemyRenderer {
       pitch += Math.min(1.1, e.dying * 0.8);
       roll += e.dying * 3 * e.strafe;
     }
-    const spin = e.kind === "jammer" ? e.phase * (1.5 + e.charge * 12) : e.kind === "shielder" ? e.phase * 0.9 : 0;
+    const spin = e.kind === "jammer" ? e.phase * (1.5 + e.charge * 12) : e.kind === "shielder" ? e.phase * 0.9 : e.kind === "arc" ? e.phase * (1 + e.charge * 8) : 0;
     Quaternion.RotationYawPitchRollToRef(e.yaw + spin, pitch, roll, this.q);
     // Warp in: grow from nothing with a slight overshoot.
     const w = Math.min(1, e.age / 0.5);
@@ -637,6 +654,12 @@ export class EnemyRenderer {
       gr = c;
       gg = 0.45 * c;
       gb = 0.1;
+    } else if (e.kind === "arc") {
+      // Electric blue, flickering harder with charge.
+      const c = 0.5 + e.charge * 1.4 + (Math.sin(e.phase * 47) > 0.2 ? 0.3 : 0) * (0.3 + e.charge);
+      gr = 0.4 * c;
+      gg = 0.75 * c;
+      gb = 1.6 * c;
     } else if (e.kind === "courier") {
       // Gold cargo glow, pulsing faster when it surges.
       const c = 1 + Math.sin(e.phase * (4 + e.jet * 20)) * 0.25;

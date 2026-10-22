@@ -28,7 +28,8 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 ## Milestone 17 – more enemies, more fun, missions, achievements, animations and graphics
 
-**New enemies (five)**
+**New enemies (six)**
+- **Arc drone:** a tesla-coil drone that builds a crackling charge and then zaps you with jagged blue lightning. Nearby arc drones link up with arcs. They appear in the new **Storm front** incident.
 - **Heavy bomber:** makes carpet-bombing passes over you, dropping a stick of bombs that keep their forward speed. A tail gunner covers its rear, and it extends and turns for another pass.
 - **Air mines:** fields of spiked mines hang in the sky. They wake when you come close, drift after you blinking faster and faster, and detonate on contact. A shot mine still blows, so you can chain them.
 - **Rooftop flak turret:** tracks flyers and fires air-burst shells around where you are heading. Keep jinking.
@@ -51,6 +52,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Rooftop run:** bank 12 s flying faster than 248 km/h within 30 m of the rooftops or street.
 - **Skydive (low pull):** climb above 600 m, cut thrust, and re-engage below 80 m above the ground. Too early fails, and so does hitting the ground.
 - The pause menu has buttons to start any mission right away. Special objectives come up more often among random incidents.
+- **Contracts:** three side objectives run at once, drawn from 23 kinds (destroy 8 drones, chain a triple kill, superhero-land on two hostiles, escort a medevac, nail a low pull, 10 near misses and more). Each pays XP when done and is replaced by a new one. They are listed with progress bars in the pause menu, and a toast announces each completion.
 - **25 achievements** (First Blood, Rampage, Giant Slayer, Duelist, Bomb Squad, Superhero Landing, Sound Barrier and more). They are saved on the device, announced with a toast and listed in the pause menu with your progress.
 
 **New animations**
@@ -58,6 +60,7 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 - **Victory pose:** a fist punched to the sky and pumping after objectives, incidents and boss kills.
 - Hovering still, the head scans the city. Collecting a pickup flashes the reactor, eyes and palms.
 - **Defusing:** the right palm is held out at the bomb with a scanner beam, and the torso turns toward it. The left hand reaches for a pickup as it is pulled in.
+- **Knockback deaths:** jet-pack troopers and snipers are blasted backwards off their feet, tumbling, before they go up.
 - **A badly damaged suit** (below 35%) throws sparks and trails smoke, and does so faster below 15%.
 - **Crashing wrecks:** downed aircraft (drones, jets, gunships, bombers, the carrier, the rogue armour and others) spiral down burning with a smoke trail, then explode where they hit, hurting hostiles below.
 - New enemy motion: the bomber wallows and banks, mines tumble and shiver, turret barrels kick back, the rogue armour leans and rolls like a suit, and the courier's cargo glows as it surges.
@@ -496,7 +499,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **93 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **96 unit tests** pass, covering:
+  - Contracts advance only from matching events, pay out and are replaced. Arc drones zap targets in range. Killed troopers are thrown backwards and land.
   - Milestone 17 (cont.): the medevac flies to its pad clear of the roofs while waves attack it (and is lost if shot down), the rooftop run only counts fast-and-low seconds, and the skydive wins only for a low pull.
   - Milestone 17:
     - The bomber drops a stick of bombs near its target. Mines wake, chase and detonate (and blow when shot). Flak bursts around the target. The rogue armour strafes, fires missiles, dashes and dodges. The courier flees.

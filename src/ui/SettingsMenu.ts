@@ -71,6 +71,10 @@ export class SettingsMenu {
             <button data-m="Skydive: low pull">Skydive</button>
           </div>
         </section>
+        <section class="m-contracts">
+          <label>Contracts</label>
+          <ul class="m-conlist"></ul>
+        </section>
         <details class="m-ach">
           <summary>Achievements <output class="m-achcount"></output></summary>
           <ul class="m-achlist"></ul>
@@ -136,6 +140,20 @@ export class SettingsMenu {
     });
     settings.onChange(() => this.sync());
     this.sync();
+  }
+
+  /** Active contracts with progress bars. */
+  setContracts(list: { text: string; progress: number; goal: number; reward: number }[]): void {
+    this.el.querySelector(".m-conlist")!.replaceChildren(
+      ...list.map((c) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<b></b><span></span><i><i></i></i>`;
+        li.querySelector("b")!.textContent = c.text;
+        li.querySelector("span")!.textContent = `${c.progress}/${c.goal} · +${c.reward} XP`;
+        (li.querySelector("i > i") as HTMLElement).style.width = `${Math.round((c.progress / c.goal) * 100)}%`;
+        return li;
+      }),
+    );
   }
 
   /** Achievement list (shown when the menu opens). */

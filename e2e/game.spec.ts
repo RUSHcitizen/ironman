@@ -273,6 +273,7 @@ test.describe("desktop controls", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#menu")).toBeVisible();
     await expect(page.locator(".m-achlist li")).toHaveCount(25);
+    await expect(page.locator(".m-conlist li")).toHaveCount(3);
     await page.locator('[data-m="Bomb threat"]').click();
     await expect(page.locator("#menu")).toBeHidden();
     await until(page, (s) => (s as unknown as M).mission?.kind === "bombs");

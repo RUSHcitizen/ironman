@@ -48,6 +48,7 @@ import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { MissionRenderer } from "../gameplay/MissionRenderer";
 import { SunFlare } from "../world/SunFlare";
 import { Achievements } from "../gameplay/Achievements";
+import { Contracts } from "../gameplay/Contracts";
 import { BOMB_RANGE, type ReactorTarget } from "../gameplay/Missions";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
@@ -91,6 +92,7 @@ export class Game {
   /** Chromatic-aberration kick from taking hits (High quality only). */
   private hitPulse = 0;
   achievements!: Achievements;
+  contracts!: Contracts;
   /** The reactor currently in the enemies' target list (defend missions). */
   private reactorTarget: ReactorTarget | null = null;
   /** Slow-motion "hero moment" (real seconds left) after a big kill. */
@@ -238,6 +240,7 @@ export class Game {
         },
       }, this.device.isTouch);
     this.achievements = new Achievements(this.bus);
+    this.contracts = new Contracts(this.bus);
     this.audio = new SuitAudio(this.bus);
     this.hud.setVisible(false);
     this.input.touch.setVisible(false);
@@ -394,6 +397,10 @@ export class Game {
       this.hud.toast(e.name);
       this.bus.emit("alert", { text: `Achievement unlocked: ${e.name}`, level: "success", ttl: 4 });
       this.progress.add(250);
+    });
+    bus.on("contract", (e) => {
+      this.hud.toast(`${e.text} · +${e.reward}`, "CONTRACT COMPLETE");
+      this.progress.add(e.reward);
     });
     bus.on("objective", (e) => {
       if (e.won) {
@@ -630,7 +637,10 @@ export class Game {
   setPaused(p: boolean): void {
     if (!this.started) return;
     this.paused = p;
-    if (p) this.menu.setAchievements(this.achievements.list());
+    if (p) {
+      this.menu.setAchievements(this.achievements.list());
+      this.menu.setContracts(this.contracts.list());
+    }
     this.menu.show(p);
     this.input.enabled = !p;
     this.input.reset();

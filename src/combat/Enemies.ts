@@ -25,10 +25,15 @@ export type EnemyKind =
   | "mine"
   | "turret"
   | "rival"
-  | "courier";
+  | "courier"
+  | "arc";
 
 /** Flying kinds (spawned in the air, not on a surface). */
-export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker", "bomber", "mine", "rival", "courier"]);
+export const AIR_KINDS: ReadonlySet<EnemyKind> = new Set(["drone", "kamikaze", "gunship", "shielder", "jet", "swarmer", "jammer", "carrier", "sentinel", "cloaker", "bomber", "mine", "rival", "courier", "arc"]);
+
+/** Arc drones zap targets within this range (and link to each other within ARC_LINK). */
+export const ARC_RANGE = 45;
+export const ARC_LINK = 24;
 
 /** Air mines detonate within this distance of a target. */
 export const MINE_TRIGGER = 4.5;
@@ -72,6 +77,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   turret: { hp: 150, radius: 1.8, centerY: 1.3, range: 400, score: 450 },
   rival: { hp: 600, radius: 1.2, centerY: 0, range: 420, score: 2200 },
   courier: { hp: 140, radius: 1.4, centerY: 0, range: 700, score: 1200 },
+  arc: { hp: 80, radius: 1.2, centerY: 0, range: 220, score: 380 },
 };
 
 /** Is this enemy currently invisible (cloaked)? */
@@ -142,7 +148,7 @@ export interface EnemyWeapons {
   bolt(from: V3, dir: V3, speed: number, damage: number): void;
   missile(from: V3, dir: V3, damage: number): void;
   explode(at: V3, size: number, damage: number, hurtsPlayer: boolean): void;
-  beam(from: V3, to: V3, kind: "telegraph" | "laser"): void;
+  beam(from: V3, to: V3, kind: "telegraph" | "laser" | "arc"): void;
   /** Ballistic explosive shell (tank). */
   shell(from: V3, vel: V3, damage: number): void;
   shockwave(at: V3, radius: number): void;
@@ -155,7 +161,9 @@ export interface EnemyWeapons {
 }
 
 /** Aircraft that spiral down as burning wrecks instead of blowing up in mid-air. */
-const CRASHERS: ReadonlySet<EnemyKind> = new Set(["gunship", "jet", "bomber", "carrier", "rival", "courier", "jammer", "sentinel", "drone", "shielder"]);
+const CRASHERS: ReadonlySet<EnemyKind> = new Set(["gunship", "jet", "bomber", "carrier", "rival", "courier", "jammer", "sentinel", "drone", "shielder", "arc", "trooper", "sniper"]);
+/** Foot soldiers get blasted backwards off their feet instead of falling like aircraft. */
+const KNOCKBACK: ReadonlySet<EnemyKind> = new Set(["trooper", "sniper"]);
 
 /**
  * Hostile units and their behaviours. Pure simulation (no rendering) so it can
@@ -361,6 +369,13 @@ export class EnemyManager {
         e.dying = 0.001;
         e.vy = Math.min(e.vy, 4);
         e.strafe = this.rng.chance(0.5) ? 1 : -1;
+        if (KNOCKBACK.has(e.kind)) {
+          // Thrown back off their feet, tumbling.
+          const a = e.yaw + Math.PI + this.rng.range(-0.6, 0.6);
+          e.vx = Math.sin(a) * 9;
+          e.vz = Math.cos(a) * 9;
+          e.vy = 9;
+        }
         this.crashing.push(e);
       } else {
         // Shot mines still go off (chain reactions through a minefield).
@@ -465,6 +480,9 @@ export class EnemyManager {
         case "courier":
           this.updateCourier(e, dt, p, d);
           break;
+        case "arc":
+          this.updateArc(e, dt, p, d);
+          break;
       }
     }
     this.updateCrashing(dt);
@@ -495,12 +513,12 @@ export class EnemyManager {
       const s = ENEMY_STATS[e.kind];
       const floor = this.world.surfaceBelow(e.x, e.y + 1, e.z, s.radius * 0.5, 0);
       const hitWall = this.world.overlaps(e.x - 0.5, e.y - 0.5, e.z - 0.5, e.x + 0.5, e.y + 0.5, e.z + 0.5);
-      if (e.y - s.radius * 0.4 <= floor || hitWall || e.dying > 7) {
-        const size = e.kind === "carrier" ? 18 : e.kind === "bomber" || e.kind === "gunship" ? 11 : 6;
+      if ((e.vy < 0 && e.y - s.radius * 0.4 <= floor) || hitWall || e.dying > 7) {
+        const size = e.kind === "carrier" ? 18 : e.kind === "bomber" || e.kind === "gunship" ? 11 : KNOCKBACK.has(e.kind) ? 2.5 : 6;
         const at = { x: e.x, y: Math.max(e.y, floor + 0.5), z: e.z };
-        this.weapons?.explode(at, size, 40, false);
+        this.weapons?.explode(at, size, KNOCKBACK.has(e.kind) ? 0 : 40, false);
         this.weapons?.wreck(at, size);
-        this.weapons?.shockwave(at, size * 1.6);
+        if (!KNOCKBACK.has(e.kind)) this.weapons?.shockwave(at, size * 1.6);
         this.crashing.splice(i, 1);
       }
     }
@@ -1427,6 +1445,43 @@ export class EnemyManager {
     const sp = Math.hypot(e.vx, e.vz);
     if (sp > 2) this.faceTowards(e, { x: e.x + e.vx, y: 0, z: e.z + e.vz }, dt, 5);
     this.flyMove(e, dt, 12);
+  }
+
+  /**
+   * Arc drone: a tesla-coil drone that builds a charge (crackling brighter)
+   * and then zaps its target with a lightning arc if it is close enough.
+   * Arc drones near each other link up with crackling arcs.
+   */
+  private updateArc(e: Enemy, dt: number, p: CombatTarget, d: number): void {
+    const t = p.center;
+    if (!e.aware) {
+      e.orbit += dt * 0.6;
+      this.steerTo(e, e.anchor.x + Math.cos(e.orbit) * 10, e.anchor.y + Math.sin(e.phase * 1.4) * 2, e.anchor.z + Math.sin(e.orbit) * 10, 10, dt, 2);
+      this.flyMove(e, dt, 4);
+      e.charge = Math.max(0, e.charge - dt);
+      return;
+    }
+    // Close in to arc range, circling.
+    e.orbit += e.strafe * dt * 0.9;
+    const r = ARC_RANGE * 0.6;
+    this.steerTo(e, t.x + Math.cos(e.orbit) * r, t.y + 3 + Math.sin(e.phase * 2) * 3, t.z + Math.sin(e.orbit) * r, 32, dt, 2.5);
+    this.faceTowards(e, t, dt, 6);
+    this.flyMove(e, dt, 4);
+    e.charge = Math.min(1, e.charge + dt / 1.3);
+    if (e.charge >= 1 && d < ARC_RANGE && e.los) {
+      const from = this.center(e);
+      this.weapons?.beam(from, t, "arc");
+      p.takeHit(9);
+      this.bus?.emit("weapon", { kind: "laser", ...from });
+      e.charge = 0;
+    }
+    // Crackling links between nearby arc drones.
+    if (Math.sin(e.phase * 23 + e.id) > 0.6) {
+      for (const o of this.enemies) {
+        if (o === e || !o.alive || o.kind !== "arc" || o.id < e.id) continue;
+        if (Math.hypot(o.x - e.x, o.y - e.y, o.z - e.z) < ARC_LINK) this.weapons?.beam(this.center(e), this.center(o), "arc");
+      }
+    }
   }
 
   private updateCloaker(e: Enemy, dt: number, p: CombatTarget, d: number): void {

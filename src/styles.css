@@ -702,3 +702,11 @@ html.touch #hud .h-area small { display: none; }
 .sunflare i { position: absolute; left: 0; top: 0; display: block; border-radius: 50%; will-change: transform; }
 .sf-glow { width: 240px; height: 240px; margin: -120px 0 0 -120px; background: radial-gradient(circle, rgba(255, 236, 200, 0.55) 0%, rgba(255, 190, 120, 0.22) 22%, rgba(255, 150, 80, 0.06) 55%, rgba(255, 140, 60, 0) 72%); }
 .sf-streak { width: 760px; height: 3px; margin: -1.5px 0 0 -380px; border-radius: 0 !important; background: linear-gradient(90deg, rgba(255, 160, 80, 0), rgba(255, 200, 140, 0.5) 50%, rgba(255, 160, 80, 0)); }
+
+/* Contracts in the pause menu. */
+.m-conlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.m-conlist li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 8px; border: 1px solid rgba(107, 233, 255, 0.2); border-radius: 4px; }
+.m-conlist b { font-size: 12px; letter-spacing: 0.5px; }
+.m-conlist span { font-size: 11px; opacity: 0.75; }
+.m-conlist li > i { grid-column: 1 / -1; display: block; height: 3px; background: rgba(255, 255, 255, 0.1); }
+.m-conlist li > i > i { display: block; height: 100%; background: var(--amber); }
