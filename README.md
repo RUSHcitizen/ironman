@@ -538,7 +538,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - Milestone 8: the Unibeam charges then kills everything on the aim line (and spares targets off it), flares break a missile lock so it misses, wreckage lands on the ground, and hero rank thresholds.
   - Milestone 7: jets make passes and come back, swarmers close in and pop in one hit, the EMP jammer charges and drains power, the carrier launches a capped swarm outside its incident group, the 7.68 km map, and the Shift sharp turn (heading ~90° and the flight path follows).
   - Milestones 5–6: free fall and re-engage, fatal vs. survivable falls, oxygen drain and blackout recovery, climbing past the edge of space, the step-out walk, the bank direction (right turn = right arm down), a mid-air eject that kills you if nobody catches you, and a quick call catching you, plus the remotely piloted suit surviving crashes.
-- **44 browser tests** pass on the desktop and emulated-mobile projects, including:
+- **45 browser tests** pass on the desktop and emulated-mobile projects, including:
   - **Medevac escort, rooftop run and skydive start from the pause menu with their objective text.**
   - **Missions started from the pause menu: all three bombs defused by hovering beside them, then all six data cores collected. The achievement list is shown.**
   - **The courier is shot down and drops salvage; reactor defence starts its first wave.**
