@@ -314,4 +314,24 @@ describe("new enemy types", () => {
     expect(t.maxHp).toBeGreaterThan(900);
     expect(s.player.suit.overallIntegrity).toBeLessThan(100);
   });
+
+  it("enemies never spawn inside buildings: flyers and walkers are moved to clear space", () => {
+    const s = setup();
+    s.world.add({ minX: 100, minY: 0, minZ: 100, maxX: 140, maxY: 80, maxZ: 140 }); // a tower
+    const kinds = ["drone", "gunship", "carrier", "trooper", "tank", "warbot", "titan", "spider"] as const;
+    for (const kind of kinds) {
+      const flying = kind === "drone" || kind === "gunship" || kind === "carrier";
+      const e = s.enemies.spawn(kind, 120, flying ? 40 : 0, 120);
+      expect(s.enemies.blockedAt(kind, e.x, e.y, e.z)).toBe(false);
+      if (!flying) expect(e.y < 1 || Math.abs(e.y - 80) < 0.01).toBe(true); // street or roof
+    }
+    // A unit forced inside a building pops out over the roof instead of staying stuck.
+    const d = s.enemies.spawn("drone", 0, 60, 300);
+    d.x = 120;
+    d.z = 120;
+    d.y = 40;
+    run(s, 1);
+    expect(s.enemies.blockedAt("drone", d.x, d.y, d.z)).toBe(false);
+    expect(d.y).toBeGreaterThan(80);
+  });
 });

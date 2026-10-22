@@ -581,7 +581,7 @@ for (const [name, size] of [
   });
 }
 
-test("Chromebook (emulated UA): starts on Low; flying across the 299 km² map keeps collider memory bounded", async ({ browser }) => {
+test("Chromebook (emulated UA): starts on Low; flying across the ~14,900 km² map keeps collider memory bounded", async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, userAgent: "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" });
   const page = await ctx.newPage();
   const errors: string[] = [];
@@ -593,7 +593,7 @@ test("Chromebook (emulated UA): starts on Low; flying across the 299 km² map ke
   await page.waitForFunction(() => (window as unknown as G).__GAME.debugState().quality !== undefined);
   expect(await page.evaluate(() => (window as unknown as G).__GAME.debugState().quality)).toBe("low");
   // Hop to the far corners of the city; old areas are evicted.
-  for (const [x, z] of [[7000, 7000], [-7000, 7000], [-7000, -7000], [7000, -7000], [0, 0]]) {
+  for (const [x, z] of [[58000, 58000], [-58000, 58000], [-58000, -58000], [58000, -58000], [30000, -5000], [0, 0]]) {
     await page.evaluate(([x, z]) => (window as unknown as G).__GAME.teleport(x, 300, z, 0, "hover"), [x, z]);
     await page.waitForTimeout(5600);
   }

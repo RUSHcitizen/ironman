@@ -12,7 +12,6 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { GeometryBatch } from "./GeometryBatch";
 import type { WorldMaterials } from "./Materials";
-import { FACADE_TILE } from "./Materials";
 import type { RGB } from "./CityGenerator";
 import { Rng, DEG } from "../core/math";
 import {
@@ -76,7 +75,7 @@ const PALETTES: Record<TimeOfDay, Palette> = {
   },
 };
 
-/** Lighting, sky, terrain, water, road markings and the distant skyline. */
+/** Lighting, sky, terrain, water and road markings. */
 export class Environment {
   readonly sun: DirectionalLight;
   readonly hemi: HemisphericLight;
@@ -117,7 +116,6 @@ export class Environment {
 
     this.buildSky();
     this.buildTerrain();
-    this.buildSkyline();
   }
 
   setViewDistance(d: number): void {
@@ -179,8 +177,7 @@ export class Environment {
     this.sunDisc.position = dir.scale(6200);
     this.sunDisc.scaling.setAll(pal.discR / 230);
     (this.sunDisc.material as StandardMaterial).emissiveColor = pal.disc.clone();
-    for (const m of [this.mats.masonry, this.mats.glass, this.mats.skyline]) if (m.emissiveTexture) m.emissiveTexture.level = pal.windows;
-    this.mats.skyline.diffuseColor = Color3.White().scale(t === "night" ? 0.25 : t === "day" ? 1.1 : 1);
+    for (const m of [this.mats.masonry, this.mats.glass]) if (m.emissiveTexture) m.emissiveTexture.level = pal.windows;
     this.lastSpace = -1;
   }
 
@@ -266,10 +263,12 @@ export class Environment {
     ground.freezeWorldMatrix();
     ground.metadata = { drawOrder: 1 };
 
-    const water = CreateGround("water", { width: 60000, height: 60000 }, this.scene);
+    // The harbour reaches well past the island on every side (one tile per 25 m).
+    const sea = size + 24000;
+    const water = CreateGround("water", { width: sea, height: sea }, this.scene);
     water.position.y = WATER_Y;
     this.waterTex = this.mats.water.diffuseTexture as Texture;
-    this.waterTex.uScale = this.waterTex.vScale = 2400;
+    this.waterTex.uScale = this.waterTex.vScale = sea / 25;
     water.material = this.mats.water;
     water.isPickable = false;
     water.freezeWorldMatrix();
@@ -299,22 +298,5 @@ export class Environment {
     b.box({ minX: r1 - 0.08, minY: 0.9, minZ: r0, maxX: r1, maxY: 1.0, maxZ: r1 }, rail, "world");
     const m = b.build("promenade", this.scene, this.mats.concrete);
     if (m) m.receiveShadows = true;
-  }
-
-  private buildSkyline(): void {
-    const b = new GeometryBatch(FACADE_TILE.masonryU, FACADE_TILE.masonryV);
-    const rng = new Rng(77);
-    for (let k = 0; k < 520; k++) {
-      const a = rng.range(0, Math.PI * 2);
-      // Leave a gap toward the sunset so the sun sits over open water.
-      if (Math.abs(((a - SUN_AZIMUTH + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.3) continue;
-      const r = rng.range(ISLAND_MAX + 700, ISLAND_MAX + 1700);
-      const x = Math.sin(a) * r, z = Math.cos(a) * r;
-      const w = rng.range(30, 90), d = rng.range(30, 90);
-      const h = rng.range(40, 150) + (rng.chance(0.25) ? rng.range(100, 280) : 0);
-      const v = rng.range(0.32, 0.46);
-      b.box({ minX: x - w / 2, minY: WATER_Y, minZ: z - d / 2, maxX: x + w / 2, maxY: h, maxZ: z + d / 2 }, [v, v * 1.02, v * 1.18], "facade", { top: true, sides: true });
-    }
-    b.build("skyline", this.scene, this.mats.skyline);
   }
 }

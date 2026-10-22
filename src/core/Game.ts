@@ -150,7 +150,7 @@ export class Game {
     const scene = this.scene;
     await progress(0.05, "Generating materials");
     this.mats = new WorldMaterials(scene);
-    await progress(0.1, "Building skyline and harbour");
+    await progress(0.1, "Building harbour");
     this.env = new Environment(scene, this.mats);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);

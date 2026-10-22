@@ -6,7 +6,7 @@ import { ProcGeo } from "./ProcGeo";
 import type { WorldMaterials } from "./Materials";
 import { roadLines, type RGB } from "./CityGenerator";
 import { Rng } from "../core/math";
-import { BLOCK_MIN_INDEX, BLOCK_MAX_INDEX, DISTRICT_MIN, DISTRICT_MAX, ROAD_WIDTH } from "./WorldConfig";
+import { BLOCK_MIN_INDEX, BLOCK_MAX_INDEX, BLOCK_PITCH, DISTRICT_MIN, DISTRICT_MAX, ROAD_WIDTH } from "./WorldConfig";
 import { setInstanceCount } from "./instancing";
 
 type VehicleKind = "car" | "van" | "bus";
@@ -170,7 +170,7 @@ export class TrafficSystem {
 
   private laneId(c: Car): number {
     const laneIdx = Math.abs(c.laneOffset) > 3 ? 1 : 0;
-    return (this.lines.indexOf(c.line) * 2 + c.axis) * 4 + (c.dir > 0 ? 0 : 2) + laneIdx;
+    return ((Math.round(c.line / BLOCK_PITCH) - BLOCK_MIN_INDEX) * 2 + c.axis) * 4 + (c.dir > 0 ? 0 : 2) + laneIdx;
   }
 
   setCount(n: number): void {
@@ -287,13 +287,12 @@ export class TrafficSystem {
 
   /** Distance to the next stop line ahead, or Infinity. */
   private nextStopLine(c: Car): number {
-    let best = Infinity;
+    // Road lines sit every BLOCK_PITCH metres, so the next one is found directly
+    // (the city has well over a thousand lines; no scanning them per car).
     const offset = ROAD_WIDTH / 2 + 3.8;
-    for (const L of this.lines) {
-      const stopS = L - c.dir * offset;
-      const d = (stopS - c.s) * c.dir;
-      if (d > 0 && d < best) best = d;
-    }
-    return best;
+    const k = c.dir > 0 ? Math.floor((c.s + offset) / BLOCK_PITCH) + 1 : Math.ceil((c.s - offset) / BLOCK_PITCH) - 1;
+    if (k < BLOCK_MIN_INDEX || k > BLOCK_MAX_INDEX + 1) return Infinity;
+    return (k * BLOCK_PITCH - c.dir * offset - c.s) * c.dir;
   }
+
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateChunk, generateBlock, chunkColliders } from "../src/world/CityGenerator";
+import { generateChunk, generateBlock, chunkColliders, skylineFactor, areaName } from "../src/world/CityGenerator";
 import { CollisionWorld, rayBox } from "../src/world/Collision";
 import { DISTRICT, WATER_Y, ISLAND_MAX, SIDEWALK_HEIGHT, DISTRICT_MAX, DISTRICT_MIN } from "../src/world/WorldConfig";
 
@@ -12,8 +12,11 @@ describe("CityGenerator", () => {
   it("keeps buildings inside their block and above ground", () => {
     const bad: string[] = [];
     let checked = 0;
-    for (let cx = DISTRICT.minChunk; cx <= DISTRICT.maxChunk; cx++) {
-      for (let cz = DISTRICT.minChunk; cz <= DISTRICT.maxChunk; cz++) {
+    // Sample every 7th chunk each way across the whole (huge) district, edges included.
+    const along = (k: number) => Math.min(DISTRICT.maxChunk, DISTRICT.minChunk + k * 7);
+    for (let a = 0; along(a - 1) < DISTRICT.maxChunk; a++) {
+      for (let b = 0; along(b - 1) < DISTRICT.maxChunk; b++) {
+        const cx = along(a), cz = along(b);
         for (const block of generateChunk(cx, cz).blocks) {
           for (const b of block.buildings) {
             for (const t of b.tiers) {
@@ -72,13 +75,14 @@ describe("CollisionWorld", () => {
     expect(w.terrainHeight(-1000, -1000)).toBe(SIDEWALK_HEIGHT);
   });
 
-  it("covers a huge city (17.28 km square, ~299 km²) with colliders generated lazily", () => {
-    expect(DISTRICT_MAX - DISTRICT_MIN).toBeGreaterThanOrEqual(17280);
+  it("covers a huge city (122 km square, ~14,900 km², 50x the old map) with colliders generated lazily", () => {
+    expect(DISTRICT_MAX - DISTRICT_MIN).toBeGreaterThanOrEqual(122240);
+    expect(((DISTRICT_MAX - DISTRICT_MIN) / 1000) ** 2 / 298.6).toBeGreaterThan(49.9);
     const w = new CollisionWorld();
     w.provider = (cx, cz) => chunkColliders(generateChunk(cx, cz));
     expect(w.chunksLoaded).toBe(0);
     // Querying far out in the city generates just that neighbourhood.
-    const roof = w.surfaceBelow(6000, 1000, -6000, 0.5, 0);
+    const roof = w.surfaceBelow(55000, 1000, -55000, 0.5, 0);
     expect(w.chunksLoaded).toBeGreaterThan(0);
     expect(w.chunksLoaded).toBeLessThan(5);
     expect(roof).toBeGreaterThanOrEqual(0);
@@ -86,8 +90,26 @@ describe("CollisionWorld", () => {
     const before = w.chunksLoaded;
     expect(w.evictFar(0, 0, 1000).length).toBe(before);
     expect(w.chunksLoaded).toBe(0);
-    expect(w.surfaceBelow(6000, 1000, -6000, 0.5, 0)).toBe(roof);
+    expect(w.surfaceBelow(55000, 1000, -55000, 0.5, 0)).toBe(roof);
     expect(w.chunksLoaded).toBe(before);
+    // Still city right up to the edge, and harbour water beyond it.
+    expect(w.terrainHeight(DISTRICT_MAX - 30, 0)).toBeGreaterThanOrEqual(0);
+    expect(w.terrainHeight(ISLAND_MAX + 50, 0)).toBe(WATER_Y);
+  });
+
+  it("spreads named skyscraper clusters across the whole map", () => {
+    let tall = 0;
+    for (let x = -56000; x <= 56000; x += 14000) {
+      for (let z = -56000; z <= 56000; z += 14000) {
+        let best = 0;
+        for (let dx = -1750; dx <= 1750; dx += 250) for (let dz = -1750; dz <= 1750; dz += 250) best = Math.max(best, skylineFactor(x + dx, z + dz));
+        if (best > 0.5) tall++;
+      }
+    }
+    expect(tall).toBeGreaterThan(60); // of 81 sample cells
+    // Names are deterministic and exist everywhere, including the far corners.
+    expect(areaName(DISTRICT.maxChunk, DISTRICT.minChunk)).toBe(areaName(DISTRICT.maxChunk, DISTRICT.minChunk));
+    expect(areaName(DISTRICT.maxChunk, DISTRICT.minChunk).length).toBeGreaterThan(3);
   });
 
   it("detects overlaps", () => {

@@ -97,22 +97,12 @@ const NAME_A = [
 const NAME_B = ["Heights", "Square", "Yards", "Point", "Row", "Commons", "Gate", "Rise", "Village", "Docks", "Hill", "Bend", "Terrace", "Landing", "Park"];
 
 const REGION_CHUNKS = 3;
-const REGIONS = Math.ceil((DISTRICT.maxChunk - DISTRICT.minChunk + 1) / REGION_CHUNKS);
 
-/** Deterministic district names (regions of 2x2 chunks), with a few landmarks. */
-const AREA_NAMES: string[] = (() => {
-  const rng = new Rng(WORLD_SEED + 99);
-  const used = new Set<string>();
-  const out: string[] = [];
-  for (let k = 0; k < REGIONS * REGIONS; k++) {
-    let n = "";
-    do n = `${rng.pick(NAME_A)} ${rng.pick(NAME_B)}`;
-    while (used.has(n));
-    used.add(n);
-    out.push(n);
-  }
-  return out;
-})();
+/** Deterministic district name for a region of 3x3 chunks (hashed, so any map size works). */
+function regionName(rx: number, rz: number): string {
+  const h = hashSeed(WORLD_SEED + 99, rx, rz);
+  return `${NAME_A[h % NAME_A.length]} ${NAME_B[(h >>> 8) % NAME_B.length]}`;
+}
 
 const LANDMARK_AREAS: [number, number, string][] = [
   [20, 150, "Midtown Core"],
@@ -125,40 +115,55 @@ const LANDMARK_AREAS: [number, number, string][] = [
 ];
 
 /**
- * Extra skyscraper clusters spread over the outer city (deterministic): one
- * per ~3.6 km cell beyond the original core, each with its own name.
+ * Extra skyscraper clusters spread over the outer city: one per ~3.5 km cell
+ * beyond the original core, each with its own name. Generated lazily per cell
+ * from a hash, so the cost does not grow with the map.
  */
 const OUTER_CORE_NAMES = [
   "Stark Industries Park", "Hammer Yards", "Oscorp Heights", "Roxxon Plaza", "Damage Control", "Baxter Point", "Liberty Spire",
   "Hell's Kitchen", "Astoria Rise", "Queens Gate", "Bronx Terrace", "Coney Docks", "Kingsbridge", "Flushing Meadows",
   "Red Hook", "Long Island Point", "Jersey Heights", "Staten Rise", "Governors Point", "Pier Forty", "Midtown West", "Neon Row",
 ];
-export const OUTER_CORES: { x: number; z: number; r: number; k: number; name: string }[] = (() => {
-  const rng = new Rng(WORLD_SEED + 404);
-  const out: { x: number; z: number; r: number; k: number; name: string }[] = [];
-  let n = 0;
-  for (let gx = -2; gx <= 2; gx++) {
-    for (let gz = -2; gz <= 2; gz++) {
-      const x = gx * 3500 + rng.range(-700, 700), z = gz * 3500 + rng.range(-700, 700);
-      if (Math.hypot(x, z) < 4300) continue;
-      out.push({ x, z, r: rng.range(380, 620), k: rng.range(0.75, 1.1), name: OUTER_CORE_NAMES[n++ % OUTER_CORE_NAMES.length] });
+const CORE_CELL = 3500;
+export interface OuterCore {
+  x: number;
+  z: number;
+  r: number;
+  k: number;
+  name: string;
+}
+const coreCache = new Map<number, OuterCore | null>();
+
+function outerCore(gx: number, gz: number): OuterCore | null {
+  const key = (gx + 1024) * 2048 + (gz + 1024);
+  let c = coreCache.get(key);
+  if (c !== undefined) return c;
+  const rng = new Rng(hashSeed(WORLD_SEED + 404, gx, gz));
+  const x = gx * CORE_CELL + rng.range(-700, 700), z = gz * CORE_CELL + rng.range(-700, 700);
+  c = Math.hypot(x, z) < 4300 ? null : { x, z, r: rng.range(380, 620), k: rng.range(0.75, 1.1), name: rng.pick(OUTER_CORE_NAMES) };
+  coreCache.set(key, c);
+  return c;
+}
+
+/** Skyscraper clusters whose cell is next to (x, z): the only ones that can reach it. */
+export function coresNear(x: number, z: number): OuterCore[] {
+  const out: OuterCore[] = [];
+  const gx = Math.round(x / CORE_CELL), gz = Math.round(z / CORE_CELL);
+  for (let a = gx - 1; a <= gx + 1; a++) {
+    for (let b = gz - 1; b <= gz + 1; b++) {
+      const c = outerCore(a, b);
+      if (c) out.push(c);
     }
   }
   return out;
-})();
-for (const c of OUTER_CORES) LANDMARK_AREAS.push([c.x, c.z, c.name]);
+}
 
 /** District name for a chunk. */
 export function areaName(cx: number, cz: number): string {
   const x = (cx + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH, z = (cz + 0.5) * CHUNK_BLOCKS * BLOCK_PITCH;
   for (const [lx, lz, name] of LANDMARK_AREAS) if (Math.hypot(lx - x, lz - z) < 340) return name;
-  const rx = clampInt(Math.floor((cx - DISTRICT.minChunk) / REGION_CHUNKS), 0, REGIONS - 1);
-  const rz = clampInt(Math.floor((cz - DISTRICT.minChunk) / REGION_CHUNKS), 0, REGIONS - 1);
-  return AREA_NAMES[(REGIONS - 1 - rz) * REGIONS + rx];
-}
-
-function clampInt(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
+  for (const c of coresNear(x, z)) if (Math.hypot(c.x - x, c.z - z) < 340) return c.name;
+  return regionName(Math.floor((cx - DISTRICT.minChunk) / REGION_CHUNKS), Math.floor((cz - DISTRICT.minChunk) / REGION_CHUNKS));
 }
 
 /** Big central park footprint in block indices (inclusive). */
@@ -175,7 +180,7 @@ export function skylineFactor(x: number, z: number): number {
   const ironworks = (1 - Math.hypot(x + 2900, z + 2900) / 380) * 0.7;
   const eastbridge = (1 - Math.hypot(x - 3000, z - 2800) / 450) * 0.9;
   let outer = 0;
-  for (const c of OUTER_CORES) outer = Math.max(outer, (1 - Math.hypot(x - c.x, z - c.z) / c.r) * c.k);
+  for (const c of coresNear(x, z)) outer = Math.max(outer, (1 - Math.hypot(x - c.x, z - c.z) / c.r) * c.k);
   // Everywhere else is still a dense low/mid-rise city, never empty.
   return clamp(Math.max(midtown, downtown, east, west, north, south, ironworks, eastbridge, outer, 0.08), 0, 1.15);
 }

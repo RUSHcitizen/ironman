@@ -40,7 +40,6 @@ export class WorldMaterials {
   propLit: StandardMaterial;
   propGlow: StandardMaterial;
   beacon: StandardMaterial;
-  skyline: StandardMaterial;
   private textures: DynamicTexture[] = [];
 
   constructor(private scene: Scene) {
@@ -194,14 +193,6 @@ export class WorldMaterials {
     this.beacon = new StandardMaterial("beacon", scene);
     this.beacon.disableLighting = true;
     this.beacon.emissiveColor = new Color3(1, 0.15, 0.1);
-
-    // Distant skyline silhouettes ignore fog; vertex colours pre-mix them with the haze.
-    this.skyline = new StandardMaterial("skyline", scene);
-    this.skyline.diffuseTexture = masonryDiffuse;
-    this.skyline.emissiveTexture = masonryEmissive;
-    this.skyline.useEmissiveAsIllumination = true;
-    this.skyline.specularColor = Color3.Black();
-    this.skyline.fogEnabled = false;
   }
 
   /** Additive, unlit material for thruster flames and holographic effects. */

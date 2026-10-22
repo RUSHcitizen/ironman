@@ -172,6 +172,10 @@ export class EnemyManager {
   spawn(kind: EnemyKind, x: number, y: number, z: number, group = 0): Enemy {
     const s = ENEMY_STATS[kind];
     const r = this.rng;
+    // Never start inside a building: shift to clear space nearby (or onto the roof).
+    const at = { x, y, z };
+    this.unstick(kind, at);
+    ({ x, y, z } = at);
     const e: Enemy = {
       id: this.nextId++,
       kind,
@@ -213,6 +217,46 @@ export class EnemyManager {
     };
     this.enemies.push(e);
     return e;
+  }
+
+  /** A unit's body box: half-width and bottom/top relative to its origin. */
+  private body(kind: EnemyKind): { r: number; y0: number; y1: number } {
+    const s = ENEMY_STATS[kind];
+    if (AIR_KINDS.has(kind)) return { r: s.radius, y0: -s.radius, y1: s.radius };
+    return { r: s.radius * 0.8, y0: 0.4, y1: Math.max(1.8, s.centerY * 2) };
+  }
+
+  /** Would a unit of this kind at (x, y, z) be inside a building? */
+  blockedAt(kind: EnemyKind, x: number, y: number, z: number): boolean {
+    const b = this.body(kind);
+    return this.world.overlaps(x - b.r, y + b.y0, z - b.r, x + b.r, y + b.y1, z + b.r) !== null;
+  }
+
+  /**
+   * Move a spawn point out of any building: search outward for clear space at
+   * the same height (ground units: on the same surface), else put the unit on
+   * top of whatever is there.
+   */
+  private unstick(kind: EnemyKind, p: V3): void {
+    if (!this.blockedAt(kind, p.x, p.y, p.z)) return;
+    const air = AIR_KINDS.has(kind);
+    for (let ring = 1; ring <= 8; ring++) {
+      const d = ring * 6;
+      for (let k = 0; k < 8; k++) {
+        const a = ((k + ring * 0.5) / 8) * Math.PI * 2;
+        const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+        const y = air ? p.y : this.world.surfaceBelow(x, p.y + 1, z, 0.4);
+        if (!air && Math.abs(y - p.y) > 1) continue;
+        if (!this.blockedAt(kind, x, y, z)) {
+          p.x = x;
+          p.y = y;
+          p.z = z;
+          return;
+        }
+      }
+    }
+    const b = this.body(kind);
+    p.y = this.world.surfaceBelow(p.x, 5000, p.z, b.r, 0) + (air ? b.r + 4 : 0);
   }
 
   /** Spawn during update without disturbing iteration. */
@@ -399,6 +443,13 @@ export class EnemyManager {
     const r = ENEMY_STATS[e.kind].radius * 0.8;
     const hit = this.world.overlaps(nx - r, ny - r, nz - r, nx + r, ny + r, nz + r);
     if (hit) {
+      // Already inside a building (e.g. it grew around us): pop out over the top.
+      const inside = this.world.overlaps(e.x - r, e.y - r, e.z - r, e.x + r, e.y + r, e.z + r);
+      if (inside) {
+        e.y = inside.maxY + r + 1;
+        e.vy = Math.max(e.vy, 0);
+        return true;
+      }
       e.vx *= -0.4;
       e.vz *= -0.4;
       e.vy = Math.max(e.vy, 6);

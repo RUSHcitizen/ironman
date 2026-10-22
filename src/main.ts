@@ -86,7 +86,7 @@ async function boot(): Promise<void> {
     engine = new Engine(
       canvas,
       settings.preset.antialias,
-      { stencil: false, preserveDrawingBuffer: false, powerPreference: "high-performance", premultipliedAlpha: false, alpha: false, failIfMajorPerformanceCaveat: false },
+      { stencil: false, preserveDrawingBuffer: false, powerPreference: "high-performance", premultipliedAlpha: false, alpha: false, failIfMajorPerformanceCaveat: false, useLargeWorldRendering: true },
       false,
     );
   } catch (e) {

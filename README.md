@@ -26,6 +26,18 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 14 – a 50× bigger map, enemies out of walls, no see-through buildings
+
+- **A 50× bigger map:** 382 × 382 chunks, about **122 km × 122 km (about 14,900 km²)**, against 299 km² before. There is a named skyscraper cluster roughly every 3.5 km, about 1,200 of them, and every 3×3-chunk region has its own district name.
+  - Everything is generated lazily from hashes: city layout, colliders, district names and skyscraper clusters. Only chunks near the player exist in memory, and far ones are evicted.
+  - Traffic finds the next stop line directly instead of scanning every road, since there are now about 1,500 road lines per axis.
+  - The harbour water was widened to surround the bigger island.
+- **Large-world rendering.** Babylon's `useLargeWorldRendering` is on: 64-bit matrices and a floating origin centred on the camera. This stops 32-bit float precision from shaking the suit and camera 60 km from the centre. Measured render cost in headless Chromium was within about 3% of having it off.
+- **Enemies no longer spawn inside buildings.**
+  - Every spawn is checked against the full body box of that enemy type. A blocked spawn moves to clear space nearby (walkers stay on the same surface) or onto the roof.
+  - A flying enemy that ends up inside a building pops out over the top instead of being stuck forever.
+- **No more black buildings you can fly through.** These were the "distant skyline": 520 dark backdrop boxes in the water around the island, with no colliders and no fog. They are removed. Past the shoreline is now open harbour.
+
 ## Milestone 13 – no white rings, 25% slower flight, more flight animation
 
 - **No more white rings.** The sonic rings are gone: no vapour-cone rings at hypersonic and no ring on a sonic boom. The boom still shakes the camera, plays its sound and shows its popup.
@@ -386,7 +398,7 @@ src/
     Materials.ts          shared materials with canvas-generated textures
     Props.ts              thin-instanced street furniture, rebuilt for chunks near the camera
     Traffic.ts / Pedestrians.ts   thin-instanced ambient life
-    Environment.ts        lights, sky dome, fog, island, water, road markings, skyline
+    Environment.ts        lights, sky dome, fog, island, water, road markings
     Collision.ts          AABB spatial hash, ground heights, ray casts
   player/                 PlayerController (pure flight/walk physics, suit exit/entry, rolls), SuitUnit (the
                           empty suit: parked / sentry AI / flying in to dock), ArmorModel (armour + civilian
@@ -417,7 +429,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **70 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **72 unit tests** pass, covering:
+  - Milestone 14: the 122 km district (50× the old area) with lazy colliders at 55 km out, skyscraper clusters and names across the whole map, buildings checked on a sample of chunks right up to the edges, and enemies of every size spawned inside a tower ending up in clear space or on its roof (a flyer forced inside pops out over the top).
   - Milestone 13: cruise and afterburner are exactly 75% of the Milestone 11 values, and the hypersonic stage breaks Mach 1 only in thin air.
   - Milestone 12: a glancing wall hit scrapes along the wall and keeps you flying with most of your speed, and skimming low and fast builds RUSH, raises your speed past cruise, then fades once you climb high.
   - The new suit and power rules: falls from 30 m, 400 m and 3 km are all survived with armour damage; repeated hard falls destroy the suit and the pilot drifts down safely; power drains exactly 1% per minute in the air, at 0% you sink even holding climb, and landing recharges to 100% instantly.
@@ -442,7 +455,7 @@ Verified in this environment (automated, headless Chromium 141 with SwiftShader 
   - **Hypersonic past Mach 1 high up, with no white sonic rings drawn.**
   - **RUSH: a full meter pops MAX RUSH, shows the HUD bar and then decays.**
   - **Touch SHARP turn buttons turn you about 90° in flight, and BEAM / FLARE work; on desktop, the Unibeam (`Z`) kills a drone in line, flares (`J`) deploy, and the radar shows.**
-  - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between far corners of the city keeps collider and layout memory bounded.**
+  - **Emulated iPhone X (812×375) and iPhone 15 (852×393) in landscape: boot without errors on Low, and every visible touch button is on screen, at least 44 pt and not overlapping another. Emulated Chromebook (CrOS UA): starts on Low, and hopping between the far corners of the 122 km map (±58 km) keeps collider and layout memory bounded.**
   - **Phone held upright: the game is drawn sideways in landscape, Engage and LIFT work through the rotation, look-drags map correctly, and it switches back when the browser rotates.**
   - **A falling civilian caught mid-air; night time, armour schemes, `K` cinematic mode and the boss bar.**
   - **Banked turns both ways, a mid-air eject caught by the called suit, and piloting the empty suit (V) then recalling it (G).**

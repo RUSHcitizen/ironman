@@ -12,13 +12,15 @@ export const CHUNK_BLOCKS = 4;
 export const CHUNK_SIZE = BLOCK_PITCH * CHUNK_BLOCKS; // 320
 
 /**
- * Inclusive chunk range of the playable city (54x54 chunks = 17.28 km square,
- * ~299 km2). Colliders are generated lazily per chunk, so size costs little.
+ * Inclusive chunk range of the playable city (382x382 chunks = 122.24 km
+ * square, ~14,940 km2: 50x the previous 299 km2). Layouts, colliders and
+ * meshes are all generated lazily per chunk around the player and evicted
+ * when far away, so the size costs almost nothing in memory.
  */
-export const DISTRICT = { minChunk: -27, maxChunk: 26 };
+export const DISTRICT = { minChunk: -191, maxChunk: 190 };
 
-export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -8640
-export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 8640
+export const DISTRICT_MIN = DISTRICT.minChunk * CHUNK_SIZE; // -61120
+export const DISTRICT_MAX = (DISTRICT.maxChunk + 1) * CHUNK_SIZE; // 61120
 /** Promenade margin outside the outermost roads before the shoreline. */
 export const ISLAND_MARGIN = ROAD_WIDTH / 2 + 14;
 export const ISLAND_MIN = DISTRICT_MIN - ISLAND_MARGIN;
