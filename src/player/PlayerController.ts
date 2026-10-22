@@ -3,6 +3,7 @@ import type { CollisionWorld } from "../world/Collision";
 import type { EventBus, GameEvents } from "../core/EventBus";
 import { SuitSystems, SUIT_PARTS } from "./SuitSystems";
 import { clamp, damp, dampAngle, moveTowards, wrapAngle, DEG } from "../core/math";
+import { SUIT_UP_TIME } from "./SuitUpChoreography";
 import { WORLD_LIMIT, ALTITUDE_CEILING, ISLAND_MIN, ISLAND_MAX, OXYGEN_ALTITUDE, SPACE_ALTITUDE, airDensity } from "../world/WorldConfig";
 
 export type FlightMode = "ground" | "hover" | "flight";
@@ -43,7 +44,8 @@ export const TUNING = {
   rollCooldown: 0.75,
   transformTime: 1.3,
   /** Piece-by-piece suit-up when the called suit latches on. */
-  latchTime: 2.4,
+  /** Ground suit-up: the full section-by-section choreography, then control returns. */
+  latchTime: SUIT_UP_TIME + 0.1,
   /** Stepping out of the open armour. */
   stepOutTime: 1.5,
   /** A civilian dies landing faster than this; the armour always survives a fall (it takes damage instead). */

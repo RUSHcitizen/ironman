@@ -26,6 +26,20 @@ Built with **Babylon.js + TypeScript + Vite**. Every model, texture and sound is
 
 *These screenshots come from the real running game. They were captured in headless Chromium with software (SwiftShader) rendering via `npm run screenshots`. The mobile shot uses Chromium's iPhone emulation, not real Safari.*
 
+## Milestone 16 – cinematic suit-up
+
+- **The armour goes on one section at a time** whenever the suit docks with you on the ground, at the start of a game and on respawn:
+  1. Chest and back plates.
+  2. **Right arm.** He raises it out to the side and looks at it while the glove, forearm, upper arm and shoulder plates fly in, hand first. The fingers flex as the glove clamps.
+  3. **Left arm**, the same way.
+  4. **Right leg.** He lifts the knee, arms out for balance, eyes on the boot, as the boot, shin and thigh plates come in foot first.
+  5. **Left leg**, the same way.
+  6. **Helmet.** He stands tall, chin up.
+  7. **Faceplate.** It slides down over the face and clamps with a small nod, the eyes and arc reactor flare on, and the fists clench.
+- Plates waiting for their turn hover where the arriving suit broke apart, bobbing gently. Each section clanks and sparks as it locks on.
+- The whole sequence takes 4.1 s, and control returns right after the faceplate. A mid-air catch is still the fast all-at-once snap, so you don't hit the ground waiting for it.
+- The choreography (stage order, timings and poses) lives in `src/player/SuitUpChoreography.ts`, which is plain logic with unit tests.
+
 ## Milestone 15 – repulsor animations, alternating hands, 2 rockets a minute
 
 - **Repulsors alternate hands on every shot** (right, left, right…), on the ground, in hover and in flight, and each bolt leaves from that hand.
@@ -439,7 +453,8 @@ Design notes for expansion:
 ## Verification status
 
 Verified in this environment (automated, headless Chromium 141 with SwiftShader software WebGL):
-- Production build and TypeScript strict checks pass. **74 unit tests** pass, covering:
+- Production build and TypeScript strict checks pass. **76 unit tests** pass, covering:
+  - Milestone 16: the suit-up runs chest, right arm, left arm, right leg, left leg, helmet, then faceplate, every plate lands inside its own section's window, control returns only after the faceplate, and the poses raise each arm out and lift each knee while looking at that limb.
   - Milestone 15: repulsor shots alternate hands every shot, and the rocket pod fires its pair and stays empty until it rearms 60 s later.
   - Milestone 14: the 122 km district (50× the old area) with lazy colliders at 55 km out, skyscraper clusters and names across the whole map, buildings checked on a sample of chunks right up to the edges, and enemies of every size spawned inside a tower ending up in clear space or on its roof (a flyer forced inside pops out over the top).
   - Milestone 13: cruise and afterburner are exactly 75% of the Milestone 11 values, and the hypersonic stage breaks Mach 1 only in thin air.

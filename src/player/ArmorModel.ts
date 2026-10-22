@@ -13,6 +13,7 @@ import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import "@babylonjs/core/Particles/particleSystemComponent";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { pieceTiming, suitUpPose, SuitStage, SUIT_UP_STAGES, type JointName, type Pose } from "./SuitUpChoreography";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { FlightMode } from "./PlayerController";
 
@@ -82,9 +83,6 @@ interface Joint {
   z: number;
 }
 
-type JointName = "spine" | "neck" | "shL" | "shR" | "elL" | "elR" | "hipL" | "hipR" | "knL" | "knR";
-type Pose = Partial<Record<JointName, [number, number]>>;
-
 /**
  * Original procedurally-modelled powered armour (red & gold) with a simple
  * joint hierarchy and procedural pose blending for walk / hover / flight.
@@ -116,7 +114,25 @@ export class ArmorModel {
   /** Hierarchy nodes in creation (parent-first) order. */
   private nodes: TransformNode[] = [];
   /** Piece-by-piece latch suit-up: per-part local start positions. */
-  private latch: { t: number; starts: Vector3[]; landed: boolean[]; lastDelay: number; speed: number } | null = null;
+  private latch: {
+    t: number;
+    starts: Vector3[];
+    landed: boolean[];
+    lastDelay: number;
+    speed: number;
+    /** Choreographed section-by-section suit-up (on the ground) vs. the fast all-at-once catch. */
+    staged: boolean;
+    /** World start positions (staged: plates wait in place until their section is called). */
+    world: Vector3[];
+    lastStage: number;
+  } | null = null;
+  /** Suit-up section of each part and its order within the section (0 = first). */
+  private stageOf: number[] = [];
+  private orderOf: number[] = [];
+  /** Head turn toward the limb being armoured. */
+  private suitLook = 0;
+  private tmpV = new Vector3();
+  private tmpM = new Matrix();
   private qBank = new Quaternion();
   private static readonly UP = new Vector3(0, 1, 0);
   /** Called when a piece clamps on (world position, part index). */
@@ -260,6 +276,7 @@ export class ArmorModel {
     if (this.withCivilian) this.buildCivilian();
     // Remember every part's rest transform (used by the suit-up animations).
     for (const part of this.parts) part.mesh.metadata = { s: part.mesh.scaling.clone(), p: part.mesh.position.clone() };
+    this.classifyParts();
 
     // Blob shadow (cheap on every quality level).
     const st = new DynamicTexture("blob", { width: 64, height: 64 }, scene, false);
@@ -400,6 +417,32 @@ export class ArmorModel {
     }
   }
 
+  /**
+   * Sort every plate into its suit-up section (chest, right arm, left arm,
+   * right leg, left leg, helmet, faceplate) and order it inside the section:
+   * gloves come in hand-first, boots foot-first, the faceplate eyes last.
+   */
+  private classifyParts(): void {
+    this.stageOf = this.parts.map(({ mesh }) => {
+      const par = (mesh.parent as TransformNode).name;
+      const p = mesh.position;
+      if (par === "shR" || par === "elR" || (par === "spine" && p.x > 0.25 && p.y > 0.55)) return SuitStage.RightArm;
+      if (par === "shL" || par === "elL" || (par === "spine" && p.x < -0.25 && p.y > 0.55)) return SuitStage.LeftArm;
+      if (par === "hipR" || par === "knR") return SuitStage.RightLeg;
+      if (par === "hipL" || par === "knL") return SuitStage.LeftLeg;
+      if (par === "neck") return p.z > 0.05 ? SuitStage.Faceplate : SuitStage.Helmet;
+      return SuitStage.Core;
+    });
+    this.orderOf = this.parts.map((part, i) => {
+      const st = this.stageOf[i];
+      const arm = st === SuitStage.RightArm || st === SuitStage.LeftArm;
+      const same = this.parts.filter((_, j) => this.stageOf[j] === st);
+      // Arms: highest delay (the glove) first; everything else lowest first.
+      const rank = same.filter((q) => (arm ? q.delay > part.delay : q.delay < part.delay)).length;
+      return same.length > 1 ? rank / (same.length - 1) : 0;
+    });
+  }
+
   playSuitUp(): void {
     this.latchFrom(null);
   }
@@ -445,7 +488,11 @@ export class ArmorModel {
     });
     this.armorShown = true;
     this.setCivilian(this.withCivilian);
-    this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1, speed };
+    const world = this.parts.map((part, i) => worldStarts?.[i]?.clone() ?? Vector3.TransformCoordinates(starts[i], (part.mesh.parent as TransformNode).getWorldMatrix()));
+    // On the ground (normal speed) the suit goes on section by section; a
+    // mid-air catch stays a fast all-at-once snap.
+    const staged = speed <= 1.2;
+    this.latch = { t: 0, starts, landed: this.parts.map(() => false), lastDelay: -1, speed, staged, world, lastStage: -1 };
   }
 
   /**
@@ -511,6 +558,7 @@ export class ArmorModel {
   private updateLatch(dt: number): void {
     const l = this.latch;
     if (!l) return;
+    if (l.staged) return this.updateStagedLatch(dt);
     l.t += dt * l.speed;
     const flight = 0.42;
     let done = true;
@@ -538,6 +586,67 @@ export class ArmorModel {
     });
     if (done) {
       for (const part of this.parts) part.mesh.position.copyFrom((part.mesh.metadata as { p: Vector3 }).p);
+      this.setCivilian(false);
+      this.latch = null;
+    }
+  }
+
+  /**
+   * Section-by-section suit-up. Plates wait where they started (bobbing
+   * gently), then fly in world space onto the presented limb and clamp on;
+   * the faceplate drops down over the face last and the eyes flare on.
+   */
+  private updateStagedLatch(dt: number): void {
+    const l = this.latch!;
+    l.t += dt * l.speed;
+    this.refreshWorld();
+    let done = true;
+    const t = l.t;
+    this.parts.forEach((part, i) => {
+      const m = part.mesh;
+      const parent = m.parent as TransformNode;
+      const pw = parent.getWorldMatrix();
+      const rest = (m.metadata as { p: Vector3 }).p;
+      const st = this.stageOf[i];
+      const { t0, flight } = pieceTiming(st, this.orderOf[i]);
+      const u = clamp((t - t0) / flight, 0, 1);
+      if (u < 1) done = false;
+      if (st === SuitStage.Faceplate) {
+        // Slides down from above the brow and swings shut onto the face.
+        const e = 1 - Math.pow(1 - u, 3);
+        m.position.set(rest.x, rest.y + (1 - e) * 0.22, rest.z + (1 - e) * 0.06 + Math.sin(e * Math.PI) * 0.03);
+        m.setEnabled(t > SUIT_UP_STAGES[SuitStage.Helmet].start);
+      } else {
+        const restWorld = Vector3.TransformCoordinatesToRef(rest, pw, this.tmpV);
+        const s = l.world[i];
+        // Ease-out-back: overshoot slightly, then snap into place.
+        const c1 = 1.7;
+        const e = u <= 0 ? 0 : 1 + (c1 + 1) * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
+        const bob = u <= 0 ? Math.sin(this.time * 3 + i) * 0.04 : 0;
+        const arc = Math.sin(u * Math.PI) * 0.45;
+        const wx = s.x + (restWorld.x - s.x) * e;
+        const wy = s.y + (restWorld.y - s.y) * e + arc + bob;
+        const wz = s.z + (restWorld.z - s.z) * e;
+        pw.invertToRef(this.tmpM);
+        Vector3.TransformCoordinatesFromFloatsToRef(wx, wy, wz, this.tmpM, this.tmpV);
+        m.position.copyFrom(this.tmpV);
+      }
+      if (u >= 1 && !l.landed[i]) {
+        l.landed[i] = true;
+        // One clank and spark per section (first plate to land), plus the faceplate.
+        if (st !== l.lastStage) {
+          l.lastStage = st;
+          m.computeWorldMatrix(true);
+          this.onLatch?.(m.getAbsolutePosition().clone(), i);
+        }
+        if (st === SuitStage.Faceplate) this.beamGlow = 1.3;
+      }
+    });
+    if (done) {
+      for (const part of this.parts) {
+        part.mesh.position.copyFrom((part.mesh.metadata as { p: Vector3 }).p);
+        part.mesh.setEnabled(true);
+      }
       this.setCivilian(false);
       this.latch = null;
     }
@@ -839,6 +948,14 @@ export class ArmorModel {
       this.surge = 0;
       this.lastBurn = false;
     }
+    // Choreographed suit-up: present each limb as its plates arrive.
+    let suitLook = 0;
+    if (this.latch?.staged && p.mode === "ground" && planar < 0.5 && !p.dead) {
+      const c = suitUpPose(this.latch.t);
+      pose = { ...pose, ...c.pose };
+      suitLook = c.look;
+    }
+    this.suitLook += (suitLook - this.suitLook) * damp(6, dt);
     // Firing poses: repulsor palm out, both forearms up for rockets.
     if (p.suited) {
       const up = p.mode === "flight" ? 0 : p.viewPitch;
@@ -983,7 +1100,7 @@ export class ArmorModel {
       look = clamp(d, -1.1, 1.1);
     }
     this.lookYaw += (look - this.lookYaw) * damp(6, dt);
-    this.joints.neck.node.rotation.y = this.lookYaw * 0.65;
+    this.joints.neck.node.rotation.y = this.lookYaw * 0.65 + this.suitLook;
     // Torso twists toward the firing hand, swinging side to side as the hands alternate.
     this.twist += ((p.aimTimer > 0 && p.suited && p.mode !== "flight" ? (p.fireHand ?? 1) * -0.16 : 0) - this.twist) * damp(10, dt);
     this.joints.spine.node.rotation.y = this.lookYaw * 0.3 + this.twist;
