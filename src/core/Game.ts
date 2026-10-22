@@ -48,6 +48,7 @@ import { PickupRenderer } from "../gameplay/PickupRenderer";
 import { MissionRenderer } from "../gameplay/MissionRenderer";
 import { SunFlare } from "../world/SunFlare";
 import { Rain } from "../world/Rain";
+import { Planet } from "../world/Planet";
 import { Achievements } from "../gameplay/Achievements";
 import { Contracts } from "../gameplay/Contracts";
 import { BOMB_RANGE, type ReactorTarget } from "../gameplay/Missions";
@@ -91,6 +92,7 @@ export class Game {
   private missionRenderer!: MissionRenderer;
   private sunFlare!: SunFlare;
   private rain!: Rain;
+  private planet!: Planet;
   /** Seconds to the next storm lightning strike. */
   private boltTimer = 4;
   /** Chromatic-aberration kick from taking hits (High quality only). */
@@ -180,6 +182,7 @@ export class Game {
     this.env = new Environment(scene, this.mats);
     this.sunFlare = new SunFlare(this.uiRoot);
     this.rain = new Rain(scene, this.mats);
+    this.planet = new Planet(scene);
     this.props = new PropSystem(scene, this.mats);
     this.chunks = new ChunkManager(scene, this.mats, this.world, this.props);
     await progress(0.15, "Surveying 299 km² of city");
@@ -1069,6 +1072,7 @@ export class Game {
     this.updateWeather(dt, camPos);
     this.env.setAltitude(camPos.y);
     this.env.followCamera(camPos.x, camPos.z);
+    this.planet.update(dt, camPos);
     this.traffic.update(dt, p.pos.x, p.pos.z, p.pos.y);
     this.props.setSignalPhase(this.traffic.phase);
     this.props.setBeaconOn(Math.sin(this.time * 3) > 0.3);
